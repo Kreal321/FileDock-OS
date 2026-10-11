@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace FileDock.Management.Core;
 
-public sealed class CoreClient : IAsyncDisposable
+public sealed class CoreClient : ICoreGateway, IAsyncDisposable
 {
     public const string InterfaceVersion = "1.0";
 
@@ -16,6 +16,7 @@ public sealed class CoreClient : IAsyncDisposable
     public Secrets.SecretsClient Secrets { get; }
     public Observability.ObservabilityClient Observability { get; }
     public Connectors.ConnectorsClient Connectors { get; }
+    public Recovery.RecoveryClient Recovery { get; }
 
     public CoreClient(IConfiguration configuration)
     {
@@ -34,6 +35,81 @@ public sealed class CoreClient : IAsyncDisposable
         Secrets = new Secrets.SecretsClient(_channel);
         Observability = new Observability.ObservabilityClient(_channel);
         Connectors = new Connectors.ConnectorsClient(_channel);
+        Recovery = new Recovery.RecoveryClient(_channel);
+    }
+
+    public async Task ApplyApplianceNameAsync(string applianceName, string actor, string requestId, CancellationToken cancellationToken = default)
+    {
+        var headers = Metadata(actor, requestId, true);
+        var reference = new ResourceRef { Kind = ResourceKind.Settings, Id = "default" };
+        ulong generation = 0;
+        try
+        {
+            var existing = await Control.GetResourceAsync(reference, headers: Metadata(actor, requestId, false), cancellationToken: cancellationToken);
+            generation = existing.Generation;
+        }
+        catch (RpcException)
+        {
+            generation = 0;
+        }
+
+        var spec = Google.Protobuf.WellKnownTypes.Struct.Parser.ParseJson(
+            System.Text.Json.JsonSerializer.Serialize(new { applianceName }));
+        await Control.ApplyChangeAsync(
+            new ApplyChangeRequest
+            {
+                Changes =
+                {
+                    new ResourceChange
+                    {
+                        Upsert = new ResourceChange.Types.Upsert
+                        {
+                            Ref = reference,
+                            ExpectedGeneration = generation,
+                            Spec = spec,
+                        },
+                    },
+                },
+            },
+            headers: headers,
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<GeneratedRecoveryKeyDto> GenerateRecoveryKeyAsync(string actor, string requestId, CancellationToken cancellationToken = default)
+    {
+        var result = await Recovery.GenerateRecoveryKeyAsync(
+            new GenerateRecoveryKeyRequest(),
+            headers: Metadata(actor, requestId, true),
+            cancellationToken: cancellationToken);
+        return new GeneratedRecoveryKeyDto(result.KeyId, result.RecoveryKey, result.ConfirmGroupIndexes.ToArray());
+    }
+
+    public async Task ConfirmRecoveryKeyAsync(string keyId, IReadOnlyDictionary<uint, string> groups, string actor, string requestId, CancellationToken cancellationToken = default)
+    {
+        var request = new ConfirmRecoveryKeyRequest { KeyId = keyId };
+        foreach (var (index, value) in groups)
+        {
+            request.Groups[index] = value;
+        }
+
+        await Recovery.ConfirmRecoveryKeyAsync(request, headers: Metadata(actor, requestId, true), cancellationToken: cancellationToken);
+    }
+
+    public async Task<SystemStatusDto> GetSystemStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var status = await Control.GetSystemStatusAsync(
+            new GetSystemStatusRequest(),
+            headers: Metadata("management", Guid.NewGuid().ToString("N"), false),
+            cancellationToken: cancellationToken);
+        var components = status.Components.Select(c =>
+            new ComponentHealthDto(c.Id, c.Name, c.State.ToString(), c.Detail)).ToList();
+        return new SystemStatusDto(
+            status.InterfaceVersion,
+            status.ReleaseVersion,
+            status.ApplianceName,
+            components,
+            status.StateProtectionWarning,
+            status.NotificationChannelMissing);
     }
 
     public static Metadata Metadata(string actor, string requestId, bool mutating)

@@ -2,18 +2,21 @@ pub mod connectors;
 pub mod control;
 pub mod interceptors;
 pub mod observability;
+pub mod recovery;
 pub mod secrets;
+pub mod status;
 
 use std::sync::Arc;
 
 use fd_alerts::AlertStore;
 use fd_api::core::v1::{
     connectors_server::ConnectorsServer, core_control_server::CoreControlServer,
-    observability_server::ObservabilityServer, secrets_server::SecretsServer,
+    observability_server::ObservabilityServer, recovery_server::RecoveryServer,
+    secrets_server::SecretsServer,
 };
 use fd_journal::Journal;
 use fd_observe::EventBus;
-use fd_secrets::SecretStore;
+use fd_secrets::{RecoveryKeyStore, SecretStore};
 use fd_state::StateStore;
 use fd_subsystems::SubsystemRegistry;
 use tokio::net::UnixListener;
@@ -27,6 +30,7 @@ use interceptors::InterfaceInterceptor;
 use self::connectors::ConnectorsSvc;
 use self::control::CoreControlSvc;
 use self::observability::ObservabilitySvc;
+use self::recovery::RecoverySvc;
 use self::secrets::SecretsSvc;
 
 pub struct App {
@@ -36,6 +40,7 @@ pub struct App {
     pub events: Arc<EventBus>,
     pub alerts: Arc<AlertStore>,
     pub secrets: Arc<Mutex<SecretStore>>,
+    pub recovery: Arc<Mutex<RecoveryKeyStore>>,
     pub subsystems: SubsystemRegistry,
 }
 
@@ -46,6 +51,7 @@ pub async fn serve(
     events: Arc<EventBus>,
     alerts: Arc<AlertStore>,
     secrets: SecretStore,
+    recovery: RecoveryKeyStore,
     subsystems: SubsystemRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = bind_socket(&config.socket)?;
@@ -56,6 +62,7 @@ pub async fn serve(
         events,
         alerts,
         secrets: Arc::new(Mutex::new(secrets)),
+        recovery: Arc::new(Mutex::new(recovery)),
         subsystems,
     });
     let interceptor = InterfaceInterceptor {
@@ -77,6 +84,10 @@ pub async fn serve(
         ))
         .add_service(ConnectorsServer::with_interceptor(
             ConnectorsSvc { app: app.clone() },
+            interceptor.clone(),
+        ))
+        .add_service(RecoveryServer::with_interceptor(
+            RecoverySvc { app: app.clone() },
             interceptor,
         ))
         .serve_with_incoming(UnixListenerStream::new(listener))

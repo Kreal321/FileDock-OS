@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: nfs
+name: NFS
+version: 2.8.3
+class: built-in
+description: Kernel NFS exports for managed folders.
+capabilities:
+  - protocol.nfs
+runtime:
+  type: systemd-service
+  unit: nfs-server.service
+health:
+  type: systemd
+  target: nfs-server.service
+compatibility:
+  appliance: ">=0.1.0"

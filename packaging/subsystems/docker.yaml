@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: docker
+name: Docker Engine
+version: 29.9.0
+class: built-in
+description: Container runtime and Compose for appliance applications.
+capabilities:
+  - runtime.container
+runtime:
+  type: systemd-service
+  unit: docker.service
+health:
+  type: systemd
+  target: docker.service
+compatibility:
+  appliance: ">=0.1.0"

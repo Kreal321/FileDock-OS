@@ -26,29 +26,7 @@ impl CoreControl for CoreControlSvc {
         &self,
         request: Request<GetSystemStatusRequest>,
     ) -> Result<Response<SystemStatus>, Status> {
-        check_metadata(request.metadata(), self.app.config.interface_version, false)?;
-        Ok(Response::new(SystemStatus {
-            interface_version: self.app.config.interface_version.into(),
-            release_version: self.app.config.release_version.into(),
-            appliance_id: String::new(),
-            appliance_name: self
-                .app
-                .store
-                .get(&fd_state::ResourceRef::singleton(ResourceKind::Settings))
-                .ok()
-                .flatten()
-                .and_then(|row| {
-                    row.spec
-                        .get("applianceName")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_owned)
-                })
-                .unwrap_or_default(),
-            components: Vec::new(),
-            last_state_snapshot_at: None,
-            state_protection_warning: false,
-            notification_channel_missing: false,
-        }))
+        super::status::get_system_status(&self.app, request).await
     }
 
     async fn apply_change(

@@ -1,9 +1,17 @@
 using FileDock.Management.Api.AdminSocket;
+using FileDock.Management.Api.Auth;
+using FileDock.Management.Api.Endpoints;
 using FileDock.Management.Api.Infrastructure;
+using FileDock.Management.Api.Middleware;
 using FileDock.Management.Core;
 using FileDock.Management.Data;
+using FileDock.Management.Domain.Admins;
 using FileDock.Management.Domain.Audit;
 using FileDock.Management.Domain.Security;
+using FileDock.Management.Domain.Sessions;
+using FileDock.Management.Domain.Setup;
+using FileDock.Management.Domain.Stores;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,9 +20,27 @@ builder.Services.AddFileDockProblemDetails();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddScoped<IAuditStore, EfAuditStore>();
+builder.Services.AddScoped<ISetupStore, EfSetupStore>();
+builder.Services.AddScoped<IAdminStore, EfAdminStore>();
+builder.Services.AddScoped<ISessionStore, EfSessionStore>();
 builder.Services.AddScoped<AuditWriter>();
+builder.Services.AddScoped<SetupCodeService>();
+builder.Services.AddScoped<AdminService>();
+builder.Services.AddScoped<SessionService>();
 builder.Services.AddHostedService<AuditRetention>();
-builder.Services.AddSingleton<CoreClient>();
+if (builder.Configuration.GetValue("Core:Optional", false))
+{
+    builder.Services.AddSingleton<ICoreGateway, LocalCoreGateway>();
+}
+else
+{
+    builder.Services.AddSingleton<CoreClient>();
+    builder.Services.AddSingleton<ICoreGateway>(sp => sp.GetRequiredService<CoreClient>());
+}
+
+builder.Services.AddAuthentication(SessionAuthHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, SessionAuthHandler>(SessionAuthHandler.SchemeName, _ => { });
+builder.Services.AddAuthorization();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     var path = builder.Configuration["Database:Path"] ?? "app.db";
@@ -40,6 +66,9 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 app.UseFileDockProblemDetails();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseMiddleware<SetupLockMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -50,6 +79,9 @@ using (var scope = app.Services.CreateScope())
 var api = app.MapGroup("/api/v1");
 api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+api.MapSetup();
+api.MapAuth();
+api.MapSystem();
 AdminSocketEndpoints.Map(app);
 
 app.UseDefaultFiles();

@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: kopia
+name: Kopia
+version: 0.23.1
+class: built-in
+description: Built-in backup engine for Hybrid Backup and Cloud Archive folders.
+capabilities:
+  - backup.snapshot
+runtime:
+  type: native-process
+  executable: /usr/bin/kopia
+health:
+  type: process
+  target: kopia
+cloud:
+  - family: s3-compatible
+    capabilities: [backup.snapshot]
+    conditionalWrites: true
+  - family: azure-blob
+    capabilities: [backup.snapshot]
+    conditionalWrites: true
+compatibility:
+  appliance: ">=0.1.0"

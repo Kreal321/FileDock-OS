@@ -1,11 +1,13 @@
 //! Subsystem manifests, registry, adapters, and systemd helpers.
 
 pub mod adapter;
+pub mod adapters;
 pub mod manifest;
 pub mod registry;
 pub mod systemd;
 
 pub use adapter::{AdapterError, SubsystemAdapter};
+pub use adapters::{DockerAdapter, KopiaAdapter, NfsAdapter, SambaAdapter};
 pub use manifest::{LoadedManifest, ManifestError, load_dir, validate_manifest};
 pub use registry::{SubsystemRecord, SubsystemRegistry};
 pub use systemd::Systemd;

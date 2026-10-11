@@ -26,7 +26,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.method && init.method !== 'GET' && init.method !== 'HEAD') {
-      headers.set('X-CSRF-Token', options.csrfToken ?? '');
+      headers.set('X-CSRF-Token', options.csrfToken ?? csrfFromCookie());
       if (!headers.has('content-type')) {
         headers.set('content-type', 'application/json');
       }
@@ -68,3 +68,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
 }
 
 export const api = createApiClient();
+
+function csrfFromCookie(): string {
+  const match = document.cookie.match(/(?:^|; )fd_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}

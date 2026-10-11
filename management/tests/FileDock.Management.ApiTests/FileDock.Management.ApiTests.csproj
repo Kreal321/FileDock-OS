@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>FileDock.Management.ApiTests</RootNamespace>
     <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);xUnit1051;CA1707</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

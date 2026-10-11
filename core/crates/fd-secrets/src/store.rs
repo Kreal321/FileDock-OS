@@ -85,6 +85,10 @@ impl SecretStore {
         &self.dek_path
     }
 
+    pub fn dek_bytes(&self) -> [u8; 32] {
+        *self.dek
+    }
+
     pub fn put(
         &mut self,
         reference: &str,

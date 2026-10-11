@@ -1,13 +1,27 @@
 using System.CommandLine;
-using System.Text.Json;
+using FileDock.Management.Cli.Commands;
 
 var json = new Option<bool>("--json", "-j") { Description = "Print machine-readable JSON" };
-var root = new RootCommand("filedockctl — local administration (root only)") { json };
-root.SetAction((parse) =>
+var socket = new Option<string>("--socket")
+{
+    Description = "Management admin socket",
+    DefaultValueFactory = _ => "/run/filedock/management-admin.sock",
+};
+var root = new RootCommand("filedockctl — local administration (root only)") { json, socket };
+
+var setupCode = new Command("setup-code", "Print a fresh setup code if setup is not complete");
+setupCode.SetAction(async parse =>
+{
+    var socketPath = parse.GetValue(socket) ?? "/run/filedock/management-admin.sock";
+    return await SetupCodeCommand.RunAsync(socketPath, parse.GetValue(json));
+});
+root.Add(setupCode);
+
+root.SetAction(parse =>
 {
     if (parse.GetValue(json))
     {
-        Console.WriteLine(JsonSerializer.Serialize(new { ok = true, tool = "filedockctl" }));
+        Console.WriteLine("""{"ok":true,"tool":"filedockctl"}""");
     }
     else
     {

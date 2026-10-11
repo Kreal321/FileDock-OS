@@ -1,0 +1,174 @@
+:root {
+  --bg: #12110e;
+  --bg-elev: #1c1a15;
+  --ink: #efe6d4;
+  --muted: #9a8f78;
+  --line: #3a3428;
+  --copper: #d08a3a;
+  --lamp: #6ec8c0;
+  --warn: #e3b341;
+  --bad: #d45d4a;
+  --ok: #7fba6e;
+  --radius: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background: radial-gradient(1200px 600px at 10% -10%, #2a2418 0%, transparent 50%), var(--bg);
+  color: var(--ink);
+}
+
+h1,
+h2,
+.display {
+  font-family: 'Fraunces', 'Times New Roman', serif;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.eyebrow {
+  color: var(--copper);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  margin: 0 0 0.5rem;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--bg-elev) 88%, black);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: 0 20px 40px rgb(0 0 0 / 0.25);
+}
+
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+input {
+  background: #0d0c0a;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius);
+}
+
+input:focus {
+  outline: 1px solid var(--copper);
+}
+
+button.primary,
+button.ghost {
+  border: 1px solid var(--copper);
+  background: var(--copper);
+  color: #1a1208;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--ink);
+}
+
+.recovery-key {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+  color: var(--warn);
+  background: #0a0907;
+  border: 1px dashed var(--warn);
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.error {
+  color: var(--bad);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
+.card {
+  border: 1px solid var(--line);
+  padding: 1rem;
+  background: var(--bg-elev);
+}
+
+.lamp {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.45rem;
+}
+
+.lamp.healthy {
+  background: var(--ok);
+}
+.lamp.degraded,
+.lamp.stopped {
+  background: var(--warn);
+}
+.lamp.failed {
+  background: var(--bad);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

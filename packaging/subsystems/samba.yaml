@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: samba
+name: Samba
+version: 4.22.11
+class: built-in
+description: SMB file sharing for managed folder exports.
+capabilities:
+  - protocol.smb
+runtime:
+  type: systemd-service
+  unit: smbd.service
+health:
+  type: systemd
+  target: smbd.service
+compatibility:
+  appliance: ">=0.1.0"

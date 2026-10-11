@@ -13,7 +13,7 @@ use fd_journal::MIGRATION_0002_JOURNAL;
 use fd_observe::MIGRATION_0003_EVENTS;
 use fd_observe::{EventBus, init_logging};
 use fd_reconcile::Reconciler;
-use fd_secrets::SecretStore;
+use fd_secrets::{RecoveryKeyStore, SecretStore};
 use fd_state::StateStore;
 use fd_state::db::{Db, MIGRATION_0001_INIT};
 use fd_subsystems::MIGRATION_0005_SUBSYSTEMS;
@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let events = Arc::new(EventBus::new(db.clone()));
     let alerts = Arc::new(AlertStore::new(db.clone()));
     let secrets = SecretStore::open(&config.secrets, &config.dek)?;
+    let recovery = RecoveryKeyStore::open(&config.recovery_keys, &secrets.dek_bytes())?;
     let subsystems = SubsystemRegistry::new(db.clone());
     if let Ok(manifests) = load_dir(&config.manifests) {
         for (_, manifest) in manifests {
@@ -65,5 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     tokio::spawn(reconciler.clone().run());
 
-    api::serve(config, store, journal, events, alerts, secrets, subsystems).await
+    api::serve(
+        config, store, journal, events, alerts, secrets, recovery, subsystems,
+    )
+    .await
 }

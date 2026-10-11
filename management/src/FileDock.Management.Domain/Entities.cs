@@ -22,6 +22,7 @@ public sealed class Session
     public DateTimeOffset LastSeenAt { get; set; }
     public string? ClientIp { get; set; }
     public string? UserAgent { get; set; }
+    public string CsrfToken { get; set; } = "";
 }
 
 public sealed class ApiToken

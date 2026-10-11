@@ -172,13 +172,13 @@ US1 includes the minimum of administrator accounts, sessions, sign-in, and the r
 because setup can't finish without them (FR-020, FR-033). US2 adds tokens, scopes, administrator
 management, and network restrictions. US4 adds recovery-key regeneration.
 
-- [ ] T051 [P] [US1] Write the built-in manifests `packaging/subsystems/samba.yaml`, `packaging/subsystems/nfs.yaml`, `packaging/subsystems/kopia.yaml`, and `packaging/subsystems/docker.yaml`
-- [ ] T052 [P] [US1] Implement health-only adapters for Samba, NFS, Docker, and Kopia in `core/crates/fd-subsystems/src/adapters/samba.rs`, `nfs.rs`, `docker.rs`, and `kopia.rs`
-- [ ] T053 [US1] Implement GetSystemStatus (Core, container runtime, health of each built-in subsystem including both connectors, interface version) in `core/crates/filedock-core/src/api/status.rs` (FR-019)
-- [ ] T054 [US1] Implement the read-only preflight in `packaging/installer/install.sh` (FR-002):
+- [X] T051 [P] [US1] Write the built-in manifests `packaging/subsystems/samba.yaml`, `packaging/subsystems/nfs.yaml`, `packaging/subsystems/kopia.yaml`, and `packaging/subsystems/docker.yaml`
+- [X] T052 [P] [US1] Implement health-only adapters for Samba, NFS, Docker, and Kopia in `core/crates/fd-subsystems/src/adapters/samba.rs`, `nfs.rs`, `docker.rs`, and `kopia.rs`
+- [X] T053 [US1] Implement GetSystemStatus (Core, container runtime, health of each built-in subsystem including both connectors, interface version) in `core/crates/filedock-core/src/api/status.rs` (FR-019)
+- [X] T054 [US1] Implement the read-only preflight in `packaging/installer/install.sh` (FR-002):
   - checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or `--offline-bundle`, and conflicting Samba, NFS, or Docker configuration or port 443 in use;
   - one line per failure with a fix hint, then exit `2`.
-- [ ] T055 [US1] Implement the install phase in `packaging/installer/install.sh` (FR-001, FR-003, FR-005, FR-058, research R2, R18):
+- [X] T055 [US1] Implement the install phase in `packaging/installer/install.sh` (FR-001, FR-003, FR-005, FR-058, research R2, R18):
   - repositories and apt pins from `versions.lock`;
   - SHA-256 verification of the rclone and Kopia packages;
   - exact-version installs;
@@ -187,38 +187,38 @@ management, and network restrictions. US4 adds recovery-key regeneration.
   - the journald `SystemMaxUse=1G` drop-in;
   - the self-signed TLS certificate;
   - printing the UI address.
-- [ ] T056 [US1] Implement repair on re-run, and `--check-only`, in `packaging/installer/install.sh`. Repair never modifies `/var/lib/filedock*`, `/var/backups/filedock`, `/etc/filedock` desired state, or pools. Exit codes follow contracts/cli.md (FR-004)
-- [ ] T057 [US1] Implement SetupState and the one-time setup code in `management/src/FileDock.Management.Domain/Setup/SetupCodeService.cs` (FR-020, research R18):
+- [X] T056 [US1] Implement repair on re-run, and `--check-only`, in `packaging/installer/install.sh`. Repair never modifies `/var/lib/filedock*`, `/var/backups/filedock`, `/etc/filedock` desired state, or pools. Exit codes follow contracts/cli.md (FR-004)
+- [X] T057 [US1] Implement SetupState and the one-time setup code in `management/src/FileDock.Management.Domain/Setup/SetupCodeService.cs` (FR-020, research R18):
   - 8 base32 characters, stored hashed;
   - invalidated when setup completes or the installer runs again;
   - attempts throttled to 5 per 15 minutes, per client IP and in total.
-- [ ] T058 [US1] Implement `filedockctl setup-code` over the admin socket in `management/src/FileDock.Management.Cli/Commands/SetupCodeCommand.cs`, and call it from `packaging/installer/install.sh` to print the code
-- [ ] T059 [US1] Implement the setup lock middleware in `management/src/FileDock.Management.Api/Middleware/SetupLockMiddleware.cs`: `423` for every route except `/setup/*` and `/health` until setup completes (FR-020)
-- [ ] T060 [P] [US1] Implement the administrator service (create, disable, delete with last-enabled-admin protection, and password change) in `management/src/FileDock.Management.Domain/Admins/AdminService.cs` (FR-022, FR-025)
-- [ ] T061 [P] [US1] Implement server-side sessions in `management/src/FileDock.Management.Api/Auth/SessionAuthHandler.cs` (FR-023):
+- [X] T058 [US1] Implement `filedockctl setup-code` over the admin socket in `management/src/FileDock.Management.Cli/Commands/SetupCodeCommand.cs`, and call it from `packaging/installer/install.sh` to print the code
+- [X] T059 [US1] Implement the setup lock middleware in `management/src/FileDock.Management.Api/Middleware/SetupLockMiddleware.cs`: `423` for every route except `/setup/*` and `/health` until setup completes (FR-020)
+- [X] T060 [P] [US1] Implement the administrator service (create, disable, delete with last-enabled-admin protection, and password change) in `management/src/FileDock.Management.Domain/Admins/AdminService.cs` (FR-022, FR-025)
+- [X] T061 [P] [US1] Implement server-side sessions in `management/src/FileDock.Management.Api/Auth/SessionAuthHandler.cs` (FR-023):
   - stored in `app.db`, with a 30-minute idle expiry;
   - the `fd_session` cookie with `HttpOnly`, `Secure`, and `SameSite=Strict`;
   - CSRF checks on mutations;
   - sign-out-all.
-- [ ] T062 [US1] Implement `POST /auth/sign-in`, `POST /auth/sign-out`, and `POST /auth/sign-out-all`, with per-account lockout (5 failures, 15 minutes) and an audit entry for every attempt, in `management/src/FileDock.Management.Api/Endpoints/AuthEndpoints.cs` (FR-023, FR-024)
-- [ ] T063 [P] [US1] Implement the recovery key in `core/crates/fd-secrets/src/recovery_key.rs` (FR-032 to FR-034, research R11):
+- [X] T062 [US1] Implement `POST /auth/sign-in`, `POST /auth/sign-out`, and `POST /auth/sign-out-all`, with per-account lockout (5 failures, 15 minutes) and an audit entry for every attempt, in `management/src/FileDock.Management.Api/Endpoints/AuthEndpoints.cs` (FR-023, FR-024)
+- [X] T063 [P] [US1] Implement the recovery key in `core/crates/fd-secrets/src/recovery_key.rs` (FR-032 to FR-034, research R11):
   - 25 characters from a 32-symbol alphabet;
   - an Argon2id wrap of the snapshot key (m=256 MiB, t=3, p=1), with the snapshot key created at the same time;
   - key-id records;
   - regeneration, after which older keys open only older snapshots;
   - confirmation of key groups.
-- [ ] T064 [US1] Implement GenerateRecoveryKey and ConfirmRecoveryKey in `core/crates/filedock-core/src/api/recovery.rs`
-- [ ] T065 [US1] Implement the setup endpoints in `management/src/FileDock.Management.Api/Endpoints/SetupEndpoints.cs` (FR-020, FR-033):
+- [X] T064 [US1] Implement GenerateRecoveryKey and ConfirmRecoveryKey in `core/crates/filedock-core/src/api/recovery.rs`
+- [X] T065 [US1] Implement the setup endpoints in `management/src/FileDock.Management.Api/Endpoints/SetupEndpoints.cs` (FR-020, FR-033):
   - `POST /setup/verify-code`;
   - `POST /setup/complete`: create the first administrator through AdminService, sign them in, and generate the recovery key with GenerateRecoveryKey;
   - `POST /setup/recovery-key/confirm`, through ConfirmRecoveryKey. Setup isn't complete, and the setup lock stays, until the key is confirmed.
-- [ ] T066 [US1] Implement `GET /system/status`, mapping GetSystemStatus plus notices, in `management/src/FileDock.Management.Api/Endpoints/SystemEndpoints.cs`
-- [ ] T067 [P] [US1] Build the setup wizard and sign-in page in `web/src/features/setup/` and `web/src/features/auth/`:
+- [X] T066 [US1] Implement `GET /system/status`, mapping GetSystemStatus plus notices, in `management/src/FileDock.Management.Api/Endpoints/SystemEndpoints.cs`
+- [X] T067 [P] [US1] Build the setup wizard and sign-in page in `web/src/features/setup/` and `web/src/features/auth/`:
   - setup code entry, appliance name, and the first administrator;
   - the recovery-key step in `web/src/features/setup/RecoveryKeyStep.tsx`: shown once, a warning that a lost key after appliance loss means the appliance state can't be recovered, then group confirmation;
   - the sign-in page with the lockout message.
-- [ ] T068 [P] [US1] Build the dashboard with health cards for services and subsystems in `web/src/features/dashboard/`
-- [ ] T069 [US1] Write the acceptance test `tests/e2e/test_install.py` (US1 scenarios 1–5, SC-001):
+- [X] T068 [P] [US1] Build the dashboard with health cards for services and subsystems in `web/src/features/dashboard/`
+- [X] T069 [US1] Write the acceptance test `tests/e2e/test_install.py` (US1 scenarios 1–5, SC-001):
   - a fresh install;
   - `--check-only` on a 1 GB VM exits `2` and changes nothing;
   - wrong setup codes are throttled, and other pages return `423`;
