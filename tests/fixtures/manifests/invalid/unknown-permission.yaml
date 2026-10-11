@@ -1,0 +1,18 @@
+# expect-error: $.permissions[1]
+schemaVersion: 1
+id: bad-permission
+name: Extension with a permission outside the vocabulary
+version: 0.1.0
+class: extension
+capabilities:
+  - sample.echo
+runtime:
+  type: native-process
+  executable: ./bin/sample
+health:
+  type: process
+permissions:
+  - core.events.read
+  - root.shell
+compatibility:
+  appliance: ">=0.1.0"

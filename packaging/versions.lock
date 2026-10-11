@@ -1,0 +1,30 @@
+# FileDock OS pinned third-party versions (FR-003, research R2).
+#
+# Read by packaging/installer/install.sh. One record per line, whitespace-separated:
+#
+#   apt   <package> <exact version>                  Debian package, pinned with Pin-Priority 1001
+#   repo  <name> <url> <suite> <component> <key-url> <key-fingerprint>
+#   apt@<repo> <package> <exact version>             package from a third-party apt repo
+#   deb   <name> <version> <url> <sha256>            upstream .deb, verified before install
+#
+# Target: Debian 13 "trixie", amd64. Versions resolved on 2026-10-11.
+
+# Storage, sharing, and system (Debian trixie)
+apt   systemd             257.13-1~deb13u1
+apt   lvm2                2.03.31-2
+apt   e2fsprogs           1.47.2-3+b12
+apt   smartmontools       7.4-3
+apt   samba               2:4.22.11+dfsg-0+deb13u1
+apt   samba-common-bin    2:4.22.11+dfsg-0+deb13u1
+apt   nfs-kernel-server   1:2.8.3-1
+
+# Docker Engine with the Compose plugin (download.docker.com)
+repo  docker  https://download.docker.com/linux/debian  trixie  stable  https://download.docker.com/linux/debian/gpg  9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+apt@docker  docker-ce              5:29.9.0-1~debian.13~trixie
+apt@docker  docker-ce-cli          5:29.9.0-1~debian.13~trixie
+apt@docker  containerd.io          2.4.1-2~debian.13~trixie
+apt@docker  docker-compose-plugin  5.6.0-1~debian.13~trixie
+
+# Upstream releases (Debian's rclone is too old; Kopia is not packaged by Debian)
+deb   rclone  1.75.2  https://github.com/rclone/rclone/releases/download/v1.75.2/rclone-v1.75.2-linux-amd64.deb  efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c
+deb   kopia   0.23.1  https://github.com/kopia/kopia/releases/download/v0.23.1/kopia_0.23.1_linux_amd64.deb      3998c96b2db3410880ec8f6723f3c127248915896c22e6b882b352693230253a

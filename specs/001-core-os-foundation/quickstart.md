@@ -7,8 +7,12 @@ This guide proves the feature end to end on disposable VMs. Implementation detai
 
 ## Prerequisites
 
-- A Linux build host with Rust stable (edition 2024), the .NET 10 SDK, Node.js 22 LTS with
-  `pnpm`, `buf`, `dpkg-dev`, and Python 3.12 with `uv`.
+- A Linux build host with Rust stable (edition 2024) and `cargo-nextest`, `protoc`
+  (`protobuf-compiler`, used by tonic-prost-build), the .NET 10 SDK, Node.js 22 LTS with `pnpm`,
+  `buf`, `dpkg-dev`, and Python 3.12 with `uv`.
+- For the VM suite: libvirt with `virsh`, `virt-install`, and `qemu-img`, a Debian 13 amd64
+  genericcloud qcow2 image (`FD_E2E_BASE_IMAGE`), and Docker for MinIO. See
+  `tests/e2e/conftest.py` for the settings.
 - Test VMs: Debian 13 amd64 with 4 GB RAM, a **256 GB sparse system disk** (so the System Pool is
   usable under the default 100 GB reserve), and **two extra blank virtual disks** of 20 GB each
   for data pools. The system disk never joins a data pool (FR-062).
@@ -27,11 +31,11 @@ This guide proves the feature end to end on disposable VMs. Implementation detai
 ## Build and package
 
 ```bash
-make proto        # buf lint + generate Rust/C# stubs from contracts/*.proto
-make core         # cargo build --release (core/)
-make management   # dotnet publish (management/) + web UI build (web/)
+make proto        # buf lint + generate Rust/C# stubs from proto/
+make core         # cargo build --release (Core Service and fd-s3)
+make management   # web UI build (web/) + dotnet publish (management/)
 make packages     # packaging/: filedock-core, filedock-management, filedock-builtins .debs
-make test         # cargo nextest, dotnet test, vitest, schema validation
+make test         # cargo nextest, dotnet test, vitest, contract checks (manifest schema, buf)
 ```
 
 ## Install and first-run setup (User Stories 1 and 2)

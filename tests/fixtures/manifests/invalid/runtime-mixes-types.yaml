@@ -1,0 +1,16 @@
+# expect-error: $.runtime
+schemaVersion: 1
+id: mixed-runtime
+name: Native process that also names a systemd unit
+version: 0.1.0
+class: extension
+capabilities:
+  - sample.echo
+runtime:
+  type: native-process
+  executable: ./bin/sample
+  unit: sample.service
+health:
+  type: process
+compatibility:
+  appliance: ">=0.1.0"

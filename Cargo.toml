@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = ["core/crates/*", "connectors/fd-s3"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+fd-api = { path = "core/crates/fd-api" }
+fd-state = { path = "core/crates/fd-state" }
+fd-journal = { path = "core/crates/fd-journal" }
+fd-reconcile = { path = "core/crates/fd-reconcile" }
+fd-storage = { path = "core/crates/fd-storage" }
+fd-subsystems = { path = "core/crates/fd-subsystems" }
+fd-connectors = { path = "core/crates/fd-connectors" }
+fd-secrets = { path = "core/crates/fd-secrets" }
+fd-appstate = { path = "core/crates/fd-appstate" }
+fd-alerts = { path = "core/crates/fd-alerts" }
+fd-observe = { path = "core/crates/fd-observe" }
+
+# Runtime and gRPC (tonic 0.14 moved prost codegen into tonic-prost / tonic-prost-build)
+tokio = { version = "1.53", features = ["full"] }
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+prost = "0.14"
+prost-types = "0.14"
+
+# State
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6"
+
+# Serialization (serde_yaml is deprecated upstream; serde-saphyr is the maintained YAML reader)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-saphyr = "1.3"
+jsonschema = { version = "0.58", default-features = false }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-journald = "0.3"
+
+# Crypto and archives
+chacha20poly1305 = "0.11"
+argon2 = "0.6"
+sha2 = "0.11"
+hmac = "0.13"
+zstd = "0.14"
+tar = "0.4"
+
+# System integration
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+# Native S3 connector
+object_store = { version = "0.14", features = ["aws"] }
+aws-sigv4 = "1.6"
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

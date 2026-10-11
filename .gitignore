@@ -1,0 +1,46 @@
+# OS and editors
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+.idea/
+.vscode/
+
+# Build outputs
+/dist/
+*.log
+.env*
+
+# Rust
+/target/
+**/*.rs.bk
+*.profraw
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+/management/src/FileDock.Management.Api/wwwroot/
+
+# Web
+node_modules/
+web/dist/
+web/coverage/
+web/playwright-report/
+web/test-results/
+
+# Python (tests)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+/tests/e2e/.work/
+
+# Local tool caches
+/.tmp/
+
+# Debian packaging artifacts
+*.deb
+*.buildinfo
+*.changes

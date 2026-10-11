@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>FileDock.Management.Core</RootNamespace>
+    <ProtoRoot>$(MSBuildThisFileDirectory)..\..\..\proto</ProtoRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="$(ProtoRoot)\filedock\core\v1\core.proto" ProtoRoot="$(ProtoRoot)" GrpcServices="Client" Access="Public" />
+  </ItemGroup>
+
+</Project>

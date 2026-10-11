@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: sample-native
+name: Sample native extension
+version: 0.1.0
+class: extension
+capabilities:
+  - sample.echo
+runtime:
+  type: native-process
+  executable: ./bin/sample-native
+  args: ["--socket", "/run/filedock/extensions.sock"]
+health:
+  type: grpc
+  intervalSeconds: 30
+permissions:
+  - core.events.read
+compatibility:
+  appliance: ">=0.1.0 <0.3.0"

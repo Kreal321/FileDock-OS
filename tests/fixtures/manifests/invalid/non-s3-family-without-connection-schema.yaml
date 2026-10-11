@@ -1,0 +1,21 @@
+# expect-error: 'connectionSchema' is a required property
+schemaVersion: 1
+id: no-connection-schema
+name: Drive connector without a connection schema
+version: 0.1.0
+class: extension
+capabilities:
+  - cloud.mount
+runtime:
+  type: native-process
+  executable: ./bin/connector
+health:
+  type: grpc
+permissions:
+  - network.outbound
+  - cloud.credentials
+cloud:
+  - family: onedrive
+    capabilities: [cloud.mount]
+compatibility:
+  appliance: ">=0.1.0"

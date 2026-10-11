@@ -1,0 +1,22 @@
+[project]
+name = "filedock-e2e"
+version = "0.1.0"
+description = "VM acceptance suite for FileDock OS (specs/001-core-os-foundation/quickstart.md)"
+requires-python = ">=3.12"
+dependencies = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "pycdlib>=1.14",
+    "pyyaml>=6.0",
+    "boto3>=1.40",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+markers = [
+    "failure_injection: disk, power, and network fault scenarios (quickstart: Failure injection)",
+    "two_vms: needs a second VM for recovery or takeover",
+]

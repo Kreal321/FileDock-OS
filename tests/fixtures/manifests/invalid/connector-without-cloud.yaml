@@ -1,0 +1,18 @@
+# expect-error: 'cloud' is a required property
+schemaVersion: 1
+id: no-cloud-section
+name: Connector without a cloud section
+version: 0.1.0
+class: extension
+capabilities:
+  - cloud.remote
+runtime:
+  type: native-process
+  executable: ./bin/connector
+health:
+  type: grpc
+permissions:
+  - network.outbound
+  - cloud.credentials
+compatibility:
+  appliance: ">=0.1.0"

@@ -1,0 +1,25 @@
+schemaVersion: 1
+id: sample-drive
+name: Sample drive connector
+version: 0.4.0
+class: extension
+capabilities:
+  - cloud.remote
+  - cloud.mount
+runtime:
+  type: systemd-service
+  unit: sample-drive.service
+health:
+  type: systemd
+permissions:
+  - network.outbound
+  - cloud.credentials
+cloud:
+  - family: google-drive
+    capabilities: [cloud.remote, cloud.mount]
+    connectionSchema: schemas/google-drive.json
+  - family: x-sample-drive-archive
+    capabilities: [cloud.remote]
+    connectionSchema: schemas/archive.json
+compatibility:
+  appliance: ">=0.1.0"

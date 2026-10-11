@@ -1,0 +1,16 @@
+# expect-error: Additional properties are not allowed ('autoUpdate' was unexpected)
+schemaVersion: 1
+id: extra-field
+name: Extension with an undeclared field
+version: 0.1.0
+class: extension
+capabilities:
+  - sample.echo
+runtime:
+  type: native-process
+  executable: ./bin/sample
+health:
+  type: process
+autoUpdate: true
+compatibility:
+  appliance: ">=0.1.0"

@@ -1,0 +1,17 @@
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  # The contracts reuse shared messages (Empty, Operation, ObjectInfo) across RPCs, use
+  # domain names for services, and scope enum values by their enclosing message.
+  except:
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - ENUM_VALUE_PREFIX
+    - SERVICE_SUFFIX
+breaking:
+  use:
+    - FILE

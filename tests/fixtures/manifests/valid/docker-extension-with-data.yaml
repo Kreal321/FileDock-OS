@@ -1,0 +1,25 @@
+schemaVersion: 1
+id: sample-docker
+name: Sample Docker extension
+version: 1.2.0
+class: extension
+capabilities:
+  - sample.store
+runtime:
+  type: docker-service
+  image: registry.example.com/sample@sha256:0000000000000000000000000000000000000000000000000000000000000000
+health:
+  type: http
+  target: http://127.0.0.1:8080/healthz
+permissions:
+  - network.listen:8080
+  - storage.write:data
+secrets:
+  - name: api-token
+    required: false
+data:
+  - name: data
+    mountPath: /var/lib/sample
+    suggestedImportance: Important
+compatibility:
+  appliance: ">=0.1.0"

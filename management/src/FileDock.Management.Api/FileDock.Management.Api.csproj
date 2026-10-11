@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>FileDock.Management.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileDock.Management.Domain\FileDock.Management.Domain.csproj" />
+    <ProjectReference Include="..\FileDock.Management.Data\FileDock.Management.Data.csproj" />
+    <ProjectReference Include="..\FileDock.Management.Core\FileDock.Management.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FileDock.Management.ApiTests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: fd-s3
+name: Native S3 connector
+version: 0.1.0
+class: built-in
+capabilities:
+  - cloud.remote
+runtime:
+  type: native-process
+  executable: /usr/lib/filedock/fd-s3
+health:
+  type: grpc
+permissions:
+  - network.outbound
+  - cloud.credentials
+cloud:
+  - family: s3-compatible
+    capabilities: [cloud.remote]
+    conditionalWrites: true
+    providerChecksums: true
+compatibility:
+  appliance: ">=0.1.0"

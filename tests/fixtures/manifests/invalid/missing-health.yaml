@@ -1,0 +1,13 @@
+# expect-error: 'health' is a required property
+schemaVersion: 1
+id: no-health
+name: Extension without a health check
+version: 0.1.0
+class: extension
+capabilities:
+  - sample.echo
+runtime:
+  type: native-process
+  executable: ./bin/sample
+compatibility:
+  appliance: ">=0.1.0"
