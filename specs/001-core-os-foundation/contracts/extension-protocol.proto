@@ -1,0 +1,310 @@
+// FileDock Extension Protocol: Core Service <-> subsystems and extensions.
+//
+// Transport: gRPC over a Unix domain socket.
+// - The Core serves CoreBridge on /run/filedock/extensions.sock.
+// - Each extension serves the Subsystem service, plus any capability services it provides, on
+//   the socket path it gives in Register.
+//
+// An extension authenticates with the per-instance token that the Core passes in the
+// environment variable FD_EXTENSION_TOKEN. Every CoreBridge call is checked against the
+// extension's approved manifest permissions (FR-053).
+//
+// Built-in subsystems that cannot speak gRPC (Samba, NFS, Docker, Kopia, rclone) are wrapped by
+// adapters inside the Core that implement the same Subsystem semantics (FR-049). The rclone
+// adapter also implements CloudRemote, so both built-in cloud connectors (fd-s3 natively, rclone
+// through the adapter) are driven through one contract (FR-112, research R13).
+
+syntax = "proto3";
+
+package filedock.extension.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ---------------------------------------------------------------------------------------------
+// Served by the Core for extensions
+// ---------------------------------------------------------------------------------------------
+
+service CoreBridge {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Requires permission core.events.read.
+  rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+  // Requires permission core.alerts.write.
+  rpc RaiseAlert(RaiseAlertRequest) returns (Empty);
+  rpc ReportHealth(HealthReport) returns (Empty);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Generic subsystem contract, served by every extension (guide section 12)
+// ---------------------------------------------------------------------------------------------
+
+service Subsystem {
+  rpc Describe(Empty) returns (Description);            // identity, version, capabilities
+  rpc GetCurrentState(Empty) returns (State);
+  rpc Configure(ConfigureRequest) returns (ConfigureResponse);  // desired state
+  rpc Start(Empty) returns (Empty);
+  rpc Stop(Empty) returns (Empty);
+  rpc Restart(Empty) returns (Empty);
+  rpc Reload(Empty) returns (Empty);
+  rpc Health(Empty) returns (HealthReport);
+  rpc Events(Empty) returns (stream Event);
+  rpc Diagnostics(Empty) returns (DiagnosticsReport);   // must be pre-redacted
+}
+
+// ---------------------------------------------------------------------------------------------
+// Capability: notify.channel (FR-097)
+// ---------------------------------------------------------------------------------------------
+
+service NotifyChannel {
+  // The Core calls Deliver once per alert transition (raised, acknowledged, resolved) that meets
+  // the channel's minimum severity. Delivery may be retried, so implementations MUST be
+  // idempotent on (alert_id, transition, attempt_key).
+  rpc Deliver(DeliverRequest) returns (DeliverResponse);
+  // Sends a test message, used by the "Send test" button in the UI.
+  rpc SendTest(SendTestRequest) returns (DeliverResponse);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Capability: cloud.remote (FR-112..FR-123, research R13, R23)
+//
+// Served by every cloud connector. The Core configures a connector (Subsystem.Configure) with
+// exactly the connections routed to it, and their secrets as tmpfs files (FR-119). Every call
+// names one of those connections; any other connection_id is refused with PERMISSION_DENIED.
+//
+// Keys are relative to the connection's bucket. Connectors MUST store an object at exactly that
+// key with no transformation, and MUST NOT require connector-specific metadata, so objects
+// written by one connector are readable by any other serving the same family (FR-118).
+//
+// Errors: FAILED_PRECONDITION for a failed condition, NOT_FOUND, DATA_LOSS for an integrity
+// mismatch, UNAVAILABLE for retryable service errors.
+//
+// cloud.mount connectors also serve CloudMount, which feature 004 defines.
+// ---------------------------------------------------------------------------------------------
+
+service CloudRemote {
+  // Connection test and daily probe under _filedock/probe/<appliance-id>/ at the bucket root,
+  // outside every owned location. The Core sets read_only when that key falls inside a location
+  // this appliance isn't the Writer of (research R23, FR-117).
+  rpc Probe(ProbeRequest) returns (ProbeResult);
+  rpc Stat(ObjectRef) returns (ObjectInfo);
+  rpc List(ListObjectsRequest) returns (stream ObjectInfo);
+  // Streams data, then exactly one trailer. Data from a stream that ends without a verified
+  // trailer MUST be discarded by the caller.
+  rpc Get(GetObjectRequest) returns (stream GetObjectChunk);
+  // The first message carries the header, and the rest carry data.
+  rpc Put(stream PutObjectChunk) returns (PutObjectResult);
+  rpc Delete(DeleteObjectRequest) returns (Empty);
+  // Aborts incomplete multi-part uploads under the prefix older than the given age (FR-117).
+  // Called only by the Core, for its probe key and for owned locations it is the Writer of.
+  rpc AbortIncompleteUploads(AbortIncompleteUploadsRequest) returns (AbortIncompleteUploadsResult);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------------------------
+
+message Empty {}
+
+message ObjectRef {
+  string connection_id = 1;
+  string key = 2;
+}
+
+message ObjectInfo {
+  string key = 1;
+  uint64 size = 2;
+  string etag = 3;
+  google.protobuf.Timestamp last_modified = 4;
+}
+
+message ListObjectsRequest {
+  string connection_id = 1;
+  string prefix = 2;
+}
+
+message GetObjectRequest {
+  ObjectRef ref = 1;
+  // Hex SHA-256 the content must match. Empty only for discovery reads such as owner.json, which
+  // the caller validates by content.
+  string expected_sha256 = 2;
+  uint64 offset = 3;
+  uint64 length = 4;                 // 0 = to the end; ranged reads skip whole-object verification
+}
+
+message GetObjectChunk {
+  oneof part {
+    bytes data = 1;
+    GetObjectTrailer trailer = 2;
+  }
+}
+
+message GetObjectTrailer {
+  string sha256 = 1;
+  bool verified = 2;                 // true only when expected_sha256 matched
+  string etag = 3;
+}
+
+message PutObjectChunk {
+  oneof part {
+    PutObjectHeader header = 1;
+    bytes data = 2;
+  }
+}
+
+message PutObjectHeader {
+  ObjectRef ref = 1;
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    OVERWRITE = 1;
+    CREATE_ONLY = 2;                 // If-None-Match: *
+    REPLACE_IF_MATCH = 3;            // If-Match: if_match_etag
+  }
+  Mode mode = 2;
+  string if_match_etag = 3;
+  string sha256 = 4;                 // expected hex SHA-256 of the full body
+  uint64 size = 5;
+}
+
+message PutObjectResult {
+  string etag = 1;
+  enum Verification {
+    VERIFICATION_UNSPECIFIED = 0;
+    PROVIDER_CHECKSUM = 1;           // the service verified the SHA-256 on receipt
+    READ_BACK = 2;                   // read back and compared before returning
+  }
+  Verification verification = 2;     // a Put that can't verify MUST fail, never return success
+}
+
+message DeleteObjectRequest {
+  ObjectRef ref = 1;
+  string if_match_etag = 2;          // optional; honored only by connectors with conditional writes
+}
+
+message ProbeRequest {
+  string connection_id = 1;
+  string prefix = 2;                 // _filedock/probe/<appliance-id>/
+  bool read_only = 3;                // list and clock skew only; no write or delete
+}
+
+message ProbeCheck {
+  string name = 1;                   // list | write | read | verify | conditional_create |
+                                     //   conditional_replace | delete | clock_skew
+  bool ok = 2;
+  string detail = 3;
+}
+
+message ProbeResult {
+  repeated ProbeCheck checks = 1;
+  bool conditional_create = 2;
+  bool conditional_replace = 3;
+  bool provider_checksums = 4;
+  int64 clock_skew_ms = 5;
+  bool write_steps_run = 6;          // false for a read-only probe: conditional fields not tested
+}
+
+message AbortIncompleteUploadsRequest {
+  string connection_id = 1;
+  string prefix = 2;
+  uint32 older_than_hours = 3;
+}
+
+message AbortIncompleteUploadsResult { uint32 aborted = 1; }
+
+message RegisterRequest {
+  string subsystem_id = 1;
+  string version = 2;
+  string socket_path = 3;            // where this extension serves Subsystem and capabilities
+  repeated string capabilities = 4;  // must be a subset of the manifest
+}
+
+message RegisterResponse {
+  string interface_version = 1;
+  repeated string granted_permissions = 2;
+}
+
+message Description {
+  string subsystem_id = 1;
+  string name = 2;
+  string version = 3;
+  repeated string capabilities = 4;
+}
+
+message State {
+  google.protobuf.Struct desired = 1;
+  google.protobuf.Struct current = 2;
+}
+
+message ConfigureRequest {
+  google.protobuf.Struct config = 1;          // validated by the Core against the manifest schema
+  map<string, string> secret_files = 2;       // secret ref -> tmpfs file path (FR-031)
+  // Declared data path name -> path inside the runtime where its bound managed folder is
+  // mounted. The only writable persistent locations (FR-109).
+  map<string, string> data_paths = 3;
+}
+
+message ConfigureResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message HealthReport {
+  enum Status { STATUS_UNSPECIFIED = 0; HEALTHY = 1; DEGRADED = 2; UNHEALTHY = 3; }
+  Status status = 1;
+  string detail = 2;
+  google.protobuf.Timestamp at = 3;
+}
+
+message DiagnosticsReport {
+  google.protobuf.Struct data = 1;
+  repeated string log_lines = 2;
+}
+
+message StreamEventsRequest {
+  uint64 after_seq = 1;
+  repeated string types = 2;
+}
+
+message Event {
+  uint64 seq = 1;
+  google.protobuf.Timestamp at = 2;
+  string type = 3;
+  string subject_kind = 4;
+  string subject_id = 5;
+  google.protobuf.Struct payload = 6;
+}
+
+message RaiseAlertRequest {
+  string kind = 1;
+  string severity = 2;               // Info | Warning | Critical
+  string object_ref = 3;
+  string message = 4;
+  bool resolved = 5;                 // true clears the condition
+}
+
+message AlertPayload {
+  string alert_id = 1;
+  string kind = 2;
+  string severity = 3;
+  string message = 4;
+  string object_ref = 5;
+  string state = 6;                  // Active | Acknowledged | Resolved
+  google.protobuf.Timestamp first_seen_at = 7;
+  google.protobuf.Timestamp last_seen_at = 8;
+  string appliance_name = 9;
+  string ui_link = 10;
+}
+
+message DeliverRequest {
+  string channel_id = 1;
+  string transition = 2;             // raised | acknowledged | resolved
+  string attempt_key = 3;
+  AlertPayload alert = 4;
+}
+
+message DeliverResponse {
+  bool delivered = 1;
+  bool retryable = 2;
+  string error = 3;
+}
+
+message SendTestRequest { string channel_id = 1; }

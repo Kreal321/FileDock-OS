@@ -1,0 +1,853 @@
+// FileDock Core API: Management Service <-> Core Service.
+// Transport: gRPC over the Unix domain socket /run/filedock/core.sock (research R5).
+//
+// Every call MUST carry the metadata key "fd-interface-version" set to "<major>.<minor>".
+// When the major versions differ, the Core allows read-only calls and refuses mutations with
+// FAILED_PRECONDITION (FR-011).
+//
+// Every mutating call MUST carry "fd-actor", the audit actor (for example "admin:alice",
+// "token:ci-backup", or "console"), and "fd-request-id".
+//
+// Secret values are write-only: no response message ever contains a plaintext secret (FR-029).
+
+syntax = "proto3";
+
+package filedock.core.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ---------------------------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------------------------
+
+service CoreControl {
+  // Version handshake and overall health.
+  rpc GetSystemStatus(GetSystemStatusRequest) returns (SystemStatus);
+
+  // Desired state (FR-013, FR-014). One transactional batch; all-or-nothing.
+  rpc ApplyChange(ApplyChangeRequest) returns (ApplyChangeResponse);
+  rpc ValidateChange(ApplyChangeRequest) returns (ValidationReport);
+  rpc GetResource(ResourceRef) returns (Resource);
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResponse);
+
+  // Operations journal (FR-015).
+  rpc StartOperation(StartOperationRequest) returns (Operation);
+  rpc GetOperation(OperationRef) returns (Operation);
+  rpc ListOperations(ListOperationsRequest) returns (ListOperationsResponse);
+
+  // Live events with resume cursor (FR-018, FR-019).
+  rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+}
+
+service Storage {
+  rpc ListDisks(ListDisksRequest) returns (ListDisksResponse);                 // FR-061
+  // Pool create/extend/adopt/recreate are journaled operations (FR-062..FR-064).
+  rpc CreatePool(CreatePoolRequest) returns (Operation);
+  rpc AdoptFilesystem(AdoptFilesystemRequest) returns (Operation);
+  rpc ExtendPool(ExtendPoolRequest) returns (Operation);
+  rpc RecreatePool(RecreatePoolRequest) returns (Operation);
+  // System Pool limits (FR-099..FR-101). Journaled `SystemPoolResize`; refused below current usage.
+  rpc SetSystemPoolLimits(SetSystemPoolLimitsRequest) returns (Operation);
+  rpc GetSystemPool(Empty) returns (SystemPool);
+}
+
+service Secrets {
+  rpc PutSecret(PutSecretRequest) returns (SecretInfo);                        // FR-028, FR-030
+  rpc DeleteSecret(SecretRef) returns (Empty);
+  rpc ListSecrets(ListSecretsRequest) returns (ListSecretsResponse);           // masked only
+}
+
+service Recovery {
+  // Recovery key (FR-033, FR-034). Plaintext key is returned exactly once.
+  rpc GenerateRecoveryKey(GenerateRecoveryKeyRequest) returns (GeneratedRecoveryKey);
+  rpc ConfirmRecoveryKey(ConfirmRecoveryKeyRequest) returns (Empty);
+
+  // Remote appliance-state destination, local copies, and snapshots (FR-037..FR-040, FR-104).
+  rpc SetStateDestination(SetStateDestinationRequest) returns (Operation);
+  rpc GetStateProtection(Empty) returns (StateProtection);
+  // Management Service pushes its part of the configuration document (admins, token hashes,
+  // settings; no audit, no sessions) after each configuration change (FR-036, research R11).
+  rpc PutManagementConfig(ManagementConfig) returns (Empty);
+  // Configuration backup file: newest snapshot plus referenced extension packages (FR-111).
+  rpc ExportBackupFile(Empty) returns (stream BundleChunk);
+
+  // Reinstall: find copies on this machine's disks and restore with only the recovery key
+  // (FR-106, FR-107). Callable before setup without the setup code.
+  rpc DetectLocalState(Empty) returns (DetectLocalStateResponse);
+  rpc OpenLocalRestoreSource(OpenLocalRestoreSourceRequest) returns (RestoreSource);
+
+  // Restore on a fresh install (FR-041..FR-046, FR-063).
+  rpc OpenRestoreSource(OpenRestoreSourceRequest) returns (RestoreSource);
+  // Uploaded configuration backup file; requires the setup code upstream (FR-111).
+  rpc UploadRestoreFile(stream RestoreFileChunk) returns (RestoreSource);
+  rpc ListRestoreSnapshots(RestoreSourceRef) returns (ListRestoreSnapshotsResponse);
+  rpc BeginRestore(BeginRestoreRequest) returns (Operation);
+  rpc MapPools(MapPoolsRequest) returns (Operation);
+  rpc GetManagementConfigForRestore(RestoreSourceRef) returns (ManagementConfig);
+  // What came back and what was lost, per folder in FR-081 order (FR-046, Principle V).
+  // Kept after the restore completes until the administrator dismisses it.
+  rpc GetRestoreReport(OperationRef) returns (RestoreReport);
+
+  // Single-writer ownership (FR-088..FR-094).
+  rpc ListOwnedLocations(Empty) returns (ListOwnedLocationsResponse);
+  rpc ConfirmTakeover(ConfirmTakeoverRequest) returns (Operation);
+}
+
+service Extensions {
+  rpc InspectPackage(InspectPackageRequest) returns (PackageInspection);       // FR-052
+  rpc InstallExtension(InstallExtensionRequest) returns (Operation);
+  rpc UpgradeExtension(UpgradeExtensionRequest) returns (Operation);          // FR-055
+  rpc RemoveExtension(SubsystemRef) returns (Operation);                       // FR-056
+  rpc ListSubsystems(Empty) returns (ListSubsystemsResponse);
+  rpc SetDefaultProvider(SetDefaultProviderRequest) returns (Empty);           // FR-051
+  rpc ConfigureNotificationChannel(NotificationChannel) returns (NotificationChannel); // FR-097
+}
+
+// Cloud connectors, connections, and routing (FR-083, FR-112..FR-123, research R13, R23).
+// Connections and ConnectorRoutes are desired-state resources (ApplyChange). Route changes go
+// through Preview then Apply, so every required acknowledgement is explicit and audited.
+service Connectors {
+  rpc ListConnectors(Empty) returns (ListConnectorsResponse);
+  // Refused with FAILED_PRECONDITION "connector.in_use" while any route targets it (FR-121).
+  rpc SetConnectorEnabled(SetConnectorEnabledRequest) returns (CloudConnector);
+  rpc GetRoutes(Empty) returns (RouteTable);
+  rpc PreviewRouteChange(RouteChangeRequest) returns (RouteChangeImpact);
+  // Refused with FAILED_PRECONDITION "route.ack_required" when an acknowledgement reported by
+  // the preview is missing, "route.connector_incapable" or "route.connector_disabled" otherwise.
+  rpc ApplyRouteChange(RouteChangeRequest) returns (RouteTable);
+  // Runs the routed connector's Probe and stores the result on the connection (FR-083, FR-117).
+  rpc TestConnection(ConnectionRef) returns (ConnectionTestResult);
+}
+
+service Observability {
+  rpc QueryLogs(QueryLogsRequest) returns (QueryLogsResponse);                 // FR-057
+  rpc CreateDiagnosticBundle(Empty) returns (stream BundleChunk);              // FR-060
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);              // FR-096
+  rpc AcknowledgeAlert(AlertRef) returns (Alert);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Common
+// ---------------------------------------------------------------------------------------------
+
+message Empty {}
+
+message PageRequest {
+  uint32 page_size = 1;   // server default 100; no hard cap is promised (research R20)
+  string page_token = 2;
+}
+
+enum ResourceKind {
+  RESOURCE_KIND_UNSPECIFIED = 0;
+  POOL = 1;
+  MANAGED_FOLDER = 2;
+  EXPORT = 3;
+  SHARE_USER = 4;
+  CLOUD_CONNECTION = 5;
+  CONTAINER_APP = 6;
+  EXTENSION = 7;
+  APPLIANCE_STATE_DESTINATION = 8;
+  SETTINGS = 9;
+  CONNECTOR_ROUTES = 10;                // singleton; changed only through ApplyRouteChange
+}
+
+message ResourceRef {
+  ResourceKind kind = 1;
+  string id = 2;
+}
+
+message Resource {
+  ResourceRef ref = 1;
+  uint64 generation = 2;
+  google.protobuf.Struct spec = 3;     // typed per kind; see data-model.md
+  google.protobuf.Struct status = 4;   // written only by reconcilers
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// ---------------------------------------------------------------------------------------------
+// System status
+// ---------------------------------------------------------------------------------------------
+
+message GetSystemStatusRequest {}
+
+message SystemStatus {
+  string interface_version = 1;
+  string release_version = 2;
+  string appliance_id = 3;
+  string appliance_name = 4;
+  repeated ComponentHealth components = 5;   // core, container runtime, each subsystem
+  google.protobuf.Timestamp last_state_snapshot_at = 6;
+  bool state_protection_warning = 7;          // FR-040
+  bool notification_channel_missing = 8;      // FR-097 dashboard notice
+}
+
+message ComponentHealth {
+  string id = 1;
+  string name = 2;
+  enum State { STATE_UNSPECIFIED = 0; HEALTHY = 1; DEGRADED = 2; FAILED = 3; STOPPED = 4; }
+  State state = 3;
+  string detail = 4;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Desired state
+// ---------------------------------------------------------------------------------------------
+
+message ApplyChangeRequest {
+  repeated ResourceChange changes = 1;
+}
+
+message ResourceChange {
+  oneof change {
+    Upsert upsert = 1;
+    Delete delete = 2;
+  }
+  message Upsert {
+    ResourceRef ref = 1;                 // id empty => create
+    uint64 expected_generation = 2;      // 0 for create; mismatch => ABORTED
+    google.protobuf.Struct spec = 3;
+  }
+  message Delete {
+    ResourceRef ref = 1;
+    uint64 expected_generation = 2;
+  }
+}
+
+message ValidationReport {
+  bool valid = 1;
+  repeated ValidationIssue issues = 2;
+}
+
+message ValidationIssue {
+  enum Severity { SEVERITY_UNSPECIFIED = 0; ERROR = 1; WARNING = 2; }
+  Severity severity = 1;
+  string code = 2;          // e.g. "folder.path_overlap", "reference.overlap", "container.unmanaged_data"
+  string field = 3;
+  string message = 4;
+  ResourceRef conflicting = 5;
+}
+
+message ApplyChangeResponse {
+  repeated Resource committed = 1;
+  ValidationReport warnings = 2;   // warnings never block commit; errors abort the batch
+}
+
+message ListResourcesRequest {
+  ResourceKind kind = 1;
+  PageRequest page = 2;
+}
+
+message ListResourcesResponse {
+  repeated Resource resources = 1;
+  string next_page_token = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------------------------
+
+message StartOperationRequest {
+  string kind = 1;                     // e.g. "SnapshotNow", "ReconcileAll"
+  google.protobuf.Struct params = 2;
+}
+
+message OperationRef { string id = 1; }
+
+message Operation {
+  string id = 1;
+  string kind = 2;
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    PENDING = 1; RUNNING = 2; SUCCEEDED = 3; FAILED = 4; ROLLING_BACK = 5; ROLLED_BACK = 6;
+    AWAITING_CONFIRMATION = 7;
+  }
+  State state = 3;
+  repeated OperationStep steps = 4;
+  ResourceRef resource = 5;
+  string started_by = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp finished_at = 8;
+  string error = 9;
+}
+
+message OperationStep {
+  string name = 1;
+  string state = 2;
+  uint32 attempts = 3;
+  string detail = 4;
+}
+
+message ListOperationsRequest {
+  PageRequest page = 1;
+  bool active_only = 2;
+}
+
+message ListOperationsResponse {
+  repeated Operation operations = 1;
+  string next_page_token = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------------------------
+
+message StreamEventsRequest {
+  uint64 after_seq = 1;   // 0 = from now; otherwise resume after this sequence number
+}
+
+message Event {
+  uint64 seq = 1;
+  google.protobuf.Timestamp at = 2;
+  string type = 3;        // FR-018 set, e.g. "subsystem.failed", "mount.ready", "pool.failed",
+                          // "operation.progressed", "alert.raised", "restore.completed"
+  ResourceRef subject = 4;
+  google.protobuf.Struct payload = 5;   // redacted
+}
+
+// ---------------------------------------------------------------------------------------------
+// Storage
+// ---------------------------------------------------------------------------------------------
+
+message ListDisksRequest {}
+
+message Disk {
+  string serial = 1;
+  string wwn = 2;
+  string model = 3;
+  uint64 size_bytes = 4;
+  string device_path = 5;   // informational only
+  bool is_system_disk = 6;
+  bool is_blank = 7;
+  string existing_filesystem = 8;
+  string pool_id = 9;
+  enum Health { HEALTH_UNSPECIFIED = 0; OK = 1; WARNING = 2; FAILING = 3; MISSING = 4; }
+  Health health = 10;
+}
+
+message ListDisksResponse { repeated Disk disks = 1; }
+
+message CreatePoolRequest {
+  string name = 1;
+  repeated string disk_serials = 2;
+  // Must equal "ERASE <serial1> <serial2> ..." in order (FR-062).
+  string typed_confirmation = 3;
+}
+
+message AdoptFilesystemRequest {
+  string name = 1;
+  string disk_serial = 2;
+}
+
+message ExtendPoolRequest {
+  string pool_id = 1;
+  string disk_serial = 2;
+  string typed_confirmation = 3;
+}
+
+message RecreatePoolRequest {
+  string pool_id = 1;                   // identity is preserved (FR-064); refused for the System Pool
+  repeated string disk_serials = 2;
+  string typed_confirmation = 3;
+}
+
+message SetSystemPoolLimitsRequest {
+  uint32 max_usage_percent = 1;         // 10..90, default 50
+  uint64 reserved_free_bytes = 2;       // >= 20 GB, default 100 GB
+  uint64 expected_generation = 3;
+  bool acknowledged_interruption = 4;   // required when the change shrinks the pool (research R21)
+}
+
+message SystemPool {
+  string pool_id = 1;
+  uint32 max_usage_percent = 2;
+  uint64 reserved_free_bytes = 3;
+  uint64 system_disk_size_bytes = 4;
+  uint64 system_disk_free_bytes = 5;
+  uint64 used_bytes = 6;
+  uint64 effective_capacity_bytes = 7;
+  enum LimitingFactor { LIMITING_FACTOR_UNSPECIFIED = 0; MAX_USAGE = 1; RESERVE = 2; }
+  LimitingFactor limiting_factor = 8;
+  enum Writable { WRITABLE_UNSPECIFIED = 0; WRITABLE = 1; FULL_CAPACITY = 2; FULL_RESERVE = 3; }
+  Writable writable = 9;
+  bool available = 10;
+  string unavailable_reason = 11;       // e.g. "system disk too small for the 100 GB reserve"
+  uint64 generation = 12;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Secrets
+// ---------------------------------------------------------------------------------------------
+
+message SecretRef { string ref = 1; }
+
+message PutSecretRequest {
+  string ref = 1;
+  bytes value = 2;                      // write-only
+  repeated string consumers = 3;        // subsystem ids allowed to receive it (FR-031)
+}
+
+message SecretInfo {
+  string ref = 1;
+  string masked_hint = 2;
+  repeated string consumers = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message ListSecretsRequest { PageRequest page = 1; }
+
+message ListSecretsResponse {
+  repeated SecretInfo secrets = 1;
+  string next_page_token = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Recovery, snapshots, restore, ownership
+// ---------------------------------------------------------------------------------------------
+
+message GenerateRecoveryKeyRequest { bool regenerate = 1; }
+
+message GeneratedRecoveryKey {
+  string key_id = 1;
+  string recovery_key = 2;              // shown once; never retrievable again
+  repeated uint32 confirm_group_indexes = 3;  // groups the admin must re-enter
+}
+
+message ConfirmRecoveryKeyRequest {
+  string key_id = 1;
+  map<uint32, string> groups = 2;
+}
+
+// The single remote destination. Local copies need no configuration (FR-104).
+message SetStateDestinationRequest {
+  oneof target {
+    ObjectStorageTarget object_storage = 1;
+    string removable_disk_path = 2;
+  }
+  // Required when the resolved claim safety is Basic (FR-123); otherwise FAILED_PRECONDITION
+  // "location.basic_claim_ack_required".
+  bool acknowledged_basic_claim_safety = 3;
+  // Required when a third-party connector would serve the location (FR-119).
+  bool acknowledged_third_party_connector = 4;
+}
+
+message ObjectStorageTarget {
+  string connection_id = 1;
+  string bucket = 2;
+  string prefix = 3;
+}
+
+message StateProtection {
+  bool remote_destination_registered = 1;
+  google.protobuf.Timestamp latest_change_at = 2;
+  repeated StateCopy copies = 3;
+  bool reinstall_covered = 4;           // a non-stale copy on a data pool exists (FR-105)
+  bool machine_loss_covered = 5;        // a non-stale remote copy exists (FR-105)
+  bool warning = 6;                     // any copy stale, or no remote destination (FR-040)
+}
+
+message StateCopy {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    LOCAL_POOL = 1;
+    LOCAL_SYSTEM_DISK = 2;
+    REMOTE_OBJECT_STORAGE = 3;
+    REMOTE_REMOVABLE_DISK = 4;
+  }
+  Kind kind = 1;
+  string pool_id = 2;                   // LOCAL_POOL only
+  string description = 3;               // e.g. pool name, bucket/prefix, disk path
+  google.protobuf.Timestamp last_snapshot_at = 4;
+  bool stale = 5;                       // a change older than 5 minutes isn't covered yet (FR-038)
+  string last_error = 6;
+}
+
+message ManagementConfig {
+  string schema_version = 1;            // "fdconfig.management/1"
+  // The "management" section of the configuration document, as canonical JSON: administrators
+  // (with password hashes), API token metadata and hashes, appliance and UI settings.
+  // Never audit entries, sessions, or setup state (FR-036). Opaque to the Core.
+  bytes document = 2;
+  google.protobuf.Timestamp exported_at = 3;
+  uint64 config_seq = 4;                // Management configuration-change counter at export time
+}
+
+message RestoreFileChunk {
+  bytes data = 1;                       // .fdbackup bytes (contracts/appliance-state-layout.md)
+  string recovery_key = 2;              // set on the first chunk only
+}
+
+message DetectLocalStateResponse { repeated DetectedAppliance appliances = 1; }
+
+message DetectedAppliance {
+  string appliance_id = 1;
+  string appliance_name = 2;            // plaintext in index.json; MAC verified after key entry
+  google.protobuf.Timestamp newest_snapshot_at = 3;
+  repeated string found_on = 4;         // e.g. "pool media", "system disk"
+  string local_source_token = 5;        // opaque handle for OpenLocalRestoreSource
+}
+
+message OpenLocalRestoreSourceRequest {
+  string local_source_token = 1;
+  string recovery_key = 2;              // the only input (FR-106); throttled on failure
+}
+
+message OpenRestoreSourceRequest {
+  oneof source {
+    ObjectStorageTarget object_storage = 1;
+    string removable_disk_path = 2;
+  }
+  // Temporary connection credentials for the restore source (never persisted unless restored).
+  map<string, bytes> connection_credentials = 3;
+  // Provider family of the source. Opened through the built-in connector for that family:
+  // fd-s3 for s3-compatible, rclone otherwise (FR-122).
+  string provider_family = 4;
+  string recovery_key = 5;
+  // Connection definition for the source (endpoint, region, addressing style for S3), as JSON.
+  google.protobuf.Struct connection_definition = 6;
+}
+
+message RestoreSourceRef { string id = 1; }
+
+message RestoreSource {
+  string id = 1;
+  string owner_appliance_id = 2;
+  string owner_appliance_name = 3;
+  google.protobuf.Timestamp owner_last_write_at = 4;
+  bool role_recovery_reader = 5;        // always true until takeover (FR-092)
+  bool local = 6;                       // opened from a copy on this machine (FR-106, FR-108)
+  // For local sources: the remote destination recorded in the snapshot, read as a Recovery
+  // reader so a newer snapshot there can be chosen (FR-107).
+  string recorded_remote_source_id = 7;
+}
+
+message RestoreSnapshot {
+  string snapshot_id = 1;
+  google.protobuf.Timestamp taken_at = 2;
+  string appliance_name = 3;
+  bool integrity_ok = 4;                // FR-043
+  string key_id = 5;
+  string restore_source_id = 6;         // which copy holds it; the newest valid one is preselected
+  bool newest_valid = 7;                // FR-107
+}
+
+message ListRestoreSnapshotsResponse { repeated RestoreSnapshot snapshots = 1; }
+
+message BeginRestoreRequest {
+  string restore_source_id = 1;
+  string snapshot_id = 2;
+}
+
+message MapPoolsRequest {
+  string restore_operation_id = 1;
+  repeated PoolMapping mappings = 2;
+}
+
+message RestoreReport {
+  string restore_operation_id = 1;
+  repeated RestoreFolderOutcome folders = 2;   // ordered by recovery_order, then name
+  repeated RestoreItemOutcome items = 3;       // pools, extensions, apps, connections, locations
+  google.protobuf.Timestamp snapshot_taken_at = 4;  // changes after this are lost (Principle V)
+}
+
+message RestoreFolderOutcome {
+  string folder_id = 1;
+  string name = 2;
+  string storage_mode = 3;
+  string data_importance = 4;           // Hybrid Backup only
+  // FR-081: 0 = reattached with its pool (no data restore needed), 1 = Critical, 2 = Important,
+  // 3 = Cloud Mount and Tiered Storage, 4 = Rebuildable with backup,
+  // 5 = Rebuildable without backup and Temporary, 6 = Local Only.
+  uint32 recovery_order = 5;
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    DATA_PRESENT = 1;                   // reattached pool: data unchanged
+    AWAITING_DATA_RESTORE = 2;          // the owning storage feature restores it (FR-046)
+    RECONNECTED = 3;                    // Cloud Mount / Tiered Storage reconnected to the cloud
+    TO_REBUILD = 4;                     // recreated empty, listed "to rebuild"
+    LOST = 5;                           // recreated empty, data had no off-appliance copy
+    POOL_UNMAPPED = 6;                  // its pool is still Failed awaiting a disk assignment
+  }
+  Outcome outcome = 6;
+  string detail = 7;                    // e.g. which feature restores it, or why it was lost
+}
+
+message RestoreItemOutcome {
+  string kind = 1;                      // Pool | Extension | ContainerApp | Connection | OwnedLocation
+  string id = 2;
+  string name = 3;
+  string status = 4;                    // e.g. Restored, PackageNeeded, Retrying, RecoveryReader
+  string detail = 5;
+}
+
+message PoolMapping {
+  string pool_id = 1;                   // recorded pool identity
+  repeated string disk_serials = 2;     // new disks, or a single disk to adopt
+  bool adopt_existing = 3;
+  string typed_confirmation = 4;
+}
+
+message OwnedLocation {
+  string connection_id = 1;
+  string bucket = 2;
+  string prefix = 3;
+  string purpose = 4;                   // ApplianceState | BackupDestination | TierTarget
+  string owner_appliance_id = 5;
+  uint64 generation = 6;
+  google.protobuf.Timestamp last_write_at = 7;
+  enum Role { ROLE_UNSPECIFIED = 0; WRITER = 1; RECOVERY_READER = 2; OWNERSHIP_LOST = 3; }
+  Role role = 8;
+  string served_by_connector = 9;       // resolved OwnedObjectStorage route (FR-094)
+  bool served_by_third_party = 10;      // FR-119
+  ClaimSafety claim_safety = 11;        // FR-123
+}
+
+enum ClaimSafety {
+  CLAIM_SAFETY_UNSPECIFIED = 0;
+  CONDITIONAL = 1;                      // conditional writes declared by the connector and proven by probe
+  BASIC = 2;                            // write-then-verify; acknowledged, warned on the dashboard
+}
+
+message ListOwnedLocationsResponse { repeated OwnedLocation locations = 1; }
+
+message ConfirmTakeoverRequest {
+  string connection_id = 1;
+  string bucket = 2;
+  string prefix = 3;
+  uint64 observed_generation = 4;       // must match current owner.json generation
+  bool acknowledged_recent_writer = 5;  // required when owner wrote < 15 min ago (FR-092)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Extensions and capabilities
+// ---------------------------------------------------------------------------------------------
+
+message SubsystemRef { string subsystem_id = 1; }
+
+message InspectPackageRequest {
+  string package_path = 1;              // path staged by Management Service (upload dir)
+}
+
+message PackageInspection {
+  bool valid = 1;
+  repeated ValidationIssue issues = 2;
+  google.protobuf.Struct manifest = 3;
+  repeated string requested_permissions = 4;
+  bool signed = 5;
+  string signer_key_id = 6;
+  repeated DeclaredDataPath data_paths = 7;   // FR-109; each must be bound at install
+}
+
+message DeclaredDataPath {
+  string name = 1;
+  string description = 2;
+  string mount_path = 3;
+  string suggested_importance = 4;      // Critical | Important | Rebuildable
+}
+
+message InstallExtensionRequest {
+  string package_path = 1;
+  repeated string approved_permissions = 2;   // must equal requested set
+  bool acknowledged_unsigned = 3;
+  // Declared data path name -> managed folder id. Every declared path must be bound (FR-109).
+  map<string, string> data_bindings = 4;
+  // Required when any bound folder is not protected (e.g. Local Only).
+  bool acknowledged_unprotected_data = 5;
+}
+
+message UpgradeExtensionRequest {
+  string subsystem_id = 1;
+  string package_path = 2;
+  repeated string approved_permissions = 3;
+  bool acknowledged_unsigned = 4;
+}
+
+message Subsystem {
+  string subsystem_id = 1;
+  string name = 2;
+  string version = 3;
+  string class = 4;                     // Core | BuiltIn | Extension
+  repeated string capabilities = 5;
+  string runtime_type = 6;
+  string state = 7;              // includes PackageNeeded after a restore without a valid package
+  repeated string dependent_folders = 8;
+  map<string, string> data_bindings = 9;   // data path name -> managed folder id (FR-109)
+  bool data_protected = 10;                // false if any bound folder is unprotected
+}
+
+message ListSubsystemsResponse {
+  repeated Subsystem subsystems = 1;
+  map<string, string> default_providers = 2;   // capability -> subsystem_id
+}
+
+message SetDefaultProviderRequest {
+  string capability = 1;
+  string subsystem_id = 2;
+}
+
+message NotificationChannel {
+  string id = 1;
+  string subsystem_id = 2;
+  string name = 3;
+  string min_severity = 4;              // Info | Warning | Critical
+  google.protobuf.Struct config = 5;
+  repeated string secret_refs = 6;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Observability
+// ---------------------------------------------------------------------------------------------
+
+message QueryLogsRequest {
+  repeated string sources = 1;
+  string min_severity = 2;
+  google.protobuf.Timestamp since = 3;
+  google.protobuf.Timestamp until = 4;
+  string text = 5;
+  PageRequest page = 6;                 // newest first
+}
+
+message LogEntry {
+  google.protobuf.Timestamp at = 1;
+  string source = 2;
+  string severity = 3;
+  string message = 4;                   // redacted
+}
+
+message QueryLogsResponse {
+  repeated LogEntry entries = 1;
+  string next_page_token = 2;
+}
+
+message BundleChunk { bytes data = 1; }
+
+message AlertRef { string id = 1; }
+
+message Alert {
+  string id = 1;
+  string severity = 2;                  // Info | Warning | Critical
+  string kind = 3;                      // e.g. "pool.failed", "location.ownership_lost"
+  string source = 4;
+  ResourceRef object = 5;
+  string message = 6;
+  google.protobuf.Timestamp first_seen_at = 7;
+  google.protobuf.Timestamp last_seen_at = 8;
+  string state = 9;                     // Active | Acknowledged | Resolved
+  string acknowledged_by = 10;
+}
+
+message ListAlertsRequest {
+  repeated string states = 1;
+  string min_severity = 2;
+  PageRequest page = 3;
+}
+
+message ListAlertsResponse {
+  repeated Alert alerts = 1;
+  string next_page_token = 2;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cloud connectors and routing
+// ---------------------------------------------------------------------------------------------
+
+message ConnectionRef { string connection_id = 1; }
+
+message ConnectorFamily {
+  string family = 1;                    // s3-compatible | azure-blob | google-drive | onedrive |
+                                        //   dropbox | x-<connector>-<name>
+  repeated string capabilities = 2;     // cloud.remote | cloud.mount
+  bool conditional_writes = 3;
+  bool provider_checksums = 4;
+}
+
+message CloudConnector {
+  string subsystem_id = 1;              // fd-s3 | rclone | extension id
+  string class = 2;                     // BuiltIn | Extension
+  bool enabled = 3;
+  repeated ConnectorFamily families = 4;
+  string state = 5;                     // subsystem state, e.g. Running | Failed
+  repeated RouteKey routed_by = 6;      // routes that target it
+}
+
+message ListConnectorsResponse { repeated CloudConnector connectors = 1; }
+
+message SetConnectorEnabledRequest {
+  string subsystem_id = 1;
+  bool enabled = 2;
+}
+
+enum RouteUse {
+  ROUTE_USE_UNSPECIFIED = 0;
+  OWNED_OBJECT_STORAGE = 1;             // appliance state, claims, tier objects, metadata
+  BACKUP_REPOSITORY = 2;                // Hybrid Backup repository (feature 002)
+  CLOUD_MOUNT = 3;                      // feature 004
+}
+
+message RouteTarget {
+  oneof target {
+    string connector_id = 1;
+    bool backup_engine = 2;             // BACKUP_REPOSITORY only (FR-116)
+  }
+}
+
+// A family default when connection_id is empty, otherwise a per-connection override.
+message RouteKey {
+  string family = 1;
+  RouteUse use = 2;
+  string connection_id = 3;
+}
+
+message Route {
+  RouteKey key = 1;
+  RouteTarget target = 2;
+}
+
+message RouteTable {
+  repeated Route defaults = 1;
+  repeated Route overrides = 2;         // shown wherever the connection is listed (FR-115)
+  uint64 generation = 3;
+}
+
+message RouteChangeRequest {
+  // Set a route. A missing target removes a per-connection override.
+  message Change {
+    RouteKey key = 1;
+    RouteTarget target = 2;
+  }
+  repeated Change changes = 1;
+  uint64 expected_generation = 2;       // must match RouteTable.generation
+  bool acknowledged_basic_claim_safety = 3;     // FR-123
+  bool acknowledged_third_party_owned_storage = 4;  // FR-119
+}
+
+message RouteChangeImpact {
+  repeated string connection_ids = 1;
+  repeated string folder_ids = 2;
+  repeated OwnedLocation owned_locations = 3;   // with claim_safety as it would become
+  repeated string lost_features = 4;            // e.g. "conditional_writes", "provider_checksums"
+  // connector id -> connection ids whose credentials it would newly receive (FR-119)
+  map<string, ConnectionIdList> credential_recipients = 5;
+  repeated string mounts_restarting = 6;        // folder ids; access briefly interrupted (FR-118)
+  bool requires_basic_claim_ack = 7;
+  bool requires_third_party_owned_storage_ack = 8;
+  repeated ValidationIssue issues = 9;          // non-empty means the change is refused
+}
+
+message ConnectionIdList { repeated string connection_ids = 1; }
+
+message ConnectionTestResult {
+  google.protobuf.Timestamp tested_at = 1;
+  string connector_id = 2;              // which connector served the test
+  repeated ConnectionCheck checks = 3;
+  bool conditional_create = 4;
+  bool conditional_replace = 5;
+  bool provider_checksums = 6;
+  int64 clock_skew_ms = 7;
+}
+
+message ConnectionCheck {
+  string name = 1;
+  bool ok = 2;
+  string detail = 3;
+}

@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://filedock.dev/schemas/subsystem-manifest/v1.json",
+  "title": "FileDock Subsystem Manifest v1",
+  "description": "Declarative manifest for every core, built-in, and extension subsystem (FR-047). Authored as YAML; validated as JSON.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "version",
+    "class",
+    "capabilities",
+    "runtime",
+    "health",
+    "compatibility"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$",
+      "description": "Unique subsystem identity."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "class": {
+      "enum": [
+        "core",
+        "built-in",
+        "extension"
+      ],
+      "description": "Packages installed by an administrator must declare 'extension'."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]+(\\.[a-z0-9-]+)+$",
+        "examples": [
+          "protocol.smb",
+          "cloud.remote",
+          "cloud.mount",
+          "backup.snapshot",
+          "notify.channel"
+        ]
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "native-process"
+            },
+            "executable": {
+              "type": "string",
+              "pattern": "^(/|\\./)"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "executable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "systemd-service"
+            },
+            "unit": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9@._-]+\\.service$"
+            }
+          },
+          "required": [
+            "type",
+            "unit"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "docker-service"
+            },
+            "image": {
+              "type": "string",
+              "description": "Must be pinned by digest for extensions."
+            },
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "image"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "health": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "process",
+            "systemd",
+            "grpc",
+            "http",
+            "command"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "intervalSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "default": 30
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        },
+        "startupGraceSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 60
+        }
+      }
+    },
+    "configSchema": {
+      "type": "string",
+      "description": "Relative path inside the package to a JSON Schema for Configure() input."
+    },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Closed vocabulary (research R14). Anything not declared is denied at runtime (FR-053).",
+      "items": {
+        "type": "string",
+        "pattern": "^(storage\\.(read|write):(\\*|[a-z0-9-]+)|network\\.outbound|network\\.listen:\\d{1,5}|core\\.events\\.read|core\\.alerts\\.write|secrets:[a-z0-9./-]+|device:[a-z0-9-]+|privileged\\.mount|cloud\\.credentials)$"
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9./-]+$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "data": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Persistent data paths (FR-109). Each is bound to a managed folder at install; the runtime sees the folder at 'mountPath' and may write nowhere else. Not stored in appliance state.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "mountPath"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "mountPath": {
+            "type": "string",
+            "pattern": "^/",
+            "description": "Path inside the extension's runtime where the bound folder appears."
+          },
+          "suggestedImportance": {
+            "enum": [
+              "Critical",
+              "Important",
+              "Rebuildable"
+            ],
+            "default": "Important",
+            "description": "Hybrid Backup importance proposed when the install flow suggests a new folder."
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "appliance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "appliance": {
+          "type": "string",
+          "description": "Semver range of compatible FileDock releases, e.g. '>=0.1.0 <0.3.0'."
+        },
+        "extensionProtocol": {
+          "type": "string",
+          "default": "1"
+        }
+      }
+    },
+    "cloud": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Required when 'capabilities' includes cloud.remote or cloud.mount (FR-112). One entry per provider family the connector serves. Routes may target the connector only for these families and capabilities (FR-115).",
+      "items": {
+        "type": "object",
+        "required": [
+          "family",
+          "capabilities"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "type": "string",
+            "pattern": "^(s3-compatible|azure-blob|google-drive|onedrive|dropbox|x-[a-z0-9-]+)$",
+            "description": "Shared families, or x-<connector-id>-<name> for a family only this connector serves."
+          },
+          "capabilities": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "cloud.remote",
+                "cloud.mount"
+              ]
+            }
+          },
+          "conditionalWrites": {
+            "type": "boolean",
+            "default": false,
+            "description": "Supports CREATE_ONLY and REPLACE_IF_MATCH. Claim safety is Conditional only if this is true and the connection's probe proves it (FR-123)."
+          },
+          "providerChecksums": {
+            "type": "boolean",
+            "default": false
+          },
+          "connectionSchema": {
+            "type": "string",
+            "description": "Relative path to a JSON Schema for connections of this family. Required for families other than s3-compatible, whose definition is connector-neutral (FR-114)."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "family": {
+                  "not": {
+                    "const": "s3-compatible"
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "connectionSchema"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": {
+              "enum": [
+                "cloud.remote",
+                "cloud.mount"
+              ]
+            }
+          }
+        },
+        "required": [
+          "capabilities"
+        ]
+      },
+      "then": {
+        "required": [
+          "cloud",
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "contains": {
+              "const": "cloud.credentials"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

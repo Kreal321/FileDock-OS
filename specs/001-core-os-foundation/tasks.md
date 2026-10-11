@@ -1,0 +1,818 @@
+---
+description: "Task list for 001-core-os-foundation"
+---
+
+# Tasks: Core Appliance Foundation and OS Setup
+
+**Input**: Design documents from `/specs/001-core-os-foundation/`
+
+**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
+[data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
+
+**Tests**: Included where the spec or plan requires them. The success criteria are defined by
+acceptance, failure-injection, disaster-recovery, and fill tests (SC-001 to SC-026). The plan also
+names specific contract tests: `fdconfig` coverage, the cross-connector layout, and schema and
+proto checks. Unit tests for individual modules are not listed separately.
+
+**Organization**: Tasks are grouped by user story, in the spec's priority order, so each story can
+be implemented and validated as an increment.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependency on an incomplete task)
+- **[Story]**: The user story the task belongs to (US1 to US10)
+- Paths follow the Project Structure in plan.md. One deviation: the Cargo workspace root is the
+  repository-root `Cargo.toml`, so `core/crates/*` and `connectors/fd-s3` can share one workspace
+  (Cargo needs members below the workspace root).
+
+---
+
+## Phase 1: Setup (Shared Infrastructure)
+
+**Purpose**: Repository layout, toolchains, code generation, and test harnesses
+
+- [ ] T001 Create the repository layout from plan.md: `core/crates/`, `connectors/`, `management/`, `web/`, `proto/`, `packaging/{installer,debian,systemd,subsystems}`, `tests/{e2e,fixtures,contracts}`, and a `.gitignore` at the repository root
+- [ ] T002 Create the Cargo workspace in `Cargo.toml` at the repository root: members `core/crates/*` and `connectors/fd-s3`, edition 2024, and `[workspace.dependencies]` for tokio, tonic, prost, tonic-build, rusqlite (bundled), rusqlite_migration, serde, serde_json, serde_yaml, jsonschema, tracing, tracing-journald, chacha20poly1305, argon2, zstd, tar, sha2, hmac, zbus, object_store (feature `aws`), and aws-sigv4
+- [ ] T003 [P] Create crate skeletons (`Cargo.toml` and `src/lib.rs`) for fd-api, fd-state, fd-journal, fd-reconcile, fd-storage, fd-subsystems, fd-connectors, fd-secrets, fd-appstate, fd-alerts, and fd-observe under `core/crates/`, plus binaries `core/crates/filedock-core/src/main.rs` and `connectors/fd-s3/src/main.rs`
+- [ ] T004 [P] Copy `contracts/core-api.proto` to `proto/filedock/core/v1/core.proto` and `contracts/extension-protocol.proto` to `proto/filedock/extension/v1/extension.proto`. Add `proto/buf.yaml` (lint DEFAULT, breaking FILE) and `proto/buf.gen.yaml`
+- [ ] T005 [P] Generate Rust gRPC types with tonic-build in `core/crates/fd-api/build.rs`, exporting `core::v1` and `extension::v1` modules from `core/crates/fd-api/src/lib.rs`
+- [ ] T006 [P] Create `management/FileDock.Management.sln` with net10.0 projects `src/FileDock.Management.{Api,Domain,Data,Core,Cli}` and `tests/FileDock.Management.{UnitTests,ApiTests}`, with central package versions in `management/Directory.Packages.props` (ASP.NET Core, EF Core SQLite, Grpc.Net.Client, Grpc.Tools, Google.Protobuf, Konscious.Security.Cryptography.Argon2, System.CommandLine, xUnit)
+- [ ] T007 [P] Configure C# gRPC client generation from `proto/` in `management/src/FileDock.Management.Core/FileDock.Management.Core.csproj`
+- [ ] T008 [P] Scaffold the SPA in `web/` with Vite, React 19, TypeScript 5, pnpm, TanStack Query, `@microsoft/signalr`, Vitest, and Playwright (`web/package.json`, `web/vite.config.ts`). The build output goes to `management/src/FileDock.Management.Api/wwwroot/`
+- [ ] T009 [P] Add lint and format configuration: `rustfmt.toml` and `clippy.toml` at the repository root, `management/.editorconfig` for `dotnet format`, and `web/eslint.config.js` with `web/.prettierrc`
+- [ ] T010 [P] Create `packaging/versions.lock` with pinned Debian package versions, Docker repository pins, and upstream rclone and Kopia `.deb` URLs with SHA-256 (research R2)
+- [ ] T011 [P] Write `./Makefile` at the repository root with targets `proto` (buf lint and generate), `core`, `management` (including the web build), `packages`, and `test` (cargo nextest, dotnet test, vitest, and contract checks)
+- [ ] T012 [P] Create contract checks in `tests/contracts/test_contracts.py`, with `tests/contracts/pyproject.toml` for `uv`. They validate `subsystem-manifest.schema.json` (Draft 2020-12) against valid and invalid samples in `tests/fixtures/manifests/` (connector manifests without `cloud` or `cloud.credentials` must fail), and run `buf breaking` on `proto/`
+- [ ] T013 [P] Create the VM acceptance harness `tests/e2e/pyproject.toml` and `tests/e2e/conftest.py`:
+  - a libvirt Debian 13 VM fixture with 4 GB RAM, a 256 GB sparse system disk, and two 20 GB blank disks, plus a 64 GB system-disk variant;
+  - a MinIO container fixture;
+  - helpers to install `dist/` packages and call `/api/v1`.
+
+---
+
+## Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: The Core's state, journal, and reconciler, the secret store, the service channel, the
+subsystem registry, the cloud I/O backbone, the Management Service host, and packaging. Every story
+builds on these.
+
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete
+
+### Core state, journal, and reconciliation
+
+- [ ] T014 Implement the `core.db` connection (WAL, foreign keys) and the migration runner with rusqlite_migration in `core/crates/fd-state/src/db.rs`, with the initial schema (resources with kind, id, generation, and JSON body; settings) in `core/crates/fd-state/migrations/0001_init.sql`
+- [ ] T015 Define the typed desired-state resources from data-model.md with serde, in `core/crates/fd-state/src/resources/`: Pool, ManagedFolder, Export, ShareUser, CloudConnection, ContainerApp, Extension, ApplianceStateDestination, Settings, and ConnectorRoutes
+- [ ] T016 Implement ApplyChange and ValidateChange in `core/crates/fd-state/src/apply.rs` (FR-013, FR-014):
+  - batched upserts and deletes with expected generations;
+  - a per-kind validator registry with `ValidationIssue` mapping;
+  - one SQLite transaction per change;
+  - a commit notification channel.
+- [ ] T017 [P] Implement the operation journal (`operation` and `operation_step` tables) and an idempotent step runner in `core/crates/fd-journal/src/runner.rs`, with the schema in `core/crates/fd-journal/src/schema.sql`. Each step records its intent before acting, and the runner resumes or rolls back unfinished operations on startup (FR-015, FR-016, research R6)
+- [ ] T018 [P] Implement the controller framework in `core/crates/fd-reconcile/src/lib.rs` and `core/crates/fd-reconcile/src/queue.rs`: a per-kind controller trait, a work queue fed by commits and events, reconcile at startup, and a 10-minute resync (research R6)
+- [ ] T019 [P] Implement the event bus (monotonic `seq` ring buffer, typed Event) in `core/crates/fd-observe/src/events.rs`, and tracing-to-journald logging in `core/crates/fd-observe/src/logging.rs`
+- [ ] T020 [P] Implement the redaction layer for known secret fields in `core/crates/fd-secrets/src/redact.rs`. Logs, events, audit payloads, and diagnostics all pass through it (FR-029, SC-007)
+- [ ] T021 Implement the secret store in `core/crates/fd-secrets/src/store.rs` (FR-028 to FR-030, research R10):
+  - `/var/lib/filedock/secrets.enc`, with each record encrypted by XChaCha20-Poly1305 under the DEK;
+  - the DEK in `/var/lib/filedock/keys/local.key`, root-owned, mode `0600`;
+  - write-only put, delete, and masked list.
+- [ ] T022 [P] Implement per-subsystem tmpfs secret materialization under `/run/filedock/secrets/<subsystem>/` (mode `0400`), removing files that are no longer referenced on reconfigure, in `core/crates/fd-secrets/src/materialize.rs` (FR-031). When a connection's `BackupRepository` route targets `backup-engine`, materialize that connection's credentials for the backup engine as one of its declared secrets, and for no connector (FR-116, FR-119)
+
+### Core service channel
+
+- [ ] T023 Wire the Core daemon in `core/crates/filedock-core/src/main.rs`: load configuration, open `core.db`, resume the journal, start the reconciler, and serve gRPC on the systemd-activated `/run/filedock/core.sock`
+- [ ] T024 Implement gRPC interceptors in `core/crates/filedock-core/src/api/interceptors.rs` (FR-009 to FR-011, research R5):
+  - an `SO_PEERCRED` check that accepts only the `filedock-mgmt` uid and root;
+  - the `fd-interface-version` major/minor check, which allows read-only calls on a major mismatch;
+  - `fd-actor` and `fd-request-id` required on mutations.
+- [ ] T025 Implement the CoreControl service in `core/crates/filedock-core/src/api/control.rs`: ApplyChange, ValidateChange, GetResource, ListResources (paginated, research R20), StartOperation, GetOperation, and ListOperations
+- [ ] T026 [P] Implement the Secrets gRPC service (PutSecret, DeleteSecret, ListSecrets with masked values only) in `core/crates/filedock-core/src/api/secrets.rs`
+
+### Subsystems, alerts, and systemd
+
+- [ ] T027 Implement manifest loading from `/usr/share/filedock/subsystems/`, validation against the embedded `subsystem-manifest.schema.json`, and Subsystem records in `core.db`, in `core/crates/fd-subsystems/src/manifest.rs` and `core/crates/fd-subsystems/src/registry.rs` (FR-047, research R14)
+- [ ] T028 Define the Core-side adapter trait for the generic subsystem contract (describe, state, configure, start, stop, restart, reload, health, events, diagnostics) in `core/crates/fd-subsystems/src/adapter.rs` (FR-049)
+- [ ] T029 [P] Implement the systemd helper over D-Bus (zbus) in `core/crates/fd-subsystems/src/systemd.rs`: start and stop units, create transient units as `systemd-run` does, and write persistent `.mount` units and drop-ins (research R7)
+- [ ] T030 [P] Implement the alert store in `core.db`, with dedup by (source, object, kind), automatic resolve, and acknowledge, in `core/crates/fd-alerts/src/store.rs`. Expose ListAlerts and AcknowledgeAlert in `core/crates/filedock-core/src/api/observability.rs` (FR-096)
+
+### Cloud I/O backbone (connectors)
+
+- [ ] T031 Implement CloudConnection validation in `core/crates/fd-connectors/src/connection.rs` (FR-114):
+  - the provider family;
+  - S3Definition: `https` only, and static keys only, otherwise `connection.credential_type_unsupported`;
+  - BoundDefinition, validated against the owning connector's `connectionSchema`;
+  - the shape of `route_overrides`.
+- [ ] T032 Implement the ConnectorRoutes resource in `core/crates/fd-connectors/src/routes.rs` (FR-115, research R13):
+  - default routes seeded on first boot, from the research R13 table;
+  - resolution: connection override, then family default, then `route.missing`;
+  - validation for a connector target: it is enabled and declares the family and capability, the use is allowed for the family (FR-088), and bound connections may only target their own connector;
+  - validation for the `backup-engine` target (FR-116): allowed only for the `BackupRepository` use, and only for a family the backup engine's manifest declares (`s3-compatible` and `azure-blob` for Kopia). Otherwise `route.use_not_allowed`. The seeded default (`s3-compatible` backups → `backup-engine`) must pass this validation.
+- [ ] T033 Implement the CloudRemote client in `core/crates/fd-connectors/src/client.rs`, with session pinning (resolve once per write session and hold the connector handle across a routes-generation change) and discarding of Get streams that don't end in a verified trailer (FR-118)
+- [ ] T034 Implement the rclone general connector in `core/crates/fd-connectors/src/rclone/` (FR-113, research R13):
+  - an `rclone rcd` transient unit on `/run/filedock/rclone.sock`, in `core/crates/fd-connectors/src/rclone/rcd.rs`;
+  - a tmpfs `rclone.conf` that lists only the connections routed to rclone, including the translation of neutral S3 definitions into an `s3` remote (`provider=Other`, `env_auth=false`), in `core/crates/fd-connectors/src/rclone/conf.rs`;
+  - a CloudRemote adapter over the remote-control API (`operations/list`, `operations/stat`, `operations/copyfile`, `operations/deletefile`), with `conditionalWrites: false` and read-back verification, in `core/crates/fd-connectors/src/rclone/adapter.rs`;
+  - its manifest, `packaging/subsystems/rclone.yaml`.
+- [ ] T035 Implement the fd-s3 process in `connectors/fd-s3/src/main.rs`, `connectors/fd-s3/src/server.rs`, and `connectors/fd-s3/src/config.rs`: serve Subsystem and CloudRemote on its socket, Register with CoreBridge, and accept Configure with routed connections and tmpfs secret files (research R23)
+- [ ] T036 Implement the fd-s3 object operations over object_store `AmazonS3Builder` in `connectors/fd-s3/src/ops.rs` (FR-117, research R23):
+  - endpoint, region, and virtual-hosted style from the connection; HTTPS only; `S3ConditionalPut::ETagMatch`;
+  - Stat and List;
+  - Get with an expected SHA-256, failing with `DATA_LOSS` on a mismatch;
+  - Put with OVERWRITE, CREATE_ONLY, and REPLACE_IF_MATCH, mapping failed conditions to `FAILED_PRECONDITION`;
+  - Delete.
+- [ ] T037 Implement fd-s3 write integrity and retries in `connectors/fd-s3/src/integrity.rs`, `connectors/fd-s3/src/multipart.rs`, and `connectors/fd-s3/src/retry.rs`:
+  - a streaming SHA-256;
+  - the provider checksum when supported, otherwise a read-back for objects up to 64 MiB;
+  - multipart above 64 MiB with 16 MiB parts, aborted on any error;
+  - backoff with jitter;
+  - a conditional PUT is retried only after a re-read.
+- [ ] T038 Implement the fd-s3 Probe RPC in `connectors/fd-s3/src/probe.rs`, under the key prefix the Core passes (`_filedock/probe/<appliance-id>/<random>` at the bucket root): list; put with checksum fallback; get and compare; CREATE_ONLY twice, expecting 412; REPLACE_IF_MATCH with a wrong ETag, then the right one; delete; clock skew. With `read_only`, run only list and clock skew, and return `write_steps_run = false`. The connector never sweeps or probes on its own (FR-117, research R23). Write its manifest in `packaging/subsystems/fd-s3.yaml` (`s3-compatible`, `cloud.remote`, `conditionalWrites: true`, permissions `network.outbound` and `cloud.credentials`)
+- [ ] T039 Implement TestConnection, which stores a ConnectionTestResult on the connection, and the daily probe scheduler, in `core/crates/fd-connectors/src/test.rs`. Expose it in the Connectors service in `core/crates/filedock-core/src/api/connectors.rs` (FR-083, FR-117, Principle V):
+  - before each probe, read `owner.json` at the bucket root; if a location is owned there and this appliance isn't its Writer, probe with `read_only` and store conditional create and replace as not tested (`null`);
+  - the same rules apply to the re-probe after a restore, so a Recovery reader writes nothing inside a location it doesn't own;
+  - claim safety treats a not-tested result as not proven.
+- [ ] T040 Write the cross-connector layout contract test in `core/crates/fd-connectors/tests/cross_connector.rs`, against MinIO: write through fd-s3 and read through rclone, and the reverse, for every object kind (`owner.json`, `index.json`, keys, `.fdstate`, `.fdpkg`, as fixture blobs). Assert identical keys and bytes and no metadata dependence (FR-118, SC-024)
+
+### Management Service host
+
+- [ ] T041 Create the Management Service host in `management/src/FileDock.Management.Api/Program.cs` and `management/src/FileDock.Management.Api/Infrastructure/`: Kestrel HTTPS listeners from settings, `application/problem+json` errors, `/api/v1` route groups, `/health`, `If-Match` generation helpers, and pagination helpers
+- [ ] T042 Create the `app.db` EF Core SQLite context and the initial migration (Administrator, Session, ApiToken, AuditEntry, SetupState, Settings) in `management/src/FileDock.Management.Data/AppDbContext.cs` and `management/src/FileDock.Management.Data/Migrations/`
+- [ ] T043 [P] Implement the append-only audit writer (actor, action, target, time, result, with secret fields redacted) and the 90-day retention job in `management/src/FileDock.Management.Domain/Audit/AuditWriter.cs` and `management/src/FileDock.Management.Domain/Audit/AuditRetention.cs` (FR-059)
+- [ ] T044 [P] Implement Argon2id password hashing with the 12-character minimum policy in `management/src/FileDock.Management.Domain/Security/PasswordHasher.cs` (FR-022)
+- [ ] T045 Implement the Core gRPC client in `management/src/FileDock.Management.Core/CoreClient.cs`: a Unix-socket channel to `/run/filedock/core.sock`, `fd-interface-version`, `fd-actor`, and `fd-request-id` metadata, and mapping of gRPC status codes to problem+json
+- [ ] T046 [P] Implement the root-only admin socket `/run/filedock/management-admin.sock` (mode `0600`) and its endpoint group in `management/src/FileDock.Management.Api/AdminSocket/AdminSocketEndpoints.cs`
+- [ ] T047 [P] Create the `filedockctl` command framework (System.CommandLine, `--json`, exit codes from contracts/cli.md) in `management/src/FileDock.Management.Cli/Program.cs`
+- [ ] T048 [P] Create the web app shell in `web/src/main.tsx`, `web/src/App.tsx`, and `web/src/api/client.ts`: router, layout, a typed REST client with problem+json handling and the CSRF header, and TanStack Query setup
+
+### Packaging
+
+- [ ] T049 Write the systemd units in `packaging/systemd/`:
+  - `filedock-core.service` (root, `ProtectHome`, `PrivateTmp`);
+  - `filedock-core.socket` (`core.sock`, `root:filedock-mgmt`, `0660`);
+  - `filedock-extensions.socket`;
+  - `filedock-management.service`.
+- [ ] T050 Create Debian packaging for `filedock-core`, `filedock-management`, and `filedock-builtins` in `packaging/debian/`. `filedock-builtins` is a metapackage pinning exact versions, and ships the fd-s3 binary and the built-in manifests to `/usr/share/filedock/subsystems/`
+
+**Checkpoint**: Foundation ready. User story implementation can begin.
+
+---
+
+## Phase 3: User Story 1 - Install the appliance and reach the management UI (Priority: P1) 🎯 MVP
+
+**Goal**: A pinned installer turns a fresh Debian 13 VM into a FileDock appliance. First-run setup is
+gated by a one-time code. It creates the first administrator, signs them in, and shows and confirms
+the recovery key. The dashboard then shows every service healthy, and the administrator can sign
+in again later.
+
+**Independent Test**: Run the installer on a fresh supported VM, complete first-run setup including
+the recovery key, sign out and back in, and confirm that the dashboard shows the Core, Management
+Service, container runtime, and built-in subsystems as healthy (quickstart "Install and first-run
+setup").
+
+US1 includes the minimum of administrator accounts, sessions, sign-in, and the recovery key,
+because setup can't finish without them (FR-020, FR-033). US2 adds tokens, scopes, administrator
+management, and network restrictions. US4 adds recovery-key regeneration.
+
+- [ ] T051 [P] [US1] Write the built-in manifests `packaging/subsystems/samba.yaml`, `packaging/subsystems/nfs.yaml`, `packaging/subsystems/kopia.yaml`, and `packaging/subsystems/docker.yaml`
+- [ ] T052 [P] [US1] Implement health-only adapters for Samba, NFS, Docker, and Kopia in `core/crates/fd-subsystems/src/adapters/samba.rs`, `nfs.rs`, `docker.rs`, and `kopia.rs`
+- [ ] T053 [US1] Implement GetSystemStatus (Core, container runtime, health of each built-in subsystem including both connectors, interface version) in `core/crates/filedock-core/src/api/status.rs` (FR-019)
+- [ ] T054 [US1] Implement the read-only preflight in `packaging/installer/install.sh` (FR-002):
+  - checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or `--offline-bundle`, and conflicting Samba, NFS, or Docker configuration or port 443 in use;
+  - one line per failure with a fix hint, then exit `2`.
+- [ ] T055 [US1] Implement the install phase in `packaging/installer/install.sh` (FR-001, FR-003, FR-005, FR-058, research R2, R18):
+  - repositories and apt pins from `versions.lock`;
+  - SHA-256 verification of the rclone and Kopia packages;
+  - exact-version installs;
+  - users and groups `filedock-mgmt` and `filedock-share`;
+  - the FR-005 paths;
+  - the journald `SystemMaxUse=1G` drop-in;
+  - the self-signed TLS certificate;
+  - printing the UI address.
+- [ ] T056 [US1] Implement repair on re-run, and `--check-only`, in `packaging/installer/install.sh`. Repair never modifies `/var/lib/filedock*`, `/var/backups/filedock`, `/etc/filedock` desired state, or pools. Exit codes follow contracts/cli.md (FR-004)
+- [ ] T057 [US1] Implement SetupState and the one-time setup code in `management/src/FileDock.Management.Domain/Setup/SetupCodeService.cs` (FR-020, research R18):
+  - 8 base32 characters, stored hashed;
+  - invalidated when setup completes or the installer runs again;
+  - attempts throttled to 5 per 15 minutes, per client IP and in total.
+- [ ] T058 [US1] Implement `filedockctl setup-code` over the admin socket in `management/src/FileDock.Management.Cli/Commands/SetupCodeCommand.cs`, and call it from `packaging/installer/install.sh` to print the code
+- [ ] T059 [US1] Implement the setup lock middleware in `management/src/FileDock.Management.Api/Middleware/SetupLockMiddleware.cs`: `423` for every route except `/setup/*` and `/health` until setup completes (FR-020)
+- [ ] T060 [P] [US1] Implement the administrator service (create, disable, delete with last-enabled-admin protection, and password change) in `management/src/FileDock.Management.Domain/Admins/AdminService.cs` (FR-022, FR-025)
+- [ ] T061 [P] [US1] Implement server-side sessions in `management/src/FileDock.Management.Api/Auth/SessionAuthHandler.cs` (FR-023):
+  - stored in `app.db`, with a 30-minute idle expiry;
+  - the `fd_session` cookie with `HttpOnly`, `Secure`, and `SameSite=Strict`;
+  - CSRF checks on mutations;
+  - sign-out-all.
+- [ ] T062 [US1] Implement `POST /auth/sign-in`, `POST /auth/sign-out`, and `POST /auth/sign-out-all`, with per-account lockout (5 failures, 15 minutes) and an audit entry for every attempt, in `management/src/FileDock.Management.Api/Endpoints/AuthEndpoints.cs` (FR-023, FR-024)
+- [ ] T063 [P] [US1] Implement the recovery key in `core/crates/fd-secrets/src/recovery_key.rs` (FR-032 to FR-034, research R11):
+  - 25 characters from a 32-symbol alphabet;
+  - an Argon2id wrap of the snapshot key (m=256 MiB, t=3, p=1), with the snapshot key created at the same time;
+  - key-id records;
+  - regeneration, after which older keys open only older snapshots;
+  - confirmation of key groups.
+- [ ] T064 [US1] Implement GenerateRecoveryKey and ConfirmRecoveryKey in `core/crates/filedock-core/src/api/recovery.rs`
+- [ ] T065 [US1] Implement the setup endpoints in `management/src/FileDock.Management.Api/Endpoints/SetupEndpoints.cs` (FR-020, FR-033):
+  - `POST /setup/verify-code`;
+  - `POST /setup/complete`: create the first administrator through AdminService, sign them in, and generate the recovery key with GenerateRecoveryKey;
+  - `POST /setup/recovery-key/confirm`, through ConfirmRecoveryKey. Setup isn't complete, and the setup lock stays, until the key is confirmed.
+- [ ] T066 [US1] Implement `GET /system/status`, mapping GetSystemStatus plus notices, in `management/src/FileDock.Management.Api/Endpoints/SystemEndpoints.cs`
+- [ ] T067 [P] [US1] Build the setup wizard and sign-in page in `web/src/features/setup/` and `web/src/features/auth/`:
+  - setup code entry, appliance name, and the first administrator;
+  - the recovery-key step in `web/src/features/setup/RecoveryKeyStep.tsx`: shown once, a warning that a lost key after appliance loss means the appliance state can't be recovered, then group confirmation;
+  - the sign-in page with the lockout message.
+- [ ] T068 [P] [US1] Build the dashboard with health cards for services and subsystems in `web/src/features/dashboard/`
+- [ ] T069 [US1] Write the acceptance test `tests/e2e/test_install.py` (US1 scenarios 1–5, SC-001):
+  - a fresh install;
+  - `--check-only` on a 1 GB VM exits `2` and changes nothing;
+  - wrong setup codes are throttled, and other pages return `423`;
+  - setup isn't complete until the recovery key is confirmed;
+  - setup completes, and the dashboard shows everything healthy;
+  - signing out and back in works, and 5 wrong passwords lock the account;
+  - a re-run repairs without changes.
+
+**Checkpoint**: The appliance installs, setup completes with a confirmed recovery key, the
+administrator can sign in, and the dashboard is healthy.
+
+---
+
+## Phase 4: User Story 2 - Secure administrator access (Priority: P1)
+
+**Goal**: Only authenticated administrators can view or change the appliance. Sessions expire,
+failed sign-ins are throttled, tokens are scoped, and every change is audited.
+
+**Independent Test**: Try UI and API access with no session, with repeated wrong passwords, with a
+valid session, and with Read-only and Full tokens. Confirm denial, throttling, success, and audit
+entries (quickstart "Authentication and tokens").
+
+Sessions, sign-in, and lockout come from US1. This story adds tokens, scope enforcement,
+administrator management, console recovery commands, and network restrictions, and tests the
+whole access model.
+
+- [ ] T070 [P] [US2] Implement API tokens in `management/src/FileDock.Management.Domain/Tokens/ApiTokenService.cs` and `management/src/FileDock.Management.Api/Auth/TokenAuthHandler.cs` (FR-021):
+  - the format `fdt_<id>_<secret>`, stored only as an Argon2id hash;
+  - ReadOnly or Full scope, with an optional expiry;
+  - immediate revocation;
+  - audit of every use, sampled per minute.
+- [ ] T071 [US2] Implement the R, F, and S scope policies on every endpoint group, with `401` and `403` audited, in `management/src/FileDock.Management.Api/Auth/ScopePolicies.cs`
+- [ ] T072 [US2] Implement `/admins`, `/admins/{id}/password`, and `/tokens` in `management/src/FileDock.Management.Api/Endpoints/AdminEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/TokenEndpoints.cs`
+- [ ] T073 [US2] Implement `filedockctl reset-password` and `filedockctl tokens revoke-all` over the admin socket, audited as `Console`, in `management/src/FileDock.Management.Cli/Commands/ResetPasswordCommand.cs` and `management/src/FileDock.Management.Cli/Commands/TokensCommand.cs` (FR-026)
+- [ ] T074 [US2] Implement UI listener restriction in `management/src/FileDock.Management.Api/Endpoints/NetworkEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/NetworkCommand.cs` (FR-027):
+  - `GET` and `PUT /system/network`, with the `confirmDisconnect` guard;
+  - `PUT /system/certificate`;
+  - `filedockctl network reset`.
+- [ ] T075 [US2] Harden `packaging/systemd/filedock-management.service`: `User=filedock-mgmt`, `NoNewPrivileges`, `ProtectSystem=strict`, and only `CAP_NET_BIND_SERVICE`
+- [ ] T076 [P] [US2] Build the administrators, tokens (shown once), and network settings pages in `web/src/features/admins/`, `web/src/features/tokens/`, and `web/src/features/settings/`
+- [ ] T077 [US2] Write API tests in `management/tests/FileDock.Management.ApiTests/AuthTests.cs`: `401` with no session; lockout; idle expiry; CSRF; a Read-only token's mutation gets `403` and is audited; revoked and expired tokens are refused; the last administrator is protected
+
+**Checkpoint**: Access is authenticated, scoped, throttled, and audited.
+
+---
+
+## Phase 5: User Story 3 - Core keeps the appliance running independently of the UI (Priority: P1)
+
+**Goal**: The Core reconciles desired state after reboots and crashes, supervises subsystems, keeps
+the data plane outside both services, and streams live status to the UI.
+
+**Independent Test**: Stop the Management Service while a share client and a container run, kill a
+subsystem, reboot, and confirm the Core restores desired state and the UI updates live
+(quickstart "Data-plane independence"). The share and container used in the full test come from
+US9. Until then, a sample subsystem stands in.
+
+- [ ] T078 [US3] Implement the StreamEvents server-streaming RPC with `after_seq` resume in `core/crates/filedock-core/src/api/events.rs` (FR-018)
+- [ ] T079 [US3] Implement subsystem supervision in `core/crates/fd-subsystems/src/supervisor.rs`: restarts with backoff from 1 s to 5 min, Failed after 5 failures within 15 minutes, failure and recovery events, and diagnostics (FR-054, US3 scenario 3)
+- [ ] T080 [US3] Implement re-adoption of data-plane units by name after a Core restart in `core/crates/fd-reconcile/src/adopt.rs`. It asserts that WebDAV, extensions, mounts, and containers are systemd units or Docker containers, never Core child processes (FR-017, research R7)
+- [ ] T081 [US3] Implement the startup sequence in `core/crates/filedock-core/src/startup.rs`: resume the journal, load desired state, inspect the machine, reconcile differences, and report healthy (FR-015, FR-016, US3 scenario 2)
+- [ ] T082 [US3] Implement the Management event relay and the SignalR hub `/hubs/events` in `management/src/FileDock.Management.Core/EventRelay.cs` and `management/src/FileDock.Management.Api/Hubs/EventsHub.cs`. The relay subscribes to StreamEvents, persists the last `seq`, and resumes after reconnecting (FR-019)
+- [ ] T083 [US3] Implement the core-health monitor in `management/src/FileDock.Management.Core/CoreHealthMonitor.cs`: report when the Core is unreachable or the interface version mismatches, block mutations with a problem response, and recover automatically (FR-011, US3 scenario 5)
+- [ ] T084 [P] [US3] Implement `GET /operations` and `GET /operations/{id}` in `management/src/FileDock.Management.Api/Endpoints/OperationEndpoints.cs` (FR-015)
+- [ ] T085 [P] [US3] Implement live UI updates over SignalR (query invalidation on events) and a core-unreachable banner that disables change controls, in `web/src/api/events.ts` and `web/src/components/CoreStatusBanner.tsx`
+- [ ] T086 [US3] Write crash-atomicity tests in `core/crates/fd-state/tests/atomicity.rs` and `core/crates/fd-journal/tests/resume.rs`: kill the Core mid-ApplyChange and mid-step, then assert all-or-nothing results and correct resume (SC-010)
+- [ ] T087 [US3] Write the acceptance test `tests/e2e/test_independence.py` (SC-002 to SC-004, SC-010):
+  - the data plane keeps serving while the Management Service is stopped;
+  - a killed subsystem gets backoff, then Failed;
+  - after a reboot, everything is healthy within 3 minutes;
+  - UI updates arrive within 2 seconds;
+  - power is cut during a configuration change.
+
+**Checkpoint**: The P1 stories are complete. The appliance installs, is secure, and keeps itself
+running.
+
+---
+
+## Phase 6: User Story 4 - Encrypted secrets and appliance-state protection (Priority: P2)
+
+**Goal**: Secrets stay encrypted and are never shown again after entry. The recovery key created
+at setup (US1) can be regenerated. Encrypted configuration snapshots reach every local copy and
+the remote destination within 5 minutes.
+
+**Independent Test**: Make configuration changes. Confirm that snapshots appear at every copy within
+1 minute, that `config.json` holds configuration and no history, and that canary secrets never
+leak (quickstart "Secrets and appliance state").
+
+- [ ] T088 [US4] Implement `POST /recovery-key/regenerate` (session only, audited) and `filedockctl recovery-key regenerate` in `management/src/FileDock.Management.Api/Endpoints/RecoveryKeyEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/RecoveryKeyCommand.cs`. A new key is confirmed the same way as at setup (FR-034)
+- [ ] T089 [P] [US4] Build the regenerate flow, which reuses the setup recovery-key step, in `web/src/features/recovery/`
+- [ ] T090 [US4] Implement the `fdconfig/1` core-section serializer in `core/crates/fd-appstate/src/fdconfig/mod.rs` and `core/crates/fd-appstate/src/fdconfig/core_section.rs` (FR-036, research R11):
+  - serialized inside one read transaction;
+  - covers pools without disks, folders, exports, share users, connections with route overrides, enabled connectors, connector routes with acknowledgements, the destination, owned locations, apps, notification channels, subsystems with package hash, permissions, configuration, and bindings, capability defaults, and tier metadata;
+  - reads older versions by upgrading them in memory.
+- [ ] T091 [US4] Write the `fdconfig` coverage contract test in `core/crates/fd-appstate/tests/fdconfig_coverage.rs`. Every ResourceKind must be mapped, and audit entries, alerts, operations, snapshot records, sessions, setup state, and connection test results must never appear (FR-036)
+- [ ] T092 [US4] Implement the Management configuration export in `management/src/FileDock.Management.Data/ConfigChangeInterceptor.cs` and `management/src/FileDock.Management.Core/ManagementConfigPublisher.cs` (FR-036, FR-038):
+  - a configuration-change counter in an EF `SaveChanges` interceptor, which ignores audit, session, and `last_used_at` writes;
+  - a `management` section JSON with administrators and password hashes, token metadata and hashes, and settings;
+  - pushed with PutManagementConfig.
+- [ ] T093 [US4] Implement PutManagementConfig, storing the latest `management` section and its sequence, in `core/crates/filedock-core/src/api/recovery.rs`
+- [ ] T094 [US4] Implement the `.fdstate` reader and writer in `core/crates/fd-appstate/src/format/fdstate.rs` (contracts/appliance-state-layout.md):
+  - the 16-byte header;
+  - a tar+zstd archive of `manifest.json`, `config.json`, `secrets/secrets.enc`, and `secrets/dek.wrapped`;
+  - XChaCha20-Poly1305 STREAM encryption in 64 KiB chunks, under a per-snapshot key wrapped by the snapshot key.
+- [ ] T095 [US4] Implement the copy root in `core/crates/fd-appstate/src/copy/index.rs` and `core/crates/fd-appstate/src/copy/retention.rs` (FR-039, FR-043):
+  - `index.json` with an HMAC keyed from the recovery key, and `keys/<key-id>.json`;
+  - write order: fsync the `.fdstate`, then atomically replace the index;
+  - cleanup of unlisted files;
+  - retention of the 30 most recent, 24 hourly, and 30 daily, pruned only after the next durable snapshot.
+- [ ] T096 [US4] Implement the copy backends in `core/crates/fd-appstate/src/copy/backends.rs` (FR-037, FR-104):
+  - LocalPool, at `<pool root>/.filedock/appliance-state/`;
+  - LocalSystemDisk, at `/var/backups/filedock/appliance-state/`;
+  - RemoteRemovableDisk;
+  - RemoteObjectStorage, through the fd-connectors client on the `OwnedObjectStorage` route.
+- [ ] T097 [US4] Implement the snapshot scheduler in `core/crates/fd-appstate/src/scheduler.rs` (FR-038, FR-040, SC-005):
+  - Core and Management change counters, with a 30-second debounce capped at 60 seconds;
+  - per-copy uploads with retries, and `covered_change_seq` per copy;
+  - a copy is stale after 5 minutes, with a warning alert;
+  - audit entries and alerts never trigger a snapshot.
+- [ ] T098 [US4] Implement owned-location claims in `core/crates/fd-connectors/src/ownership.rs` (FR-089 to FR-091, FR-123, research R12):
+  - claiming `owner.json` on an empty prefix, the check before each write session, and the `lastWriteAt` update;
+  - claim safety: conditional only when the routed connector declares conditional writes and the latest probe proved both conditions; CREATE_ONLY and REPLACE_IF_MATCH when conditional, write-then-verify when basic.
+- [ ] T099 [US4] Implement SetStateDestination and GetStateProtection in `core/crates/filedock-core/src/api/recovery.rs` (FR-037, FR-105, FR-119, FR-123):
+  - SetStateDestination requires the basic-claim and third-party acknowledgements, otherwise `location.basic_claim_ack_required`;
+  - GetStateProtection reports reinstall and machine-loss coverage.
+- [ ] T100 [US4] Implement `GET /state-protection`, `PUT /state-protection/destination`, `POST /state-protection/snapshot`, `GET /secrets`, and `filedockctl state status`, in `management/src/FileDock.Management.Api/Endpoints/StateProtectionEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`
+- [ ] T101 [P] [US4] Build the appliance-state page in `web/src/features/recovery/StateProtectionPage.tsx`: last snapshot time and stale flag per copy, the coverage summary and warnings, and destination registration with the basic-claim acknowledgement
+- [ ] T102 [US4] Write the canary-secret leak test `tests/e2e/test_secrets_canary.py`. It plants canaries in every secret type, then searches logs, events, audit, diagnostic bundles, API responses, and snapshot bytes at every copy (SC-007)
+- [ ] T103 [US4] Write the acceptance test `tests/e2e/test_appliance_state.py` (SC-005):
+  - local copies exist with no setup;
+  - a MinIO destination is claimed at generation 1 with no acknowledgement;
+  - a snapshot reaches every copy within 1 minute;
+  - signing in and acknowledging an alert cause no snapshot;
+  - `config.json` holds no history, and pools have no disks;
+  - a blocked copy turns stale with an alert.
+
+**Checkpoint**: Configuration is protected at every copy with a 5-minute recovery point.
+
+---
+
+## Phase 7: User Story 5 - Restore the appliance after a reinstall or on new hardware (Priority: P2)
+
+**Goal**: A reinstall on the same machine needs only the recovery key. New hardware needs the
+remote destination or a backup file, plus a disk assignment for each missing pool. Restore is
+Recovery-reader-first, with audited takeover.
+
+**Independent Test**: Reinstall the system disk and restore with only the recovery key. Separately,
+restore a destroyed appliance on a new VM from the bucket, and compare configuration and data
+(quickstart "Reinstall", "Disaster recovery", and "Configuration backup file").
+
+**Depends on**: US4, plus pools (US9) and the package store (US6) for the full flows.
+
+- [ ] T104 [US5] Implement `filedock-core detect-state` in `core/crates/fd-appstate/src/detect.rs` and `core/crates/filedock-core/src/cli.rs` (FR-106, research R22):
+  - activate `filedock_pool` volume groups and mount them read-only in a private directory;
+  - mount adopted pools that have a marker;
+  - read `/var/backups/filedock/appliance-state/`;
+  - list appliances from the plaintext `index.json`.
+- [ ] T105 [US5] Implement restore sources in `core/crates/fd-appstate/src/restore/sources.rs` (FR-041 to FR-043, FR-107, FR-122):
+  - a local copy, opened with only the recovery key and throttled;
+  - remote object storage, read as a Recovery reader through the built-in connector for its family, writing nothing;
+  - a removable disk;
+  - an uploaded `.fdbackup`;
+  - MAC verification, snapshot listing with integrity flags, and the newest valid snapshot across the local copies and the recorded remote.
+- [ ] T106 [US5] Implement the journaled restore operation in `core/crates/fd-appstate/src/restore/apply.rs` (FR-044, FR-063, FR-103, FR-110, FR-122):
+  1. Verify the SHA-256, decrypt, unwrap the DEK, and install the secret store.
+  2. Upgrade older `fdconfig` versions, and import into a fresh `core.db`.
+  3. Hand the `management` section to the Management Service.
+  4. Reattach present pools, recreate the System Pool, and wait for disk assignments for missing pools.
+  5. Reinstall extensions from `.fdpkg`, falling back to another copy, then to PackageNeeded.
+  6. Apply connector routes, with built-in read fallback until routed extension connectors are Running.
+  7. Reconcile.
+  8. Build the restore report in `core/crates/fd-appstate/src/restore/report.rs` (FR-046, FR-081, Principle V). Every folder gets a `recovery_order` and an outcome:
+     - folders in reattached pools: `DataPresent`, needing no data restore;
+     - Hybrid Backup (Critical, then Important, then Rebuildable with backup): `AwaitingDataRestore`, naming the feature that restores it;
+     - Cloud Mount and Tiered Storage: `Reconnected`;
+     - Rebuildable without backup, and Temporary: recreated empty, `ToRebuild`;
+     - Local Only: recreated empty, `Lost`;
+     - folders whose pool awaits a disk assignment: `PoolUnmapped`.
+
+     Every other item (pools, extensions, apps, connections, owned locations) gets a status. The report also records the snapshot time, after which changes are lost. It is kept until dismissed, so a loss is never silent.
+- [ ] T107 [US5] Implement the Management restore import in `management/src/FileDock.Management.Domain/Restore/ManagementRestoreService.cs`: GetManagementConfigForRestore into a fresh `app.db`, with `appliance.restore` as the first audit entry (FR-059)
+- [ ] T108 [US5] Implement DetectLocalState, OpenLocalRestoreSource, OpenRestoreSource, UploadRestoreFile, ListRestoreSnapshots, BeginRestore, MapPools, GetManagementConfigForRestore, and GetRestoreReport in `core/crates/filedock-core/src/api/recovery.rs`
+- [ ] T109 [US5] Implement takeover in `core/crates/fd-connectors/src/ownership.rs` and `core/crates/fd-appstate/src/restore/takeover.rs` (FR-045, FR-092, FR-108):
+  - the Recovery reader role;
+  - ConfirmTakeover with `observed_generation` and the recent-writer acknowledgement;
+  - automatic takeover after a local restore (generation matches and the last write is over 15 minutes old), audited as `System` with the reason `reinstall-restore`;
+  - Ownership lost on a check mismatch: writes stop, and a critical alert is raised.
+- [ ] T110 [US5] Implement ListOwnedLocations (role, generation, `served_by_connector`, `served_by_third_party`, claim safety) in `core/crates/filedock-core/src/api/recovery.rs` (FR-094)
+- [ ] T111 [US5] Implement the configuration backup file in `core/crates/fd-appstate/src/format/fdbackup.rs`, `StateProtectionEndpoints.cs`, and `StateCommand.cs` (FR-111):
+  - ExportBackupFile, a tar one-snapshot copy root with its packages, in `core/crates/fd-appstate/src/format/fdbackup.rs`;
+  - `GET /state-protection/backup-file`, session only, audited as `appliance.backup_exported`, in `management/src/FileDock.Management.Api/Endpoints/StateProtectionEndpoints.cs`;
+  - `filedockctl state export`, in `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`.
+- [ ] T112 [US5] Implement restore sessions (bound to the setup code for remote and file sources, to the recovery key for local ones) and their endpoints, in `management/src/FileDock.Management.Api/Endpoints/RestoreEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/LocationEndpoints.cs` (FR-041, FR-042, FR-106):
+  - `/setup/restore/local` (GET and POST), `/setup/restore/source`, `/setup/restore/file`, `/setup/restore/snapshots`, `/setup/restore`, and `/setup/restore/pool-mappings`;
+  - `GET /restore/report` and `POST /restore/report/dismiss` (audited), over GetRestoreReport (FR-046, FR-081);
+  - `GET /locations` and `POST /locations/takeover`.
+- [ ] T113 [US5] Implement the installer's detect-state phase in `packaging/installer/install.sh`: an interactive hidden prompt for the recovery key, the first-run page instead when run with `--yes` or without a TTY, and exit `5` on failure. Implement `filedockctl restore-local` in `management/src/FileDock.Management.Cli/Commands/RestoreLocalCommand.cs` (FR-106)
+- [ ] T114 [P] [US5] Build the Restore Appliance flow in `web/src/features/restore/`:
+  - the offer for an appliance detected on this machine;
+  - the remote source form, with provider family and connection definition;
+  - file upload;
+  - the snapshot list;
+  - pool mapping;
+  - the restore report from `GET /restore/report`: folders in FR-081 order with their outcome, the lost and to-rebuild folders called out first, the snapshot time after which changes are lost, and other items with their status. It is also shown on the dashboard until dismissed;
+  - takeover confirmation with the recent-writer warning.
+- [ ] T115 [P] [US5] Build the owned-locations view (role, generation, serving connector and whether it's third-party, claim safety) in `web/src/features/recovery/LocationsPage.tsx`
+- [ ] T116 [US5] Write the acceptance test `tests/e2e/test_reinstall.py` (US5 scenarios 8–11, SC-021):
+  - a wrong key is refused;
+  - only the recovery key is needed;
+  - the takeover is automatic and reaches generation 2;
+  - the restore takes under 30 minutes;
+  - a recent write makes the location wait for confirmation;
+  - a newer remote snapshot is preselected;
+  - the `--yes` path works.
+- [ ] T117 [US5] Write the acceptance test `tests/e2e/test_disaster_recovery.py` (SC-006, SC-015, SC-016, SC-019, FR-111):
+  - restore on new hardware with pool mapping;
+  - the Recovery reader makes no writes: MinIO request logs show no PUT, DELETE, or multipart abort under the location's prefix before takeover, including from the re-probe and the sweep;
+  - the restore report lists each Local Only folder as `Lost`, each Rebuildable-without-backup folder as `ToRebuild`, and each folder in a mapped pool with its outcome, in FR-081 order;
+  - confirmed takeover;
+  - the original appliance sees Ownership lost, and its next probe and sweep make no writes at the location;
+  - a `.fdbackup` restore on a fresh VM, including PackageNeeded and its upload.
+
+**Checkpoint**: Reinstall and disaster-recovery restores work end to end.
+
+---
+
+## Phase 8: User Story 6 - Plug in subsystems and extensions through a generic contract (Priority: P2)
+
+**Goal**: Extensions install from packages with validated manifests and approved permissions. They
+run sandboxed outside the Core, register capabilities, keep data only in bound managed folders,
+and are stored with every appliance-state copy.
+
+**Independent Test**: Install a sample extension of each runtime type, use a capability, kill an
+extension 20 times, and break an upgrade. Confirm isolation, rollback, and data-binding
+enforcement (quickstart "Extensions").
+
+- [ ] T118 [P] [US6] Implement the `.fdext` package reader (tar.zst, `manifest.yaml`, `SHA256SUMS` verification, optional minisign Ed25519 signature) in `core/crates/fd-subsystems/src/package.rs` (FR-052)
+- [ ] T119 [US6] Implement the mapping from the permission vocabulary to sandboxing in `core/crates/fd-subsystems/src/sandbox.rs` (FR-053, FR-109, research R14):
+  - native-process and systemd-service: transient-unit properties and drop-ins;
+  - docker-service: Engine API capabilities, mounts, network, and a read-only root filesystem;
+  - data bindings: `BindPaths`, `ReadWritePaths`, `ProtectSystem=strict`, and named volumes refused.
+- [ ] T120 [US6] Implement the CoreBridge server on `/run/filedock/extensions.sock` in `core/crates/fd-subsystems/src/bridge.rs`: Register (capabilities must be a subset of the manifest), the per-instance `FD_EXTENSION_TOKEN`, and permission checks on StreamEvents, RaiseAlert, and ReportHealth (FR-053)
+- [ ] T121 [US6] Implement the gRPC Subsystem client that wraps a registered extension in the adapter trait, in `core/crates/fd-subsystems/src/remote.rs` (FR-049)
+- [ ] T122 [US6] Implement journaled install, upgrade, and remove in `core/crates/fd-subsystems/src/lifecycle.rs` (FR-052, FR-055, FR-056, FR-109):
+  - install: inspect, approval of the exact requested permissions, acknowledgement of unsigned packages, and every data path bound, with an acknowledgement for unprotected folders;
+  - upgrade: a health check, with automatic rollback on failure;
+  - remove: guarded by dependent folders, bindings, and routes.
+- [ ] T123 [US6] Implement package retention in `core/crates/fd-appstate/src/packages.rs` (FR-110):
+  - encrypt the `.fdext` as a `.fdpkg`, and write it to every appliance-state copy before any snapshot refers to it;
+  - prune packages no retained snapshot refers to;
+  - accept an upload for PackageNeeded only at the recorded version.
+- [ ] T124 [US6] Implement the capability registry and resolution in `core/crates/fd-subsystems/src/capabilities.rs`: an administrator-chosen default provider, and cloud capabilities resolved through routes instead (FR-050, FR-051)
+- [ ] T125 [US6] Implement the Extensions gRPC service (InspectPackage, InstallExtension, UpgradeExtension, RemoveExtension, ListSubsystems, SetDefaultProvider) in `core/crates/filedock-core/src/api/extensions.rs`
+- [ ] T126 [US6] Implement `/subsystems`, `/capabilities/{capability}/default`, `/extensions/inspect` (staged upload), `/extensions`, `/extensions/{id}/upgrade`, `DELETE /extensions/{id}`, and `/extensions/{id}/package` in `management/src/FileDock.Management.Api/Endpoints/ExtensionEndpoints.cs`
+- [ ] T127 [P] [US6] Build the extensions page in `web/src/features/extensions/`:
+  - inspect, with signature state and permission approval;
+  - data-path binding, with the suggested Hybrid Backup folder and the unprotected warning;
+  - upgrade and remove;
+  - default providers.
+- [ ] T128 [P] [US6] Create the sample packages `tests/fixtures/sample-native/`, `tests/fixtures/sample-systemd/`, `tests/fixtures/sample-docker/` (which declares a `data` path), and `tests/fixtures/sample-native-broken/`, built into `.fdext` files by `tests/fixtures/build.sh`
+- [ ] T129 [US6] Write the acceptance test `tests/e2e/test_extensions.py` (SC-008):
+  - all three runtimes install;
+  - 20 kills cause 0 Core restarts;
+  - a broken upgrade rolls back;
+  - installing needs every data path bound, and writes outside the bound folder fail and are logged;
+  - deleting a bound folder is refused;
+  - every copy has one `.fdpkg` per installed version.
+
+**Checkpoint**: Third-party subsystems plug in safely through the generic contract.
+
+---
+
+## Phase 9: User Story 7 - Logs, activity, and diagnostics (Priority: P2)
+
+**Goal**: One filtered log view, an activity timeline, audit history, a redacted diagnostic bundle,
+and alerts in the UI and through `notify.channel` extensions.
+
+**Independent Test**: Trigger a subsystem failure and an administrative change. Find both through
+the filters, download a diagnostic bundle, and confirm it holds no secrets. Raise a critical
+condition and confirm the alert appears in the UI and at a test channel (quickstart "Alerts and
+notifications").
+
+- [ ] T130 [P] [US7] Implement log queries over journald (`journalctl --output=json`, cursor paging) filtered by source, severity, time, and text, in `core/crates/fd-observe/src/logs.rs`. Add QueryLogs to `core/crates/filedock-core/src/api/observability.rs` (FR-057)
+- [ ] T131 [P] [US7] Implement the diagnostic bundle (a `tar.zst` of service status, subsystem health, recent journal entries, and redacted configuration) and CreateDiagnosticBundle in `core/crates/fd-observe/src/bundle.rs` (FR-060)
+- [ ] T132 [US7] Implement `notify.channel` fan-out in `core/crates/fd-alerts/src/notify.rs` (FR-097):
+  - every alert transition goes to every channel at or above its minimum severity;
+  - deliveries are idempotent and retried with backoff for up to 24 hours;
+  - failures are logged and never affect the alert;
+  - a notice is shown when no channel exists.
+
+  Add ConfigureNotificationChannel to `core/crates/filedock-core/src/api/extensions.rs`.
+- [ ] T133 [US7] Implement `/logs`, `/audit`, `/diagnostics/bundle`, `/alerts`, `/alerts/{id}/ack`, and `/notification-channels` (including test), plus `filedockctl diagnostics`, in `management/src/FileDock.Management.Api/Endpoints/ObservabilityEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/DiagnosticsCommand.cs`
+- [ ] T134 [P] [US7] Build the logs, activity timeline, audit, alerts (with a persistent critical banner), and notification-channel pages in `web/src/features/logs/`, `web/src/features/activity/`, `web/src/features/audit/`, and `web/src/features/alerts/`
+- [ ] T135 [P] [US7] Create the test notification extension `tests/fixtures/notify-test/`, which records every delivery
+- [ ] T136 [US7] Write API tests in `management/tests/FileDock.Management.ApiTests/ObservabilityTests.cs`: log and audit filters, newest first; bundle redaction with canary secrets; and audit kept when the log cap is reached (FR-058)
+- [ ] T137 [US7] Write the acceptance test `tests/e2e/test_alerts.py`: the no-channel notice, and critical conditions shown in the UI and delivered to `notify-test` within 1 minute (SC-020)
+
+**Checkpoint**: Operators can see what happened and are alerted.
+
+---
+
+## Phase 10: User Story 8 - Create a managed folder by storage mode (Priority: P2)
+
+**Goal**: The six-section Create Managed Folder flow, with storage mode, reference path, Data
+Importance only for Hybrid Backup, and overlap and nesting rules.
+
+**Independent Test**: Create a folder in each available mode. Confirm that the source fields follow
+the mode, that importance is asked only for Hybrid Backup, and that the overlap and nesting rules
+refuse bad paths. Local Only end-to-end needs a pool (the System Pool from US9, or a data pool).
+
+- [ ] T138 [US8] Implement ManagedFolder validation in `core/crates/fd-state/src/validate/folder.rs` (FR-065 to FR-077, FR-102):
+  - name and path uniqueness, and the FileDock path suggestion;
+  - no nested managed folders;
+  - no overlapping local or cloud reference paths (Cloud Mount paths may overlap only each other);
+  - the pool root is reserved;
+  - `mode.capability_missing`;
+  - importance required for Hybrid Backup and `null` otherwise, with defaults by importance and mode-specific Advanced settings;
+  - the System Pool warning.
+- [ ] T139 [US8] Implement the folder controller in `core/crates/fd-reconcile/src/controllers/folder.rs`: the bind-mount unit from the pool path to `/storage/<name>`, and Unavailable when its pool fails. It also derives the protection state (FR-079):
+  - **Protected**: Hybrid Backup within its backup target, or Cloud Mount with no overdue uploads;
+  - **At Risk**: backups or uploads behind their target;
+  - **Unprotected**: Local Only, and the local-only portion of Tiered Storage;
+  - **Not Required**: Hybrid Backup data that is Rebuildable without backup, or Temporary.
+
+  Backup and upload status come, through its capability, from the feature that provides the mode (features 002 to 004).
+- [ ] T140 [US8] Implement `POST /folders/validate`, `GET`, `POST`, and `PATCH /folders`, and `DELETE /folders/{id}`, in `management/src/FileDock.Management.Api/Endpoints/FolderEndpoints.cs`. Delete is refused while exports, apps, or extension bindings depend on the folder. Lowering an importance needs a confirmation and is audited
+- [ ] T141 [P] [US8] Build the six-section Create Managed Folder flow (Identity, Storage Mode, Source/Backend, Data Importance, Access, Advanced) and the folder list in `web/src/features/folders/`. The list shows name, path, storage mode, access, and protection state on every listing, plus data importance for Hybrid Backup. Unprotected and At Risk are visually distinct, and each explains what would be lost (FR-079, Principle V)
+- [ ] T142 [US8] Write validation tests in `core/crates/fd-state/tests/folder_validation.rs`: every overlap and nesting case, importance only in Hybrid Backup, and per-subfolder importance overrides only in Hybrid Backup (SC-012, SC-014)
+
+**Checkpoint**: Every storage feature can create folders through one flow.
+
+---
+
+## Phase 11: User Story 9 - Local storage, shares, cloud connections, and containers (Priority: P3)
+
+**Goal**: Pools from data disks, the capped System Pool, SMB, NFS, and WebDAV exports, cloud
+connections with tests and authorization, and Compose apps bound to managed folders.
+
+**Independent Test**: Create a Local Only folder with SMB, NFS, and Docker access, bind it into a
+sample container, write from a client, and read inside the container. Fill the System Pool and
+confirm the reserve holds (quickstart "Pools and managed folders", "System Pool", and "Pool
+failure").
+
+- [ ] T143 [P] [US9] Implement disk discovery (`lsblk --json` plus udev events) and SMART polling (every 6 hours and on change, early-failure attributes mark the pool Degraded) in `core/crates/fd-storage/src/disks.rs` (FR-061)
+- [ ] T144 [US9] Implement journaled LVM pool creation in `core/crates/fd-storage/src/pool/lvm.rs` (FR-062, research R8):
+  - `pvcreate`, then `vgcreate` tagged `filedock_pool=<uuid>`, a linear logical volume, and `mkfs.ext4`;
+  - the `/.filedock-pool.json` marker and the reserved `/.filedock/` directory;
+  - a mount unit at `/mnt/filedock/pools/<uuid>`.
+- [ ] T145 [US9] Implement adopting an existing filesystem as a single-disk non-LVM pool, with a marker and no erase, and growing an LVM pool online (`vgextend`, `lvextend`, `resize2fs`), in `core/crates/fd-storage/src/pool/adopt.rs` and `core/crates/fd-storage/src/pool/extend.rs` (FR-062)
+- [ ] T146 [US9] Implement pool failure detection and recreation in `core/crates/fd-storage/src/pool/health.rs` (FR-064, SC-018):
+  - Failed on missing physical volumes, a failed mount, or I/O errors;
+  - its folders become Unavailable, with a critical alert listing each folder's recovery path;
+  - recreate on replacement disks with the same pool UUID.
+- [ ] T147 [US9] Implement the System Pool in `core/crates/fd-storage/src/system_pool/image.rs` and `core/crates/fd-storage/src/system_pool/limits.rs` (FR-098 to FR-101, research R21):
+  - a sparse ext4 image at `/var/lib/filedock/system-pool/pool.img`, loop-mounted with direct I/O and `discard`;
+  - limits where the stricter one wins (50% default, range 10–90%; 100 GB reserve, at least 20 GB);
+  - a journaled SystemPoolResize, refused below current usage;
+  - Unavailable when the disk is too small, Degraded from SMART;
+  - immutability rules.
+- [ ] T148 [US9] Implement the System Pool watchdog in `core/crates/fd-storage/src/system_pool/watchdog.rs` (FR-100, SC-022): `statvfs` every 2 seconds with a guard band of 5 GB or 2%, whichever is smaller; remount read-only at the reserve, raise a critical alert, never delete data, and remount read-write when space returns
+- [ ] T149 [US9] Implement disk-pressure monitoring in `core/crates/fd-storage/src/pressure.rs` (SC-013, spec Edge Cases):
+  - checks every data pool and the system disk with `statvfs` every 30 seconds;
+  - a warning alert at 90% used and a critical alert at 95%, both adjustable in Settings;
+  - on the system disk, trims only disposable data FileDock owns (staged extension uploads older than 24 hours and generated diagnostic bundles) before raising critical; logs are already capped by journald;
+  - never deletes any other data, and never fails a configuration write in a way that leaves partial state: ApplyChange returns `storage.disk_full` and commits nothing;
+  - emptying Temporary subfolders under pressure belongs to feature 002, which provides Hybrid Backup.
+- [ ] T150 [US9] Add the System Pool phase to `packaging/installer/install.sh`: create the image with default limits, or record Unavailable with the reason (FR-098)
+- [ ] T151 [US9] Implement the Storage gRPC service (ListDisks, CreatePool, AdoptFilesystem, ExtendPool, RecreatePool, SetSystemPoolLimits, GetSystemPool) in `core/crates/filedock-core/src/api/storage.rs`
+- [ ] T152 [US9] Implement `/disks`, `/pools`, `/pools/adopt`, `/pools/{id}/disks`, `/pools/{id}/recreate`, `/pools/system`, and `/pools/system/limits` (with typed `ERASE` confirmation and `system_pool.*` errors) in `management/src/FileDock.Management.Api/Endpoints/StorageEndpoints.cs`. Implement `filedockctl system-pool limits` in `management/src/FileDock.Management.Cli/Commands/SystemPoolCommand.cs`
+- [ ] T153 [P] [US9] Build the disks and pools pages (typed confirmation naming every disk, the whole-pool-loss warning, and System Pool limits, capacity, and usage) in `web/src/features/pools/`
+- [ ] T154 [US9] Implement share users in `core/crates/fd-subsystems/src/adapters/share_users.rs`: Linux system users with no shell in group `filedock-share`, Samba `tdbsam` passwords, and WebDAV htpasswd entries (research R15)
+- [ ] T155 [P] [US9] Implement SMB exports in `core/crates/fd-subsystems/src/adapters/samba.rs`: render `/etc/filedock/samba/shares.conf` with per-export access rules, then `smbcontrol all reload-config` (FR-082)
+- [ ] T156 [P] [US9] Implement NFS exports in `core/crates/fd-subsystems/src/adapters/nfs.rs`: render `/etc/exports.d/filedock.exports` with client rules (NFSv4, `sec=sys`), then `exportfs -ra` (FR-082)
+- [ ] T157 [P] [US9] Implement WebDAV exports in `core/crates/fd-subsystems/src/adapters/webdav.rs`: one `rclone serve webdav` transient unit per folder, using the appliance TLS certificate and a per-export htpasswd file, on a port allocated from 8440–8499 (FR-082)
+- [ ] T158 [US9] Implement `/share-users` and `/folders/{id}/exports/{smb|nfs|webdav}` in `management/src/FileDock.Management.Api/Endpoints/ShareEndpoints.cs`
+- [ ] T159 [US9] Implement cloud connections in `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs` and `core/crates/fd-connectors/src/oauth.rs` (FR-083, FR-084):
+  - `/connections` CRUD, with `connection.family_unserved` and `connection.credential_type_unsupported`;
+  - `/connections/{id}/test`;
+  - `/connections/oauth/start` and `/connections/oauth/finish`, using the paste-back flow that completes through rclone `config/update`;
+  - the expiry warning 7 days ahead.
+- [ ] T160 [P] [US9] Build the connections page in `web/src/features/connections/`: a provider-family picker, the neutral S3 form or the connector's schema form, the OAuth paste-back flow, and test results showing the serving connector
+- [ ] T161 [US9] Implement the ContainerApp controller in `core/crates/fd-reconcile/src/controllers/container_app.rs` (FR-085 to FR-087, research R16):
+  - materialize under `/var/lib/filedock/apps/<app>/`, then `docker compose -p fd-<app> up -d`;
+  - bind sources must be managed folders with Docker access;
+  - warn about named volumes or binds outside managed folders;
+  - refuse removing Docker access from a folder an app uses.
+- [ ] T162 [US9] Implement `/apps` (CRUD, start, stop, update, and binding warnings) in `management/src/FileDock.Management.Api/Endpoints/AppEndpoints.cs`, and the apps page in `web/src/features/apps/`
+- [ ] T163 [US9] Write the acceptance test `tests/e2e/test_storage_shares.py` (US9 scenarios 1–13, SC-018, SC-022):
+  - create, adopt, and grow pools;
+  - removing a disk marks the pool Failed with an alert within 1 minute, and recreate keeps its identity;
+  - System Pool fill and limits;
+  - data-pool and system-disk fill: warning and critical alerts appear, a configuration change on a full system disk is refused with nothing committed, and a checksum of all user data before and after shows 0 bytes deleted (SC-013);
+  - the small-disk System Pool is Unavailable;
+  - SMB, NFS, and WebDAV access rules;
+  - a container bind;
+  - the outside-data warning.
+
+**Checkpoint**: The full local storage, sharing, and container foundation is in place. US3's full
+data-plane test and US5's pool flows can now run end to end.
+
+---
+
+## Phase 12: User Story 10 - Choose which cloud connector serves each provider (Priority: P3)
+
+**Goal**: Administrators manage connectors and routes (family defaults and per-connection
+overrides) with previews, audited acknowledgements, claim safety, and third-party connectors. The
+native connector is hardened for control.
+
+**Independent Test**: Run quickstart "Cloud connectors and routing" steps 1–13 (SC-023 to SC-026).
+
+- [ ] T164 [US10] Implement PreviewRouteChange in `core/crates/fd-connectors/src/route_change.rs` (FR-115, FR-118, FR-119, FR-123). For family defaults and per-connection overrides, it computes:
+  - the affected connections, folders, and owned locations, with the claim safety each would have;
+  - lost features;
+  - newly receiving credential recipients;
+  - mounts that will restart;
+  - the required acknowledgements;
+  - validation issues.
+- [ ] T165 [US10] Implement ApplyRouteChange in `core/crates/fd-connectors/src/route_change.rs`:
+  - `expected_generation`;
+  - `route.ack_required`, `route.connector_incapable`, `route.connector_disabled`, and `route.use_not_allowed`;
+  - acknowledgements recorded in ConnectorRoutes and audited;
+  - committed as one ApplyChange, advancing the routes generation;
+  - affected connectors reconfigured, with secret files removed for connections no longer routed to them (FR-119).
+- [ ] T166 [US10] Implement ListConnectors, SetConnectorEnabled (`connector.in_use` while routed, built-ins never removable), GetRoutes, PreviewRouteChange, and ApplyRouteChange in `core/crates/filedock-core/src/api/connectors.rs` (FR-112, FR-113, FR-121)
+- [ ] T167 [US10] Implement connector failure handling in `core/crates/fd-connectors/src/client.rs` (FR-120): when the routed connector isn't Running, the session fails with `connector.unavailable` and raises `connector.route_unavailable` naming the connector and route. There is never a fallback to another connector
+- [ ] T168 [US10] Implement claim-safety recomputation in `core/crates/fd-connectors/src/ownership.rs` (FR-123, research R12):
+  - recomputed after each connection test, daily probe, and route change;
+  - a probe that finds a downgrade raises a warning alert and keeps writing;
+  - the dashboard warning `location.basic_claim_safety` while any location is basic.
+- [ ] T169 [US10] Support third-party connectors in `core/crates/fd-subsystems/src/lifecycle.rs` and `core/crates/fd-subsystems/src/sandbox.rs` (FR-112, FR-119):
+  - the manifest `cloud` section is required, with `connectionSchema` per non-S3 family;
+  - `cloud.credentials` is shown at approval;
+  - installing changes no routes;
+  - routing owned object storage to a third-party connector requires its separate acknowledgement.
+- [ ] T170 [P] [US10] Implement per-connection storage controls in `connectors/fd-s3/src/ops.rs` and `connectors/fd-s3/src/throttle.rs` (FR-117): storage class, SSE-KMS through `with_sse_kms_encryption`, and the bandwidth-limit token bucket
+- [ ] T171 [P] [US10] Implement incomplete-upload cleanup in `connectors/fd-s3/src/sweep.rs` and `core/crates/fd-connectors/src/sweep.rs` (FR-117, research R23, Principle V):
+  - the AbortIncompleteUploads RPC in `connectors/fd-s3/src/sweep.rs`, which aborts uploads under the given prefix older than the given age;
+  - the Core-driven sweep in `core/crates/fd-connectors/src/sweep.rs`, at connector start and once a day, for uploads older than 24 hours. It covers only this appliance's probe key and owned locations where it is the Writer. Each location is swept inside a write session that passed the ownership check. Recovery-reader and Ownership-lost locations are never swept.
+- [ ] T172 [US10] Spike: confirm whether the pinned object_store version supports a per-request storage class and listing incomplete uploads. Record the result in `connectors/fd-s3/SPIKE.md`. Implement any gap with hand-signed SigV4 requests (`aws-sigv4`) in `connectors/fd-s3/src/sigv4.rs` (research R23)
+- [ ] T173 [US10] Implement `GET /connectors`, `PATCH /connectors/{id}`, `GET /connector-routes`, `POST /connector-routes/preview`, and `PUT /connector-routes`, plus `routeOverrides` and the effective connector per use in connection listings, in `management/src/FileDock.Management.Api/Endpoints/ConnectorEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs`
+- [ ] T174 [US10] Implement `filedockctl connectors list`, `filedockctl routes show`, and `filedockctl connections test <name>` in `management/src/FileDock.Management.Cli/Commands/ConnectorCommands.cs`
+- [ ] T175 [P] [US10] Build the connectors and routes page in `web/src/features/connectors/`:
+  - the connector list with enable and disable;
+  - the route table with family defaults and per-connection overrides;
+  - a preview dialog listing the impact and the required acknowledgements;
+  - badges for third-party connectors and basic claim safety.
+- [ ] T176 [P] [US10] Create the test fixtures `tests/fixtures/s3-no-conditional/` and `tests/fixtures/sample-connector/` (FR-117, FR-119):
+  - `tests/fixtures/s3-no-conditional/`, an S3 proxy in front of MinIO that ignores conditional headers and can flip or truncate bytes on request;
+  - `tests/fixtures/sample-connector/`, built to `sample-connector.fdext`, which declares `s3-compatible` with `cloud.remote`, no conditional writes, and `cloud.credentials`.
+- [ ] T177 [US10] Write the acceptance test `tests/e2e/test_connectors.py`, covering quickstart "Cloud connectors and routing" steps 1–13 and US10 scenarios 1–9 (SC-023 to SC-026):
+  - the default routes, including `s3-compatible` backups → `backup-engine`, with the connection's credentials materialized only for the backup engine and not for either connector (FR-116), and the connector each operation uses;
+  - a probe against a bucket whose root another appliance owns runs read-only, and records conditional writes as not tested;
+  - preview and acknowledgements;
+  - switching routes 10 times with no object rewritten or lost;
+  - a per-connection override;
+  - basic claim safety through the proxy;
+  - concurrent claims, with exactly one owner in 100 runs;
+  - fault injection;
+  - a third-party connector;
+  - connector failure with no fallback;
+  - Azurite as basic;
+  - restoring routes and acknowledgements.
+
+**Checkpoint**: All user stories are complete.
+
+---
+
+## Phase 13: Polish & Cross-Cutting Concerns
+
+**Purpose**: Footprint, priority, copy, documentation, and full validation
+
+- [ ] T178 [P] Add drop-ins that run snapshot uploads and SMART polling at low CPU and I/O priority (`Nice=10`, `IOSchedulingClass=idle`) in `packaging/systemd/` (Constitution II)
+- [ ] T179 [P] Write the idle-footprint test `tests/e2e/test_idle_footprint.py`: the two services together use under 512 MB RAM and under 2% of one core on the minimum hardware (SC-009)
+- [ ] T180 [P] Write a UI copy check in `web/tests/copy.test.ts`: no screen promises zero downtime or zero data loss, and every protection view shows the latest durable recovery point (SC-017, FR-095)
+- [ ] T181 [P] Generate `/api/v1/openapi.json` from the endpoints, and add a test comparing its routes and error codes with `contracts/management-api.md`, in `management/tests/FileDock.Management.ApiTests/OpenApiContractTests.cs`
+- [ ] T182 [P] Update `FileDock-OS.md` to replace the section 50 durability classes with Storage Mode and Data Importance, and to describe the cloud connectors and routes (spec Assumptions)
+- [ ] T183 Write the baseline failure-injection suite `tests/e2e/test_failure_injection.py`: restart both services, the container runtime, and each subsystem (including both connectors), and cut power during a configuration change, with 0 corrupted records (SC-010)
+- [ ] T184 Run the complete quickstart.md validation on fresh VMs, and record the results in `specs/001-core-os-foundation/checklists/validation.md`
+
+---
+
+## Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Setup (Phase 1)**: no dependencies.
+- **Foundational (Phase 2)**: depends on Setup, and blocks every user story.
+- **User stories (Phases 3–12)**: each depends on Foundational. Run them in priority order (P1, then
+  P2, then P3), or in parallel where the cross-story notes allow.
+- **Polish (Phase 13)**: depends on the stories it validates. T183 and T184 need all of them.
+
+### User Story Dependencies
+
+| Story | Depends on | Notes |
+|---|---|---|
+| US1 (P1) | Foundational | The MVP. Includes the administrator service, sessions, sign-in, and the recovery key, because setup needs them |
+| US2 (P1) | US1 | Builds on US1's administrators and sessions |
+| US3 (P1) | Foundational | The full independence test (T087) uses a share and a container from US9 |
+| US4 (P2) | US1 (recovery key) | Object-storage copies use the connector backbone from Phase 2 |
+| US5 (P2) | US4 | Pool reattach and mapping need US9. Package reinstall needs US6 (T123) |
+| US6 (P2) | Foundational | Data bindings need managed folders from US8 |
+| US7 (P2) | Foundational | Channel delivery needs the extension protocol from US6 |
+| US8 (P2) | Foundational | End-to-end Local Only needs a pool from US9 |
+| US9 (P3) | US8 | Exports and apps attach to managed folders |
+| US10 (P3) | Phase 2 connector backbone, US4 (owned locations) | Third-party connectors need US6 |
+
+### Within Each Story
+
+- Core resources and services, then gRPC, then Management endpoints, then web, then acceptance
+  tests.
+- Tasks in the same file are sequential, even across stories: `install.sh`, `api/recovery.rs`,
+  `ownership.rs`, `route_change.rs`, `lifecycle.rs`, and `ConnectionEndpoints.cs`.
+
+### Parallel Opportunities
+
+- **Setup**: T003 to T013 in parallel after T001 and T002.
+- **Foundational**:
+  - T017 to T020, T022, T026, T029, T030, T043, T044, T046, T047, and T048 in parallel;
+  - the connector backbone (T031 to T040) alongside the Management host (T041 to T048);
+  - fd-s3 (T035 to T038) alongside the rclone adapter (T034).
+- **After Foundational**: US1 and US3 can start together, and US6, US7, and US8 can start in
+  parallel by different people.
+- **Within stories**: tasks marked [P] touch separate files.
+
+---
+
+## Parallel Example: Foundational connector backbone
+
+```bash
+# fd-s3 and rclone tracks in parallel (different crates):
+Task: "Implement the fd-s3 object operations over object_store in connectors/fd-s3/src/ops.rs"
+Task: "Implement the rclone general connector in core/crates/fd-connectors/src/rclone/"
+
+# Management host pieces in parallel:
+Task: "Implement the audit writer in management/src/FileDock.Management.Domain/Audit/AuditWriter.cs"
+Task: "Implement Argon2id hashing in management/src/FileDock.Management.Domain/Security/PasswordHasher.cs"
+Task: "Create the web app shell in web/src/main.tsx, web/src/App.tsx, web/src/api/client.ts"
+```
+
+## Parallel Example: User Story 9
+
+```bash
+Task: "Implement SMB exports in core/crates/fd-subsystems/src/adapters/samba.rs"
+Task: "Implement NFS exports in core/crates/fd-subsystems/src/adapters/nfs.rs"
+Task: "Implement WebDAV exports in core/crates/fd-subsystems/src/adapters/webdav.rs"
+Task: "Build the disks and pools pages in web/src/features/pools/"
+```
+
+## Parallel Example: User Story 10
+
+```bash
+Task: "Implement per-connection storage controls in connectors/fd-s3/src/throttle.rs"
+Task: "Implement AbortIncompleteUploads in connectors/fd-s3/src/sweep.rs and the Core sweep in core/crates/fd-connectors/src/sweep.rs"
+Task: "Build the connectors and routes page in web/src/features/connectors/"
+Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtures/"
+```
+
+---
+
+## Implementation Strategy
+
+### MVP first (User Story 1)
+
+1. Phase 1: Setup.
+2. Phase 2: Foundational. This is the largest phase, because the Core, the connector backbone, and
+   the Management host are all prerequisites.
+3. Phase 3: US1.
+4. **Stop and validate**: run `tests/e2e/test_install.py` (SC-001). At this point the appliance
+   has a confirmed recovery key and working sign-in, so later stories don't need to retrofit
+   them onto an appliance that's already set up.
+
+### Incremental delivery
+
+1. US1, US2, US3: the secure, self-healing appliance (all P1).
+2. US4, then US5: recoverability. US5's full flows complete after US6 and US9.
+3. US6, US7, US8: extensibility, operations, and the folder flow.
+4. US9: storage, shares, and apps. Re-run T087 and T116 to T117 end to end.
+5. US10: connector routing management and native-connector hardening.
+6. Polish: footprint, failure injection, and the full quickstart run.
+
+### Parallel team strategy
+
+- **Rust Core**: Phase 2 Core, then US3, US4, US5, US9 storage, and US10.
+- **Rust connectors**: fd-s3 and the rclone adapter in Phase 2, then US10 hardening.
+- **.NET**: the Management host, then US1 and US2 endpoints, then the restore and extension
+  endpoints.
+- **Web**: shell, setup, and dashboard, then each story's feature folder.
+- **Packaging and e2e**: installer, Debian packages, VM harness, then the acceptance tests per
+  story.
+
+---
+
+## Notes
+
+- [P] tasks touch different files and have no dependency on an incomplete task.
+- The [Story] label maps each task to spec.md for traceability.
+- Acceptance tests map one-to-one to quickstart.md sections and to the success criteria.
+- Commit after each task or logical group, and stop at each checkpoint to validate.
