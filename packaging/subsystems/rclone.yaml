@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: rclone
+name: rclone
+version: 1.75.2
+class: built-in
+description: General cloud connector. Serves every family except native S3 writes.
+capabilities:
+  - cloud.remote
+  - cloud.mount
+runtime:
+  type: native-process
+  executable: /usr/bin/rclone
+health:
+  type: http
+  target: http://127.0.0.1/rclone
+permissions:
+  - network.outbound
+  - cloud.credentials
+cloud:
+  - family: s3-compatible
+    capabilities: [cloud.remote, cloud.mount]
+    conditionalWrites: false
+    providerChecksums: false
+  - family: azure-blob
+    capabilities: [cloud.remote, cloud.mount]
+    conditionalWrites: false
+    connectionSchema: schemas/azure-blob.json
+  - family: google-drive
+    capabilities: [cloud.mount]
+    connectionSchema: schemas/google-drive.json
+  - family: onedrive
+    capabilities: [cloud.mount]
+    connectionSchema: schemas/onedrive.json
+  - family: dropbox
+    capabilities: [cloud.mount]
+    connectionSchema: schemas/dropbox.json
+compatibility:
+  appliance: ">=0.1.0"

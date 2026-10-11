@@ -60,97 +60,97 @@ builds on these.
 
 ### Core state, journal, and reconciliation
 
-- [ ] T014 Implement the `core.db` connection (WAL, foreign keys) and the migration runner with rusqlite_migration in `core/crates/fd-state/src/db.rs`, with the initial schema (resources with kind, id, generation, and JSON body; settings) in `core/crates/fd-state/migrations/0001_init.sql`
-- [ ] T015 Define the typed desired-state resources from data-model.md with serde, in `core/crates/fd-state/src/resources/`: Pool, ManagedFolder, Export, ShareUser, CloudConnection, ContainerApp, Extension, ApplianceStateDestination, Settings, and ConnectorRoutes
-- [ ] T016 Implement ApplyChange and ValidateChange in `core/crates/fd-state/src/apply.rs` (FR-013, FR-014):
+- [X] T014 Implement the `core.db` connection (WAL, foreign keys) and the migration runner with rusqlite_migration in `core/crates/fd-state/src/db.rs`, with the initial schema (resources with kind, id, generation, and JSON body; settings) in `core/crates/fd-state/migrations/0001_init.sql`
+- [X] T015 Define the typed desired-state resources from data-model.md with serde, in `core/crates/fd-state/src/resources/`: Pool, ManagedFolder, Export, ShareUser, CloudConnection, ContainerApp, Extension, ApplianceStateDestination, Settings, and ConnectorRoutes
+- [X] T016 Implement ApplyChange and ValidateChange in `core/crates/fd-state/src/apply.rs` (FR-013, FR-014):
   - batched upserts and deletes with expected generations;
   - a per-kind validator registry with `ValidationIssue` mapping;
   - one SQLite transaction per change;
   - a commit notification channel.
-- [ ] T017 [P] Implement the operation journal (`operation` and `operation_step` tables) and an idempotent step runner in `core/crates/fd-journal/src/runner.rs`, with the schema in `core/crates/fd-journal/src/schema.sql`. Each step records its intent before acting, and the runner resumes or rolls back unfinished operations on startup (FR-015, FR-016, research R6)
-- [ ] T018 [P] Implement the controller framework in `core/crates/fd-reconcile/src/lib.rs` and `core/crates/fd-reconcile/src/queue.rs`: a per-kind controller trait, a work queue fed by commits and events, reconcile at startup, and a 10-minute resync (research R6)
-- [ ] T019 [P] Implement the event bus (monotonic `seq` ring buffer, typed Event) in `core/crates/fd-observe/src/events.rs`, and tracing-to-journald logging in `core/crates/fd-observe/src/logging.rs`
-- [ ] T020 [P] Implement the redaction layer for known secret fields in `core/crates/fd-secrets/src/redact.rs`. Logs, events, audit payloads, and diagnostics all pass through it (FR-029, SC-007)
-- [ ] T021 Implement the secret store in `core/crates/fd-secrets/src/store.rs` (FR-028 to FR-030, research R10):
+- [X] T017 [P] Implement the operation journal (`operation` and `operation_step` tables) and an idempotent step runner in `core/crates/fd-journal/src/runner.rs`, with the schema in `core/crates/fd-journal/src/schema.sql`. Each step records its intent before acting, and the runner resumes or rolls back unfinished operations on startup (FR-015, FR-016, research R6)
+- [X] T018 [P] Implement the controller framework in `core/crates/fd-reconcile/src/lib.rs` and `core/crates/fd-reconcile/src/queue.rs`: a per-kind controller trait, a work queue fed by commits and events, reconcile at startup, and a 10-minute resync (research R6)
+- [X] T019 [P] Implement the event bus (monotonic `seq` ring buffer, typed Event) in `core/crates/fd-observe/src/events.rs`, and tracing-to-journald logging in `core/crates/fd-observe/src/logging.rs`
+- [X] T020 [P] Implement the redaction layer for known secret fields in `core/crates/fd-secrets/src/redact.rs`. Logs, events, audit payloads, and diagnostics all pass through it (FR-029, SC-007)
+- [X] T021 Implement the secret store in `core/crates/fd-secrets/src/store.rs` (FR-028 to FR-030, research R10):
   - `/var/lib/filedock/secrets.enc`, with each record encrypted by XChaCha20-Poly1305 under the DEK;
   - the DEK in `/var/lib/filedock/keys/local.key`, root-owned, mode `0600`;
   - write-only put, delete, and masked list.
-- [ ] T022 [P] Implement per-subsystem tmpfs secret materialization under `/run/filedock/secrets/<subsystem>/` (mode `0400`), removing files that are no longer referenced on reconfigure, in `core/crates/fd-secrets/src/materialize.rs` (FR-031). When a connection's `BackupRepository` route targets `backup-engine`, materialize that connection's credentials for the backup engine as one of its declared secrets, and for no connector (FR-116, FR-119)
+- [X] T022 [P] Implement per-subsystem tmpfs secret materialization under `/run/filedock/secrets/<subsystem>/` (mode `0400`), removing files that are no longer referenced on reconfigure, in `core/crates/fd-secrets/src/materialize.rs` (FR-031). When a connection's `BackupRepository` route targets `backup-engine`, materialize that connection's credentials for the backup engine as one of its declared secrets, and for no connector (FR-116, FR-119)
 
 ### Core service channel
 
-- [ ] T023 Wire the Core daemon in `core/crates/filedock-core/src/main.rs`: load configuration, open `core.db`, resume the journal, start the reconciler, and serve gRPC on the systemd-activated `/run/filedock/core.sock`
-- [ ] T024 Implement gRPC interceptors in `core/crates/filedock-core/src/api/interceptors.rs` (FR-009 to FR-011, research R5):
+- [X] T023 Wire the Core daemon in `core/crates/filedock-core/src/main.rs`: load configuration, open `core.db`, resume the journal, start the reconciler, and serve gRPC on the systemd-activated `/run/filedock/core.sock`
+- [X] T024 Implement gRPC interceptors in `core/crates/filedock-core/src/api/interceptors.rs` (FR-009 to FR-011, research R5):
   - an `SO_PEERCRED` check that accepts only the `filedock-mgmt` uid and root;
   - the `fd-interface-version` major/minor check, which allows read-only calls on a major mismatch;
   - `fd-actor` and `fd-request-id` required on mutations.
-- [ ] T025 Implement the CoreControl service in `core/crates/filedock-core/src/api/control.rs`: ApplyChange, ValidateChange, GetResource, ListResources (paginated, research R20), StartOperation, GetOperation, and ListOperations
-- [ ] T026 [P] Implement the Secrets gRPC service (PutSecret, DeleteSecret, ListSecrets with masked values only) in `core/crates/filedock-core/src/api/secrets.rs`
+- [X] T025 Implement the CoreControl service in `core/crates/filedock-core/src/api/control.rs`: ApplyChange, ValidateChange, GetResource, ListResources (paginated, research R20), StartOperation, GetOperation, and ListOperations
+- [X] T026 [P] Implement the Secrets gRPC service (PutSecret, DeleteSecret, ListSecrets with masked values only) in `core/crates/filedock-core/src/api/secrets.rs`
 
 ### Subsystems, alerts, and systemd
 
-- [ ] T027 Implement manifest loading from `/usr/share/filedock/subsystems/`, validation against the embedded `subsystem-manifest.schema.json`, and Subsystem records in `core.db`, in `core/crates/fd-subsystems/src/manifest.rs` and `core/crates/fd-subsystems/src/registry.rs` (FR-047, research R14)
-- [ ] T028 Define the Core-side adapter trait for the generic subsystem contract (describe, state, configure, start, stop, restart, reload, health, events, diagnostics) in `core/crates/fd-subsystems/src/adapter.rs` (FR-049)
-- [ ] T029 [P] Implement the systemd helper over D-Bus (zbus) in `core/crates/fd-subsystems/src/systemd.rs`: start and stop units, create transient units as `systemd-run` does, and write persistent `.mount` units and drop-ins (research R7)
-- [ ] T030 [P] Implement the alert store in `core.db`, with dedup by (source, object, kind), automatic resolve, and acknowledge, in `core/crates/fd-alerts/src/store.rs`. Expose ListAlerts and AcknowledgeAlert in `core/crates/filedock-core/src/api/observability.rs` (FR-096)
+- [X] T027 Implement manifest loading from `/usr/share/filedock/subsystems/`, validation against the embedded `subsystem-manifest.schema.json`, and Subsystem records in `core.db`, in `core/crates/fd-subsystems/src/manifest.rs` and `core/crates/fd-subsystems/src/registry.rs` (FR-047, research R14)
+- [X] T028 Define the Core-side adapter trait for the generic subsystem contract (describe, state, configure, start, stop, restart, reload, health, events, diagnostics) in `core/crates/fd-subsystems/src/adapter.rs` (FR-049)
+- [X] T029 [P] Implement the systemd helper over D-Bus (zbus) in `core/crates/fd-subsystems/src/systemd.rs`: start and stop units, create transient units as `systemd-run` does, and write persistent `.mount` units and drop-ins (research R7)
+- [X] T030 [P] Implement the alert store in `core.db`, with dedup by (source, object, kind), automatic resolve, and acknowledge, in `core/crates/fd-alerts/src/store.rs`. Expose ListAlerts and AcknowledgeAlert in `core/crates/filedock-core/src/api/observability.rs` (FR-096)
 
 ### Cloud I/O backbone (connectors)
 
-- [ ] T031 Implement CloudConnection validation in `core/crates/fd-connectors/src/connection.rs` (FR-114):
+- [X] T031 Implement CloudConnection validation in `core/crates/fd-connectors/src/connection.rs` (FR-114):
   - the provider family;
   - S3Definition: `https` only, and static keys only, otherwise `connection.credential_type_unsupported`;
   - BoundDefinition, validated against the owning connector's `connectionSchema`;
   - the shape of `route_overrides`.
-- [ ] T032 Implement the ConnectorRoutes resource in `core/crates/fd-connectors/src/routes.rs` (FR-115, research R13):
+- [X] T032 Implement the ConnectorRoutes resource in `core/crates/fd-connectors/src/routes.rs` (FR-115, research R13):
   - default routes seeded on first boot, from the research R13 table;
   - resolution: connection override, then family default, then `route.missing`;
   - validation for a connector target: it is enabled and declares the family and capability, the use is allowed for the family (FR-088), and bound connections may only target their own connector;
   - validation for the `backup-engine` target (FR-116): allowed only for the `BackupRepository` use, and only for a family the backup engine's manifest declares (`s3-compatible` and `azure-blob` for Kopia). Otherwise `route.use_not_allowed`. The seeded default (`s3-compatible` backups → `backup-engine`) must pass this validation.
-- [ ] T033 Implement the CloudRemote client in `core/crates/fd-connectors/src/client.rs`, with session pinning (resolve once per write session and hold the connector handle across a routes-generation change) and discarding of Get streams that don't end in a verified trailer (FR-118)
-- [ ] T034 Implement the rclone general connector in `core/crates/fd-connectors/src/rclone/` (FR-113, research R13):
+- [X] T033 Implement the CloudRemote client in `core/crates/fd-connectors/src/client.rs`, with session pinning (resolve once per write session and hold the connector handle across a routes-generation change) and discarding of Get streams that don't end in a verified trailer (FR-118)
+- [X] T034 Implement the rclone general connector in `core/crates/fd-connectors/src/rclone/` (FR-113, research R13):
   - an `rclone rcd` transient unit on `/run/filedock/rclone.sock`, in `core/crates/fd-connectors/src/rclone/rcd.rs`;
   - a tmpfs `rclone.conf` that lists only the connections routed to rclone, including the translation of neutral S3 definitions into an `s3` remote (`provider=Other`, `env_auth=false`), in `core/crates/fd-connectors/src/rclone/conf.rs`;
   - a CloudRemote adapter over the remote-control API (`operations/list`, `operations/stat`, `operations/copyfile`, `operations/deletefile`), with `conditionalWrites: false` and read-back verification, in `core/crates/fd-connectors/src/rclone/adapter.rs`;
   - its manifest, `packaging/subsystems/rclone.yaml`.
-- [ ] T035 Implement the fd-s3 process in `connectors/fd-s3/src/main.rs`, `connectors/fd-s3/src/server.rs`, and `connectors/fd-s3/src/config.rs`: serve Subsystem and CloudRemote on its socket, Register with CoreBridge, and accept Configure with routed connections and tmpfs secret files (research R23)
-- [ ] T036 Implement the fd-s3 object operations over object_store `AmazonS3Builder` in `connectors/fd-s3/src/ops.rs` (FR-117, research R23):
+- [X] T035 Implement the fd-s3 process in `connectors/fd-s3/src/main.rs`, `connectors/fd-s3/src/server.rs`, and `connectors/fd-s3/src/config.rs`: serve Subsystem and CloudRemote on its socket, Register with CoreBridge, and accept Configure with routed connections and tmpfs secret files (research R23)
+- [X] T036 Implement the fd-s3 object operations over object_store `AmazonS3Builder` in `connectors/fd-s3/src/ops.rs` (FR-117, research R23):
   - endpoint, region, and virtual-hosted style from the connection; HTTPS only; `S3ConditionalPut::ETagMatch`;
   - Stat and List;
   - Get with an expected SHA-256, failing with `DATA_LOSS` on a mismatch;
   - Put with OVERWRITE, CREATE_ONLY, and REPLACE_IF_MATCH, mapping failed conditions to `FAILED_PRECONDITION`;
   - Delete.
-- [ ] T037 Implement fd-s3 write integrity and retries in `connectors/fd-s3/src/integrity.rs`, `connectors/fd-s3/src/multipart.rs`, and `connectors/fd-s3/src/retry.rs`:
+- [X] T037 Implement fd-s3 write integrity and retries in `connectors/fd-s3/src/integrity.rs`, `connectors/fd-s3/src/multipart.rs`, and `connectors/fd-s3/src/retry.rs`:
   - a streaming SHA-256;
   - the provider checksum when supported, otherwise a read-back for objects up to 64 MiB;
   - multipart above 64 MiB with 16 MiB parts, aborted on any error;
   - backoff with jitter;
   - a conditional PUT is retried only after a re-read.
-- [ ] T038 Implement the fd-s3 Probe RPC in `connectors/fd-s3/src/probe.rs`, under the key prefix the Core passes (`_filedock/probe/<appliance-id>/<random>` at the bucket root): list; put with checksum fallback; get and compare; CREATE_ONLY twice, expecting 412; REPLACE_IF_MATCH with a wrong ETag, then the right one; delete; clock skew. With `read_only`, run only list and clock skew, and return `write_steps_run = false`. The connector never sweeps or probes on its own (FR-117, research R23). Write its manifest in `packaging/subsystems/fd-s3.yaml` (`s3-compatible`, `cloud.remote`, `conditionalWrites: true`, permissions `network.outbound` and `cloud.credentials`)
-- [ ] T039 Implement TestConnection, which stores a ConnectionTestResult on the connection, and the daily probe scheduler, in `core/crates/fd-connectors/src/test.rs`. Expose it in the Connectors service in `core/crates/filedock-core/src/api/connectors.rs` (FR-083, FR-117, Principle V):
+- [X] T038 Implement the fd-s3 Probe RPC in `connectors/fd-s3/src/probe.rs`, under the key prefix the Core passes (`_filedock/probe/<appliance-id>/<random>` at the bucket root): list; put with checksum fallback; get and compare; CREATE_ONLY twice, expecting 412; REPLACE_IF_MATCH with a wrong ETag, then the right one; delete; clock skew. With `read_only`, run only list and clock skew, and return `write_steps_run = false`. The connector never sweeps or probes on its own (FR-117, research R23). Write its manifest in `packaging/subsystems/fd-s3.yaml` (`s3-compatible`, `cloud.remote`, `conditionalWrites: true`, permissions `network.outbound` and `cloud.credentials`)
+- [X] T039 Implement TestConnection, which stores a ConnectionTestResult on the connection, and the daily probe scheduler, in `core/crates/fd-connectors/src/test.rs`. Expose it in the Connectors service in `core/crates/filedock-core/src/api/connectors.rs` (FR-083, FR-117, Principle V):
   - before each probe, read `owner.json` at the bucket root; if a location is owned there and this appliance isn't its Writer, probe with `read_only` and store conditional create and replace as not tested (`null`);
   - the same rules apply to the re-probe after a restore, so a Recovery reader writes nothing inside a location it doesn't own;
   - claim safety treats a not-tested result as not proven.
-- [ ] T040 Write the cross-connector layout contract test in `core/crates/fd-connectors/tests/cross_connector.rs`, against MinIO: write through fd-s3 and read through rclone, and the reverse, for every object kind (`owner.json`, `index.json`, keys, `.fdstate`, `.fdpkg`, as fixture blobs). Assert identical keys and bytes and no metadata dependence (FR-118, SC-024)
+- [X] T040 Write the cross-connector layout contract test in `core/crates/fd-connectors/tests/cross_connector.rs`, against MinIO: write through fd-s3 and read through rclone, and the reverse, for every object kind (`owner.json`, `index.json`, keys, `.fdstate`, `.fdpkg`, as fixture blobs). Assert identical keys and bytes and no metadata dependence (FR-118, SC-024)
 
 ### Management Service host
 
-- [ ] T041 Create the Management Service host in `management/src/FileDock.Management.Api/Program.cs` and `management/src/FileDock.Management.Api/Infrastructure/`: Kestrel HTTPS listeners from settings, `application/problem+json` errors, `/api/v1` route groups, `/health`, `If-Match` generation helpers, and pagination helpers
-- [ ] T042 Create the `app.db` EF Core SQLite context and the initial migration (Administrator, Session, ApiToken, AuditEntry, SetupState, Settings) in `management/src/FileDock.Management.Data/AppDbContext.cs` and `management/src/FileDock.Management.Data/Migrations/`
-- [ ] T043 [P] Implement the append-only audit writer (actor, action, target, time, result, with secret fields redacted) and the 90-day retention job in `management/src/FileDock.Management.Domain/Audit/AuditWriter.cs` and `management/src/FileDock.Management.Domain/Audit/AuditRetention.cs` (FR-059)
-- [ ] T044 [P] Implement Argon2id password hashing with the 12-character minimum policy in `management/src/FileDock.Management.Domain/Security/PasswordHasher.cs` (FR-022)
-- [ ] T045 Implement the Core gRPC client in `management/src/FileDock.Management.Core/CoreClient.cs`: a Unix-socket channel to `/run/filedock/core.sock`, `fd-interface-version`, `fd-actor`, and `fd-request-id` metadata, and mapping of gRPC status codes to problem+json
-- [ ] T046 [P] Implement the root-only admin socket `/run/filedock/management-admin.sock` (mode `0600`) and its endpoint group in `management/src/FileDock.Management.Api/AdminSocket/AdminSocketEndpoints.cs`
-- [ ] T047 [P] Create the `filedockctl` command framework (System.CommandLine, `--json`, exit codes from contracts/cli.md) in `management/src/FileDock.Management.Cli/Program.cs`
-- [ ] T048 [P] Create the web app shell in `web/src/main.tsx`, `web/src/App.tsx`, and `web/src/api/client.ts`: router, layout, a typed REST client with problem+json handling and the CSRF header, and TanStack Query setup
+- [X] T041 Create the Management Service host in `management/src/FileDock.Management.Api/Program.cs` and `management/src/FileDock.Management.Api/Infrastructure/`: Kestrel HTTPS listeners from settings, `application/problem+json` errors, `/api/v1` route groups, `/health`, `If-Match` generation helpers, and pagination helpers
+- [X] T042 Create the `app.db` EF Core SQLite context and the initial migration (Administrator, Session, ApiToken, AuditEntry, SetupState, Settings) in `management/src/FileDock.Management.Data/AppDbContext.cs` and `management/src/FileDock.Management.Data/Migrations/`
+- [X] T043 [P] Implement the append-only audit writer (actor, action, target, time, result, with secret fields redacted) and the 90-day retention job in `management/src/FileDock.Management.Domain/Audit/AuditWriter.cs` and `management/src/FileDock.Management.Domain/Audit/AuditRetention.cs` (FR-059)
+- [X] T044 [P] Implement Argon2id password hashing with the 12-character minimum policy in `management/src/FileDock.Management.Domain/Security/PasswordHasher.cs` (FR-022)
+- [X] T045 Implement the Core gRPC client in `management/src/FileDock.Management.Core/CoreClient.cs`: a Unix-socket channel to `/run/filedock/core.sock`, `fd-interface-version`, `fd-actor`, and `fd-request-id` metadata, and mapping of gRPC status codes to problem+json
+- [X] T046 [P] Implement the root-only admin socket `/run/filedock/management-admin.sock` (mode `0600`) and its endpoint group in `management/src/FileDock.Management.Api/AdminSocket/AdminSocketEndpoints.cs`
+- [X] T047 [P] Create the `filedockctl` command framework (System.CommandLine, `--json`, exit codes from contracts/cli.md) in `management/src/FileDock.Management.Cli/Program.cs`
+- [X] T048 [P] Create the web app shell in `web/src/main.tsx`, `web/src/App.tsx`, and `web/src/api/client.ts`: router, layout, a typed REST client with problem+json handling and the CSRF header, and TanStack Query setup
 
 ### Packaging
 
-- [ ] T049 Write the systemd units in `packaging/systemd/`:
+- [X] T049 Write the systemd units in `packaging/systemd/`:
   - `filedock-core.service` (root, `ProtectHome`, `PrivateTmp`);
   - `filedock-core.socket` (`core.sock`, `root:filedock-mgmt`, `0660`);
   - `filedock-extensions.socket`;
   - `filedock-management.service`.
-- [ ] T050 Create Debian packaging for `filedock-core`, `filedock-management`, and `filedock-builtins` in `packaging/debian/`. `filedock-builtins` is a metapackage pinning exact versions, and ships the fd-s3 binary and the built-in manifests to `/usr/share/filedock/subsystems/`
+- [X] T050 Create Debian packaging for `filedock-core`, `filedock-management`, and `filedock-builtins` in `packaging/debian/`. `filedock-builtins` is a metapackage pinning exact versions, and ships the fd-s3 binary and the built-in manifests to `/usr/share/filedock/subsystems/`
 
 **Checkpoint**: Foundation ready. User story implementation can begin.
 

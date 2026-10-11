@@ -1,0 +1,12 @@
+[Unit]
+Description=FileDock extension protocol socket
+
+[Socket]
+ListenStream=/run/filedock/extensions.sock
+SocketUser=root
+SocketGroup=root
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

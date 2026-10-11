@@ -1,0 +1,12 @@
+[Unit]
+Description=FileDock Core gRPC socket
+
+[Socket]
+ListenStream=/run/filedock/core.sock
+SocketUser=root
+SocketGroup=filedock-mgmt
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,3 +1,22 @@
-//! Native S3 cloud connector, served over the CloudRemote extension protocol.
+//! Native S3 connector (research R23).
 
-fn main() {}
+mod config;
+mod integrity;
+mod multipart;
+mod ops;
+mod probe;
+mod retry;
+mod server;
+
+use tracing_subscriber::EnvFilter;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+    let config = config::Config::from_env();
+    server::serve(config).await
+}

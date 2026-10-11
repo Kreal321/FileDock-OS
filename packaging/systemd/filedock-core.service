@@ -1,0 +1,23 @@
+[Unit]
+Description=FileDock Core Service
+After=network-online.target filedock-core.socket
+Requires=filedock-core.socket
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+ExecStart=/usr/lib/filedock/filedock-core
+Restart=on-failure
+RestartSec=2
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+StateDirectory=filedock-core filedock
+RuntimeDirectory=filedock
+RuntimeDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target
+Also=filedock-core.socket

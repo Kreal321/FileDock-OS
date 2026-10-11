@@ -10,3 +10,26 @@ name = "filedock-core"
 path = "src/main.rs"
 
 [dependencies]
+fd-alerts.workspace = true
+fd-api.workspace = true
+fd-connectors.workspace = true
+fd-journal.workspace = true
+fd-observe.workspace = true
+fd-reconcile.workspace = true
+fd-secrets.workspace = true
+fd-state.workspace = true
+fd-subsystems.workspace = true
+bytes.workspace = true
+libc.workspace = true
+prost-types.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true

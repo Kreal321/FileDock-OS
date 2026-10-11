@@ -3,12 +3,15 @@
   <PropertyGroup>
     <RootNamespace>FileDock.Management.Core</RootNamespace>
     <ProtoRoot>$(MSBuildThisFileDirectory)..\..\..\proto</ProtoRoot>
+    <!-- Generated gRPC stubs use proto package `filedock.core.v1` → `Filedock.Core.V1`. -->
+    <NoWarn>$(NoWarn);CA1708</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>

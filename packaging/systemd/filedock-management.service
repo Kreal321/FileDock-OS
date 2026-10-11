@@ -1,0 +1,21 @@
+[Unit]
+Description=FileDock Management Service
+After=network-online.target filedock-core.socket
+Wants=network-online.target filedock-core.socket
+
+[Service]
+Type=notify
+User=filedock-mgmt
+Group=filedock-mgmt
+ExecStart=/usr/lib/filedock/filedock-management
+Restart=on-failure
+RestartSec=2
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+StateDirectory=filedock-management
+RuntimeDirectory=filedock
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
