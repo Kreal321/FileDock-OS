@@ -31,6 +31,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
+      PROTOC_INCLUDE: /usr/include
     outputs:
       tag: ${{ steps.metadata.outputs.tag }}
       version: ${{ steps.metadata.outputs.version }}
@@ -42,7 +43,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates curl git sudo build-essential pkg-config libssl-dev \
-            protobuf-compiler dpkg-dev file xz-utils python3 libicu76 zlib1g gnupg
+            protobuf-compiler libprotobuf-dev dpkg-dev file xz-utils python3 libicu76 zlib1g gnupg
 
       - uses: actions/checkout@v5
         with:

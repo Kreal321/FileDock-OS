@@ -8,7 +8,7 @@ This guide proves the feature end to end on disposable VMs. Implementation detai
 ## Prerequisites
 
 - A Linux build host with Rust stable (edition 2024) and `cargo-nextest`, `protoc`
-  (`protobuf-compiler`, used by tonic-prost-build), the .NET 10 SDK, Node.js 22 LTS with `pnpm`,
+  (`protobuf-compiler` plus `libprotobuf-dev` on Debian, used by tonic-prost-build), the .NET 10 SDK, Node.js 22 LTS with `pnpm`,
   `buf`, `dpkg-dev`, and Python 3.12 with `uv`.
 - For the VM suite: libvirt with `virsh`, `virt-install`, and `qemu-img`, a Debian 13 amd64
   genericcloud qcow2 image (`FD_E2E_BASE_IMAGE`), and Docker for MinIO. See
