@@ -4,17 +4,20 @@ After=network-online.target filedock-core.socket
 Wants=network-online.target filedock-core.socket
 
 [Service]
-Type=notify
+Type=simple
 User=filedock-mgmt
 Group=filedock-mgmt
+WorkingDirectory=/usr/lib/filedock/management
+EnvironmentFile=/etc/filedock/management.env
 ExecStart=/usr/lib/filedock/filedock-management
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=2
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
 StateDirectory=filedock-management
-RuntimeDirectory=filedock
 UMask=0077
 
 [Install]

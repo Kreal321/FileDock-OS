@@ -15,7 +15,7 @@ MGMT_API := management/src/FileDock.Management.Api/FileDock.Management.Api.cspro
 MGMT_CLI := management/src/FileDock.Management.Cli/FileDock.Management.Cli.csproj
 MGMT_CORE := management/src/FileDock.Management.Core/FileDock.Management.Core.csproj
 
-.PHONY: all proto core web management packages \
+.PHONY: all proto core web management packages bundle \
         test test-core test-management test-web test-contracts test-e2e \
         lint clean
 
@@ -46,6 +46,9 @@ packages: core management
 		{ echo "packaging/debian/build-packages.sh does not exist yet (task T050)"; exit 1; }
 	packaging/debian/build-packages.sh $(DIST)
 
+bundle: packages
+	sudo packaging/debian/build-bundle.sh $(DIST)
+
 test: test-core test-management test-web test-contracts
 
 test-core:
@@ -62,7 +65,7 @@ test-web:
 test-contracts:
 	$(UV) run --project tests/contracts pytest tests/contracts
 
-# VM acceptance suite; needs libvirt, a Debian 13 image, and built packages in $(DIST).
+# VM acceptance: libvirt or FD_E2E_EXISTING_HOST; see phase3-testing.md for PVE.
 test-e2e:
 	$(UV) run --project tests/e2e pytest tests/e2e
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=FileDock native S3 connector
+After=filedock-core.service
+Wants=filedock-core.service
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/run/filedock/fd-s3.env
+ExecStart=/usr/lib/filedock/fd-s3
+Restart=on-failure
+RestartSec=2
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

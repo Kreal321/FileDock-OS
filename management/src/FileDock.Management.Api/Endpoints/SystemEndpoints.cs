@@ -4,7 +4,7 @@ namespace FileDock.Management.Api.Endpoints;
 
 public static class SystemEndpoints
 {
-    private static readonly string[] MissingChannelNotice = ["No notification channel is configured yet."];
+    private static readonly string[] _missingChannelNotice = ["No notification channel is configured yet."];
 
     public static RouteGroupBuilder MapSystem(this RouteGroupBuilder api)
     {
@@ -34,7 +34,7 @@ public static class SystemEndpoints
             components,
             stateProtectionWarning = status.StateProtectionWarning,
             notificationChannelMissing = status.NotificationChannelMissing,
-            notices = status.NotificationChannelMissing ? MissingChannelNotice : Array.Empty<string>(),
+            notices = status.NotificationChannelMissing ? _missingChannelNotice : Array.Empty<string>(),
         });
     }
 }

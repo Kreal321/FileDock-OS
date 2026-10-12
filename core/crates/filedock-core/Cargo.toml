@@ -29,6 +29,9 @@ tokio-stream.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
 tracing.workspace = true
+tower.workspace = true
+hyper-util.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

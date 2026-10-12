@@ -54,8 +54,8 @@ pub(crate) async fn empty_state() -> Result<Value, AdapterError> {
 pub(crate) fn systemd_health(unit: &str) -> Health {
     if !binary_present("systemctl") {
         return Health {
-            healthy: true,
-            detail: "systemd not available; health assumed for this host".into(),
+            healthy: false,
+            detail: "systemd is not available on this host".into(),
         };
     }
     if unit_active(unit) {
@@ -72,15 +72,19 @@ pub(crate) fn systemd_health(unit: &str) -> Health {
 }
 
 pub(crate) fn process_health(name: &str) -> Health {
-    if binary_present(name) {
+    if std::process::Command::new(name)
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+    {
         Health {
             healthy: true,
-            detail: format!("{name} is installed"),
+            detail: format!("{name} is ready for on-demand operations"),
         }
     } else {
         Health {
             healthy: false,
-            detail: format!("{name} is not installed"),
+            detail: format!("{name} could not execute --version"),
         }
     }
 }

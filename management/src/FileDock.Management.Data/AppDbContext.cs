@@ -37,6 +37,8 @@ public sealed class EfAuditStore(AppDbContext db) : IAuditStore
 
     public async Task DeleteOlderThanAsync(DateTimeOffset cutoff, CancellationToken cancellationToken = default)
     {
-        await db.AuditEntries.Where(e => e.At < cutoff).ExecuteDeleteAsync(cancellationToken);
+        var entries = await db.AuditEntries.AsNoTracking().ToListAsync(cancellationToken);
+        db.AuditEntries.RemoveRange(entries.Where(e => e.At < cutoff));
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

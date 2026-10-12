@@ -3,6 +3,7 @@
 mod api;
 mod config;
 mod proto_conv;
+mod runtime;
 
 use std::sync::Arc;
 

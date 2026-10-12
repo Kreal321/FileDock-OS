@@ -816,3 +816,17 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 - The [Story] label maps each task to spec.md for traceability.
 - Acceptance tests map one-to-one to quickstart.md sections and to the success criteria.
 - Commit after each task or logical group, and stop at each checkpoint to validate.
+
+
+## Phase 1–3 review repairs (before Phase 4)
+
+- [X] T185 Reject missing or incompatible binaries; ship the full .NET CLI/API and installer inputs in Debian packages.
+- [X] T186 Implement strict online/offline installation, checksum verification, complete dependency bundle and service startup.
+- [X] T187 Configure deployed HTTPS, database, admin socket and systemd service permissions; serve the first-run React assets.
+- [X] T188 Authenticate actual Core Unix peers and register/configure the native connector through CoreBridge.
+- [X] T189 Wire rclone RC, transient ExecStart types, routed credentials, connection probes and daily scheduling.
+- [X] T190 Recover from incomplete setup/lost generation responses; serialize first-admin creation and enforce confirmation groups.
+- [X] T191 Probe live connector health and reject unavailable systemd; repair Kopia manifest and frontend build blockers.
+- [X] T192 Replace the fake cross-connector assertion with explicit live I/O acceptance; add packaging and real Core/API regression checks.
+- [X] T193 Add browser first-run/healthy-dashboard/repair acceptance and document the complete PVE build/install/test commands.
+- [ ] T194 Run the Phase 3 independent acceptance on a fresh Debian 13 amd64 PVE VM, including reboot and repair, and record evidence before Phase 4. No VM target was supplied for the local implementation run.

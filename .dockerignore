@@ -1,0 +1,11 @@
+.git/
+node_modules/
+target/
+dist/
+bin/
+obj/
+.venv/
+**/__pycache__/
+*.log
+.env*
+coverage/

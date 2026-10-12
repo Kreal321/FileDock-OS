@@ -28,7 +28,16 @@ impl Config {
             release_version: env!("CARGO_PKG_VERSION"),
             mgmt_uid: std::env::var("FD_MGMT_UID")
                 .ok()
-                .and_then(|s| s.parse().ok()),
+                .and_then(|s| s.parse().ok())
+                .or_else(|| {
+                    let name = std::ffi::CString::new("filedock-mgmt").ok()?;
+                    let entry = unsafe { libc::getpwnam(name.as_ptr()) };
+                    if entry.is_null() {
+                        None
+                    } else {
+                        Some(unsafe { (*entry).pw_uid })
+                    }
+                }),
         }
     }
 }

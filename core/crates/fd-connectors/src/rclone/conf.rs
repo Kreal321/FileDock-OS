@@ -47,12 +47,12 @@ pub fn render_conf(remotes: &[RcloneRemote]) -> String {
 pub fn remotes_for(connections: &[(String, CloudConnectionSpec)]) -> Vec<RcloneRemote> {
     connections
         .iter()
-        .filter_map(|(id, spec)| match &spec.definition {
-            ConnectionDefinition::S3(s3) => Some(s3_remote(id, s3)),
-            ConnectionDefinition::Bound(_) => Some(RcloneRemote {
+        .map(|(id, spec)| match &spec.definition {
+            ConnectionDefinition::S3(s3) => s3_remote(id, s3),
+            ConnectionDefinition::Bound(_) => RcloneRemote {
                 name: id.clone(),
                 lines: vec![("type".into(), spec.provider_family.clone())],
-            }),
+            },
         })
         .collect()
 }

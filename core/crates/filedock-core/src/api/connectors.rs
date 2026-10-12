@@ -5,7 +5,6 @@ use fd_api::core::v1::{
     RouteChangeImpact, RouteChangeRequest, RouteTable, SetConnectorEnabledRequest,
     connectors_server::Connectors,
 };
-use fd_connectors::test::ConnectionTester;
 use fd_state::resources::{ConnectorRoutesSpec, ResourceSpec, RouteUse};
 use fd_state::{ResourceKind, ResourceRef};
 use tonic::{Request, Response, Status};
@@ -79,12 +78,10 @@ impl Connectors for ConnectorsSvc {
         request: Request<ConnectionRef>,
     ) -> Result<Response<ConnectionTestResult>, Status> {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
-        let _ = (
-            request.into_inner(),
-            ConnectionTester::probe_prefix("appliance", "rand"),
-            RouteUse::OwnedObjectStorage,
-        );
-        Ok(Response::new(ConnectionTestResult::default()))
+        let id = request.into_inner().connection_id;
+        Ok(Response::new(
+            crate::runtime::test_connection(&self.app, &id).await?,
+        ))
     }
 }
 

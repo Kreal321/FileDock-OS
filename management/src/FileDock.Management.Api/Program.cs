@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using FileDock.Management.Api.AdminSocket;
 using FileDock.Management.Api.Auth;
 using FileDock.Management.Api.Endpoints;
@@ -5,6 +6,7 @@ using FileDock.Management.Api.Infrastructure;
 using FileDock.Management.Api.Middleware;
 using FileDock.Management.Core;
 using FileDock.Management.Data;
+using FileDock.Management.Domain;
 using FileDock.Management.Domain.Admins;
 using FileDock.Management.Domain.Audit;
 using FileDock.Management.Domain.Security;
@@ -54,7 +56,16 @@ builder.WebHost.ConfigureKestrel(options =>
     {
         if (builder.Configuration.GetValue("Kestrel:UseHttps", false))
         {
-            listen.UseHttps();
+            var certificate = builder.Configuration["Kestrel:CertificatePath"];
+            var key = builder.Configuration["Kestrel:KeyPath"];
+            if (certificate is not null && key is not null)
+            {
+                listen.UseHttps(X509Certificate2.CreateFromPemFile(certificate, key));
+            }
+            else
+            {
+                listen.UseHttps();
+            }
         }
     });
     var adminSocket = builder.Configuration["AdminSocket:Path"];
@@ -69,11 +80,21 @@ app.UseFileDockProblemDetails();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<SetupLockMiddleware>();
+app.Use(async (context, next) =>
+{
+    if (!SessionAuthHandler.CsrfValid(context))
+    {
+        context.Response.StatusCode = 403;
+        await context.Response.WriteAsJsonAsync(new { title = "CSRF", status = 403, detail = "CSRF token missing or invalid." });
+        return;
+    }
+    await next(context);
+});
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 var api = app.MapGroup("/api/v1");
@@ -86,6 +107,15 @@ AdminSocketEndpoints.Map(app);
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+var adminSocketPath = builder.Configuration["AdminSocket:Path"];
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    if (!string.IsNullOrEmpty(adminSocketPath) && !OperatingSystem.IsWindows())
+    {
+        File.SetUnixFileMode(adminSocketPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+});
 
 app.Run();
 

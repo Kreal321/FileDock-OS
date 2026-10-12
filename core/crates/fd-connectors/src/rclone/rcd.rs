@@ -22,8 +22,15 @@ impl RcloneDaemon {
     }
 
     pub async fn ensure_running(&self) -> Result<(), String> {
+        if std::process::Command::new("systemctl")
+            .args(["is-active", "--quiet", "filedock-rclone.service"])
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            return Ok(());
+        }
         let mut props = std::collections::HashMap::new();
-        props.insert("Type".into(), "notify".into());
+        props.insert("Type".into(), "simple".into());
         props.insert(
             "ExecStart".into(),
             format!(

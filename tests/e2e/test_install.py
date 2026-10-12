@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -60,14 +61,47 @@ def test_check_only_passes_on_supported_host() -> None:
 
 @pytest.mark.usefixtures("vm_factory")
 def test_fresh_install_setup_and_sign_in(vm_factory) -> None:
-    if os.environ.get("FD_E2E_BASE_IMAGE", "") == "":
-        pytest.skip("VM acceptance prerequisites missing")
     vm = vm_factory()
     install = vm.install()
     assert install.returncode == 0
     assert "setup code" in install.stdout.lower() or "Open https://" in install.stdout
 
-    small = vm_factory(LOW_MEMORY_VM)
-    check = small.install("--check-only", check=False)
+    api = vm.api()
+    try:
+        assert api.get("/system/status").status_code == 423
+        for _ in range(5):
+            assert api.post("/setup/verify-code", json={"code": "wrong"}).status_code == 400
+        assert api.post("/setup/verify-code", json={"code": "wrong"}).status_code == 429
+    finally:
+        api.close()
+    # A console-issued replacement resets the throttle without waiting 15 minutes.
+    code = vm.sudo("filedockctl setup-code --json").stdout
+    browser_env = os.environ.copy()
+    browser_env.update(FD_BASE_URL=f"https://{vm.ip}", FD_SETUP_CODE=json.loads(code)["code"])
+    # Exercise the shipped SPA against the real Core and services on the VM.
+    browser = subprocess.run(
+        ["pnpm", "-C", str(REPO / "web"), "exec", "playwright", "test", "first-run.spec.ts"],
+        env=browser_env, capture_output=True, text=True, timeout=240,
+    )
+    assert browser.returncode == 0, browser.stdout + browser.stderr
+    repair = vm.install("--yes")
+    assert repair.returncode == 0
+    api = vm.api()
+    try:
+        signed_in = api.post("/auth/sign-in", json={
+            "username": browser_env.get("FD_TEST_ADMIN", "phase3-admin"),
+            "password": browser_env.get("FD_TEST_PASSWORD", "Phase3-Acceptance-Password!"),
+        })
+        signed_in.raise_for_status()
+        status = api.get("/system/status").raise_for_status().json()
+        assert status["applianceName"] == "phase3-test", "Repair must preserve desired state"
+    finally:
+        api.close()
+
+
+def test_low_memory_vm_refuses_install(vm_factory) -> None:
+    vm = vm_factory(LOW_MEMORY_VM)
+    check = vm.install("--check-only", check=False)
     assert check.returncode == 2
-    assert "2 GB RAM" in check.stdout or "RAM" in check.stdout
+    assert "2 GB RAM" in check.stdout
+    assert vm.sudo("test ! -f /etc/filedock/.installed", check=False).returncode == 0

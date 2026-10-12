@@ -14,7 +14,7 @@ public sealed class SetupCodeService(ISetupStore store)
 {
     public const string Awaiting = "AwaitingSetup";
     public const string Complete = "Complete";
-    private const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    private const string _alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
     public async Task<bool> IsCompleteAsync(CancellationToken cancellationToken = default)
     {
@@ -34,7 +34,7 @@ public sealed class SetupCodeService(ISetupStore store)
         var bytes = RandomNumberGenerator.GetBytes(8);
         for (var i = 0; i < raw.Length; i++)
         {
-            raw[i] = Alphabet[bytes[i] % Alphabet.Length];
+            raw[i] = _alphabet[bytes[i] % _alphabet.Length];
         }
 
         var code = new string(raw);

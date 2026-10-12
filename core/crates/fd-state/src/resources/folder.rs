@@ -117,13 +117,11 @@ impl ManagedFolderSpec {
                         "reference.relativePath",
                         "/.filedock is reserved for FileDock",
                     )),
-                Some(path) if path == "/.filedock-pool.json" => {
-                    issues.push(ValidationIssue::error(
-                        "reference.pool_root_reserved",
-                        "reference.relativePath",
-                        "the pool marker is reserved for FileDock",
-                    ))
-                }
+                Some("/.filedock-pool.json") => issues.push(ValidationIssue::error(
+                    "reference.pool_root_reserved",
+                    "reference.relativePath",
+                    "the pool marker is reserved for FileDock",
+                )),
                 Some(path) if is_clean_absolute(path) => {}
                 _ => issues.push(ValidationIssue::error(
                     "reference.path_invalid",

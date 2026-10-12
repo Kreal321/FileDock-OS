@@ -1,33 +1,26 @@
 //! gRPC interceptors (FR-009 to FR-011, research R5).
 
-use std::os::fd::AsRawFd;
-
 use tonic::metadata::MetadataMap;
 use tonic::service::Interceptor;
 use tonic::{Request, Status};
-
-pub const INTERFACE_VERSION: &str = "1.0";
 
 const VERSION: &str = "fd-interface-version";
 const ACTOR: &str = "fd-actor";
 const REQUEST_ID: &str = "fd-request-id";
 
-#[derive(Clone, Debug)]
-pub struct PeerInfo {
-    pub uid: Option<u32>,
-}
-
 #[derive(Clone)]
 pub struct InterfaceInterceptor {
-    pub version: &'static str,
     pub mgmt_uid: Option<u32>,
 }
 
 impl Interceptor for InterfaceInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        if let Some(peer) = request.extensions().get::<PeerInfo>()
-            && !peer_allowed(peer.uid, self.mgmt_uid)
-        {
+        let uid = request
+            .extensions()
+            .get::<tonic::transport::server::UdsConnectInfo>()
+            .and_then(|info| info.peer_cred.as_ref())
+            .map(|cred| cred.uid());
+        if !peer_allowed(uid, self.mgmt_uid) {
             return Err(Status::permission_denied(
                 "peer uid is not filedock-mgmt or root",
             ));
@@ -45,36 +38,9 @@ impl Interceptor for InterfaceInterceptor {
 
 pub fn peer_allowed(peer_uid: Option<u32>, mgmt_uid: Option<u32>) -> bool {
     match peer_uid {
-        None => true,
+        None => false,
         Some(0) => true,
         Some(uid) => mgmt_uid == Some(uid),
-    }
-}
-
-pub fn peer_uid_of(fd: impl AsRawFd) -> Option<u32> {
-    #[cfg(target_os = "linux")]
-    {
-        let mut cred = libc::ucred {
-            pid: 0,
-            uid: 0,
-            gid: 0,
-        };
-        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-        let rc = unsafe {
-            libc::getsockopt(
-                fd.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_PEERCRED,
-                &mut cred as *mut _ as *mut libc::c_void,
-                &mut len,
-            )
-        };
-        (rc == 0).then_some(cred.uid)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = fd;
-        None
     }
 }
 
@@ -144,6 +110,7 @@ mod tests {
 
     #[test]
     fn root_and_mgmt_are_allowed() {
+        assert!(!peer_allowed(None, Some(1000)));
         assert!(peer_allowed(Some(0), Some(1000)));
         assert!(peer_allowed(Some(1000), Some(1000)));
         assert!(!peer_allowed(Some(7), Some(1000)));

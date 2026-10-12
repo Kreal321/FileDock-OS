@@ -2,8 +2,10 @@ using FileDock.Management.Api.Auth;
 using FileDock.Management.Core;
 using FileDock.Management.Domain.Admins;
 using FileDock.Management.Domain.Audit;
+using FileDock.Management.Domain.Security;
 using FileDock.Management.Domain.Sessions;
 using FileDock.Management.Domain.Setup;
+using FileDock.Management.Domain.Stores;
 using Grpc.Core;
 
 namespace FileDock.Management.Api.Endpoints;
@@ -39,14 +41,32 @@ public static class SetupEndpoints
         }
     }
 
+    private static readonly SemaphoreSlim _setupGate = new(1, 1);
+
     private static async Task<IResult> Complete(
+        SetupCompleteRequest body, HttpContext context, SetupCodeService setup,
+        AdminService admins, SessionService sessions, ICoreGateway core, AuditWriter audit, IAdminStore adminStore)
+    {
+        await _setupGate.WaitAsync(context.RequestAborted);
+        try
+        {
+            return await CompleteInternal(body, context, setup, admins, sessions, core, audit, adminStore);
+        }
+        finally
+        {
+            _setupGate.Release();
+        }
+    }
+
+    private static async Task<IResult> CompleteInternal(
         SetupCompleteRequest body,
         HttpContext context,
         SetupCodeService setup,
         AdminService admins,
         SessionService sessions,
         ICoreGateway core,
-        AuditWriter audit)
+        AuditWriter audit,
+        IAdminStore adminStore)
     {
         try
         {
@@ -61,30 +81,51 @@ public static class SetupEndpoints
             return Problem(400, "Invalid setup code", ex.Message);
         }
 
-        var actor = "setup";
-        var requestId = Guid.NewGuid().ToString("N");
-        var admin = await admins.CreateAsync(body.AdminUsername ?? "", body.AdminPassword ?? "");
-        var issued = await sessions.CreateAsync(admin, ClientIp(context), context.Request.Headers.UserAgent);
-        AuthEndpoints.WriteCookies(context, issued);
+        catch (InvalidOperationException ex)
+        {
+            return Problem(409, "Setup already complete", ex.Message);
+        }
+
         try
         {
-            await core.ApplyApplianceNameAsync(body.ApplianceName ?? "filedock", actor, requestId);
+            PasswordHasher.EnsurePolicy(body.AdminPassword ?? "");
+            var username = (body.AdminUsername ?? "").Trim().ToLowerInvariant();
+            if (username.Length is < 1 or > 64 || string.IsNullOrWhiteSpace(body.ApplianceName))
+            {
+                return Problem(400, "Invalid setup", "Supply an appliance name and a username of 1–64 characters.");
+            }
+
+            // Resume a setup whose response was lost, without creating another administrator.
+            var existing = await adminStore.ListAsync();
+            FileDock.Management.Domain.Administrator? admin = null;
+            if (existing.Count > 0)
+            {
+                admin = await admins.AuthenticateAsync(username, body.AdminPassword ?? "");
+            }
+            var requestId = Guid.NewGuid().ToString("N");
+            await core.ApplyApplianceNameAsync(body.ApplianceName, "setup", requestId);
+            var key = await core.GenerateRecoveryKeyAsync($"admin:{username}", requestId);
+            admin ??= await admins.CreateAsync(username, body.AdminPassword ?? "");
+            var issued = await sessions.CreateAsync(admin, ClientIp(context), context.Request.Headers.UserAgent);
+            AuthEndpoints.WriteCookies(context, issued);
+            await audit.WriteAsync("Administrator", admin.Id.ToString(), admin.Username, "setup.administrator", "appliance", "Succeeded");
+            return Results.Ok(new
+            {
+                username = admin.Username,
+                applianceName = body.ApplianceName,
+                keyId = key.KeyId,
+                recoveryKey = key.RecoveryKey,
+                confirmGroupIndexes = key.ConfirmGroupIndexes,
+            });
         }
         catch (RpcException)
         {
-            // Core may be down during isolated Management tests; setup still proceeds.
+            return Problem(503, "Core unavailable", "Setup could not finish. Retry when the Core service is available.");
         }
-
-        var key = await core.GenerateRecoveryKeyAsync($"admin:{admin.Username}", requestId);
-        await audit.WriteAsync("Administrator", admin.Id.ToString(), admin.Username, "setup.complete", "appliance", "Succeeded");
-        return Results.Ok(new
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
         {
-            username = admin.Username,
-            applianceName = body.ApplianceName,
-            keyId = key.KeyId,
-            recoveryKey = key.RecoveryKey,
-            confirmGroupIndexes = key.ConfirmGroupIndexes,
-        });
+            return Problem(400, "Setup failed", ex.Message);
+        }
     }
 
     private static async Task<IResult> Confirm(

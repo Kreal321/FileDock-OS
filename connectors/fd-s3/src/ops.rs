@@ -1,11 +1,11 @@
-use object_store::aws::{AmazonS3Builder, S3ConditionalPut};
+use object_store::aws::{AmazonS3Builder, Checksum, S3ConditionalPut};
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload, UpdateVersion};
 use tonic::Status;
 
 use crate::config::{RoutedConnection, read_secret};
 use crate::integrity::{Hasher, READ_BACK_LIMIT, sha256_hex};
-use crate::multipart::{MULTIPART_THRESHOLD, PART_SIZE};
+use crate::multipart::{PART_SIZE, should_multipart};
 
 pub async fn store_for(conn: &RoutedConnection) -> Result<impl ObjectStore, Status> {
     if !conn.endpoint.starts_with("https://") {
@@ -13,7 +13,7 @@ pub async fn store_for(conn: &RoutedConnection) -> Result<impl ObjectStore, Stat
     }
     let access = read_secret(&conn.access_key_file).map_err(|e| Status::internal(e.to_string()))?;
     let secret = read_secret(&conn.secret_key_file).map_err(|e| Status::internal(e.to_string()))?;
-    AmazonS3Builder::new()
+    let builder = AmazonS3Builder::new()
         .with_access_key_id(access)
         .with_secret_access_key(secret)
         .with_endpoint(&conn.endpoint)
@@ -22,8 +22,16 @@ pub async fn store_for(conn: &RoutedConnection) -> Result<impl ObjectStore, Stat
         .with_virtual_hosted_style_request(conn.virtual_hosted)
         .with_allow_http(false)
         .with_conditional_put(S3ConditionalPut::ETagMatch)
-        .build()
-        .map_err(|e| Status::internal(e.to_string()))
+        .with_retry(object_store::RetryConfig {
+            max_retries: 4,
+            ..Default::default()
+        });
+    let builder = if conn.checksums {
+        builder.with_checksum_algorithm(Checksum::SHA256)
+    } else {
+        builder
+    };
+    builder.build().map_err(|e| Status::internal(e.to_string()))
 }
 
 pub async fn stat(store: &dyn ObjectStore, key: &str) -> Result<(u64, String), Status> {
@@ -57,7 +65,17 @@ pub async fn put(
     mode: PutMode,
     checksums: bool,
 ) -> Result<String, Status> {
-    if body.len() > MULTIPART_THRESHOLD {
+    if body.len() > READ_BACK_LIMIT && !checksums {
+        return Err(Status::failed_precondition(
+            "provider checksums are required for writes above the read-back limit",
+        ));
+    }
+    if should_multipart(body.len() as u64) {
+        if !matches!(mode, PutMode::Overwrite) {
+            return Err(Status::failed_precondition(
+                "conditional multipart writes are unsupported",
+            ));
+        }
         return put_multipart(store, key, body, mode).await;
     }
     let payload = PutPayload::from(body.clone());
@@ -137,5 +155,42 @@ pub fn put_mode(mode: i32, etag: &str) -> PutMode {
             version: None,
         }),
         _ => PutMode::Overwrite,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn create_only_preserves_existing_bytes_and_get_checks_digest() {
+        let store = object_store::memory::InMemory::new();
+        put(&store, "key", b"original".to_vec(), PutMode::Create, false)
+            .await
+            .unwrap();
+        let error = put(
+            &store,
+            "key",
+            b"replacement".to_vec(),
+            PutMode::Create,
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code(), tonic::Code::FailedPrecondition);
+        assert_eq!(
+            get(&store, "key", Some(&sha256_hex(b"original")))
+                .await
+                .unwrap()
+                .0,
+            b"original"
+        );
+        assert_eq!(
+            get(&store, "key", Some(&sha256_hex(b"wrong")))
+                .await
+                .unwrap_err()
+                .code(),
+            tonic::Code::DataLoss
+        );
     }
 }

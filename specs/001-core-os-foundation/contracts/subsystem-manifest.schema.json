@@ -272,7 +272,7 @@
     "cloud": {
       "type": "array",
       "minItems": 1,
-      "description": "Required when 'capabilities' includes cloud.remote or cloud.mount (FR-112). One entry per provider family the connector serves. Routes may target the connector only for these families and capabilities (FR-115).",
+      "description": "Required when 'capabilities' includes cloud.remote or cloud.mount (FR-112). One entry per provider family the connector serves. Routes may target the connector only for these families and capabilities (FR-115). Backup engines use backup.snapshot entries to declare repository families (FR-116).",
       "items": {
         "type": "object",
         "required": [
@@ -293,7 +293,8 @@
             "items": {
               "enum": [
                 "cloud.remote",
-                "cloud.mount"
+                "cloud.mount",
+                "backup.snapshot"
               ]
             }
           },
@@ -319,8 +320,20 @@
                   "not": {
                     "const": "s3-compatible"
                   }
+                },
+                "capabilities": {
+                  "contains": {
+                    "enum": [
+                      "cloud.remote",
+                      "cloud.mount"
+                    ]
+                  }
                 }
-              }
+              },
+              "required": [
+                "family",
+                "capabilities"
+              ]
             },
             "then": {
               "required": [

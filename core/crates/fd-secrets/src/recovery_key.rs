@@ -117,10 +117,17 @@ impl RecoveryKeyStore {
     }
 
     pub fn generate(&mut self, regenerate: bool) -> Result<GeneratedKey, RecoveryError> {
-        if !regenerate && self.body.keys.iter().any(|k| k.superseded_at.is_none()) {
+        if !regenerate
+            && self.body.pending.is_none()
+            && self.body.keys.iter().any(|k| k.superseded_at.is_none())
+        {
             return Err(RecoveryError::Failed(
                 "a recovery key already exists; pass regenerate to replace it".into(),
             ));
+        }
+        if !regenerate && self.body.pending.is_some() {
+            self.body.keys.retain(|k| k.superseded_at.is_some());
+            self.body.pending = None;
         }
         if regenerate {
             let now = now_rfc3339();
@@ -139,9 +146,9 @@ impl RecoveryKeyStore {
         let nonce = random_bytes::<NONCE_LEN>();
         let snapshot = hex::decode(&self.body.snapshot_key)
             .map_err(|e| RecoveryError::Crypto(e.to_string()))?;
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&wrap));
+        let cipher = XChaCha20Poly1305::new(&Key::from(wrap));
         let wrapped = cipher
-            .encrypt(XNonce::from_slice(&nonce), snapshot.as_ref())
+            .encrypt(&XNonce::from(nonce), snapshot.as_ref())
             .map_err(|e| RecoveryError::Crypto(e.to_string()))?;
         let key_id = hex::encode(&Sha256::digest(formatted.as_bytes())[..8]);
         let info = RecoveryKeyInfo {
@@ -177,6 +184,9 @@ impl RecoveryKeyStore {
         key_id: &str,
         groups: &BTreeMap<u32, String>,
     ) -> Result<(), RecoveryError> {
+        if self.body.pending.is_none() && self.current().is_some_and(|k| k.key_id == key_id) {
+            return Ok(());
+        }
         let pending = self
             .body
             .pending
@@ -215,22 +225,22 @@ impl RecoveryKeyStore {
     fn persist(&self) -> Result<(), RecoveryError> {
         let plaintext = serde_json::to_vec(&self.body)?;
         let nonce = random_bytes::<NONCE_LEN>();
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&self.dek));
+        let cipher = XChaCha20Poly1305::new(&Key::from(self.dek));
         let ciphertext = cipher
-            .encrypt(XNonce::from_slice(&nonce), plaintext.as_ref())
+            .encrypt(&XNonce::from(nonce), plaintext.as_ref())
             .map_err(|e| RecoveryError::Crypto(e.to_string()))?;
         let mut file = Vec::new();
         file.extend_from_slice(&nonce);
         file.extend_from_slice(&ciphertext);
-        if self.path.exists() {
-            let _ = fs::remove_file(&self.path);
-        }
         let mut out = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .mode(0o600)
-            .open(&self.path)?;
+            .open(self.path.with_extension("tmp"))?;
         out.write_all(&file)?;
+        out.sync_all()?;
+        fs::rename(self.path.with_extension("tmp"), &self.path)?;
         Ok(())
     }
 }
@@ -240,9 +250,12 @@ fn decrypt_body(bytes: &[u8], dek: &[u8; SNAPSHOT_KEY_LEN]) -> Result<FileBody, 
         return Err(RecoveryError::Crypto("truncated recovery store".into()));
     }
     let (nonce, rest) = bytes.split_at(NONCE_LEN);
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(dek));
+    let cipher = XChaCha20Poly1305::new(&Key::from(*dek));
     let plaintext = cipher
-        .decrypt(XNonce::from_slice(nonce), rest)
+        .decrypt(
+            &XNonce::try_from(nonce).map_err(|e| RecoveryError::Crypto(e.to_string()))?,
+            rest,
+        )
         .map_err(|e| RecoveryError::Crypto(e.to_string()))?;
     Ok(serde_json::from_slice(&plaintext)?)
 }
@@ -353,7 +366,27 @@ mod tests {
             provided.insert(*index, groups[*index as usize].clone());
         }
         store.confirm(&generated.key_id, &provided).unwrap();
+        store.confirm(&generated.key_id, &provided).unwrap();
         assert!(store.current().is_some());
+    }
+
+    #[test]
+    fn lost_response_replaces_only_unconfirmed_key() {
+        unsafe { std::env::set_var("FD_RECOVERY_ARGON_KIB", "8") };
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = RecoveryKeyStore::open(dir.path().join("rk.enc"), &[3u8; 32]).unwrap();
+        let lost = store.generate(false).unwrap();
+        let retry = store.generate(false).unwrap();
+        assert_ne!(lost.key_id, retry.key_id);
+        let groups = groups_of(&retry.recovery_key);
+        let provided = retry
+            .confirm_group_indexes
+            .iter()
+            .map(|i| (*i, groups[*i as usize].clone()))
+            .collect();
+        assert!(store.confirm(&lost.key_id, &provided).is_err());
+        store.confirm(&retry.key_id, &provided).unwrap();
+        assert!(store.generate(false).is_err());
     }
 
     #[test]

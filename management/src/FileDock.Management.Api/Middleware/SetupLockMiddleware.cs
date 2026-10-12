@@ -26,7 +26,10 @@ public sealed class SetupLockMiddleware(RequestDelegate next)
 
     private static bool IsOpen(string path)
     {
-        return path.StartsWith("/setup", StringComparison.OrdinalIgnoreCase)
+        return path == "/"
+            || path.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/setup", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/setup", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/health", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/v1/health", StringComparison.OrdinalIgnoreCase)

@@ -5,6 +5,7 @@ mod integrity;
 mod multipart;
 mod ops;
 mod probe;
+#[cfg(test)]
 mod retry;
 mod server;
 

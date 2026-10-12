@@ -1,0 +1,409 @@
+//! Runtime wiring for the Phase 2 built-in connectors.
+use crate::{api::App, proto_conv::value_to_struct};
+use fd_api::extension::v1 as ext;
+use fd_connectors::routes::resolve;
+use fd_state::{
+    ResourceKind, ResourceRef,
+    resources::{ConnectionDefinition, ResourceSpec, RouteTarget, RouteUse},
+};
+use serde_json::json;
+use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
+use tonic::{
+    Status,
+    transport::{Channel, Endpoint},
+};
+
+pub async fn channel(path: impl AsRef<Path>) -> Result<Channel, Status> {
+    let path = path.as_ref().to_path_buf();
+    Endpoint::from_static("http://localhost")
+        .timeout(Duration::from_secs(30))
+        .connect_with_connector(tower::service_fn(move |_| {
+            let path = path.clone();
+            async move {
+                tokio::net::UnixStream::connect(path)
+                    .await
+                    .map(hyper_util::rt::TokioIo::new)
+            }
+        }))
+        .await
+        .map_err(|_| Status::unavailable("connector.unavailable"))
+}
+
+pub fn s3_socket(app: &App) -> std::path::PathBuf {
+    app.config
+        .socket
+        .parent()
+        .unwrap_or(Path::new("/run/filedock"))
+        .join("fd-s3.sock")
+}
+
+pub async fn configure(app: &App) -> Result<(), Status> {
+    let routes_row = app
+        .store
+        .get(&ResourceRef::singleton(ResourceKind::ConnectorRoutes))
+        .map_err(internal)?
+        .ok_or_else(|| Status::not_found("ConnectorRoutes"))?;
+    let ResourceSpec::ConnectorRoutes(routes) = routes_row
+        .parsed_spec()
+        .map_err(|_| Status::internal("invalid routes"))?
+    else {
+        return Err(Status::internal("invalid routes"));
+    };
+    let rows = app
+        .store
+        .list(ResourceKind::CloudConnection, None, usize::MAX / 2)
+        .map_err(internal)?;
+    let mut recipients: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut s3 = Vec::new();
+    let mut rclone_connections = Vec::new();
+    for row in rows {
+        let ResourceSpec::CloudConnection(connection) = row
+            .parsed_spec()
+            .map_err(|_| Status::internal("invalid connection"))?
+        else {
+            continue;
+        };
+        let refs = match &connection.definition {
+            ConnectionDefinition::S3(def) => {
+                vec![def.access_key_ref.clone(), def.secret_key_ref.clone()]
+            }
+            ConnectionDefinition::Bound(def) => def.credentials.clone(),
+        };
+        let mut targets = std::collections::BTreeSet::new();
+        for use_kind in [
+            RouteUse::OwnedObjectStorage,
+            RouteUse::BackupRepository,
+            RouteUse::CloudMount,
+        ] {
+            if !use_kind.allowed_for_family(&connection.provider_family) {
+                continue;
+            }
+            if let Ok(target) = resolve(
+                &routes,
+                Some(&connection),
+                &connection.provider_family,
+                use_kind,
+            ) {
+                targets.insert(match target {
+                    RouteTarget::Connector { subsystem_id } => subsystem_id,
+                    RouteTarget::BackupEngine => "backup-engine".into(),
+                });
+            }
+        }
+        for target in &targets {
+            recipients
+                .entry(target.clone())
+                .or_default()
+                .extend(refs.clone());
+        }
+        if targets.contains("fd-s3")
+            && let ConnectionDefinition::S3(def) = &connection.definition
+        {
+            s3.push(json!({"id": row.resource.id, "endpoint": def.endpoint, "region": def.region, "bucket": def.bucket,
+                    "virtual_hosted": def.addressing_style == fd_state::resources::AddressingStyle::Virtual,
+                    "access_key_ref": def.access_key_ref, "secret_key_ref": def.secret_key_ref, "checksums": false}));
+        }
+        if targets.contains("rclone") {
+            rclone_connections.push((row.resource.id, connection));
+        }
+    }
+    let secrets = app.secrets.lock().await;
+    let mut secret_files = BTreeMap::new();
+    for target in ["fd-s3", "rclone", "backup-engine"] {
+        let references = recipients.get(target).cloned().unwrap_or_default();
+        let files = fd_secrets::materialize(&secrets, &app.config.secrets_run, target, &references)
+            .map_err(internal)?;
+        if target == "fd-s3" {
+            for (reference, path) in references.iter().zip(files.files) {
+                secret_files.insert(reference.clone(), path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    let mut remotes = fd_connectors::rclone::conf::remotes_for(&rclone_connections);
+    for remote in &mut remotes {
+        let spec = &rclone_connections
+            .iter()
+            .find(|(id, _)| *id == remote.name)
+            .unwrap()
+            .1;
+        if let ConnectionDefinition::S3(def) = &spec.definition {
+            remote.lines.push((
+                "access_key_id".into(),
+                String::from_utf8(secrets.get(&def.access_key_ref).map_err(internal)?.to_vec())
+                    .map_err(internal)?,
+            ));
+            remote.lines.push((
+                "secret_access_key".into(),
+                String::from_utf8(secrets.get(&def.secret_key_ref).map_err(internal)?.to_vec())
+                    .map_err(internal)?,
+            ));
+        }
+    }
+    drop(secrets);
+    let conf = fd_connectors::rclone::conf::render_conf(&remotes);
+    let path = app.config.socket.parent().unwrap().join("rclone.conf");
+    let changed = std::fs::read_to_string(&path).ok().as_deref() != Some(conf.as_str());
+    if changed {
+        write_private(&path, conf.as_bytes()).map_err(internal)?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let daemon = fd_connectors::rclone::rcd::RcloneDaemon::new(
+            fd_subsystems::systemd::Systemd::default(),
+            &path,
+        );
+        daemon.ensure_running().await.map_err(internal)?;
+        if changed {
+            fd_subsystems::systemd::Systemd::default()
+                .restart("filedock-rclone.service")
+                .await
+                .map_err(internal)?;
+        }
+    }
+    let mut client = ext::subsystem_client::SubsystemClient::new(channel(s3_socket(app)).await?);
+    let response = client
+        .configure(ext::ConfigureRequest {
+            config: Some(value_to_struct(&json!({"connections": s3}))),
+            secret_files: secret_files.into_iter().collect(),
+            data_paths: Default::default(),
+        })
+        .await?
+        .into_inner();
+    if !response.accepted {
+        return Err(Status::failed_precondition(
+            "connector configuration rejected",
+        ));
+    }
+    Ok(())
+}
+
+pub async fn test_connection(
+    app: &App,
+    id: &str,
+) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
+    configure(app).await?;
+    let reference = ResourceRef::new(ResourceKind::CloudConnection, id);
+    let row = app
+        .store
+        .get(&reference)
+        .map_err(internal)?
+        .ok_or_else(|| Status::not_found("connection"))?;
+    let ResourceSpec::CloudConnection(connection) = row
+        .parsed_spec()
+        .map_err(|_| Status::internal("invalid connection"))?
+    else {
+        return Err(Status::internal("invalid connection"));
+    };
+    let routes = app
+        .store
+        .get(&ResourceRef::singleton(ResourceKind::ConnectorRoutes))
+        .map_err(internal)?
+        .unwrap();
+    let ResourceSpec::ConnectorRoutes(routes) = routes
+        .parsed_spec()
+        .map_err(|_| Status::internal("invalid routes"))?
+    else {
+        return Err(Status::internal("invalid routes"));
+    };
+    let connector = fd_connectors::ConnectionTester::routed_connector(
+        &routes,
+        &connection,
+        RouteUse::OwnedObjectStorage,
+    )
+    .map_err(internal)?;
+    if connector != "fd-s3" {
+        return test_rclone(app, &reference, &connection).await;
+    }
+    let mut client =
+        ext::cloud_remote_client::CloudRemoteClient::new(channel(s3_socket(app)).await?);
+    let owner = match client
+        .get(ext::GetObjectRequest {
+            r#ref: Some(ext::ObjectRef {
+                connection_id: id.into(),
+                key: "owner.json".into(),
+            }),
+            ..Default::default()
+        })
+        .await
+    {
+        Ok(response) => {
+            let (bytes, _) =
+                fd_connectors::client::CloudRemoteClient::get_verified(response.into_inner())
+                    .await
+                    .map_err(internal)?;
+            Some(
+                serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|_| {
+                    Status::failed_precondition("invalid owner.json; writes refused")
+                })?,
+            )
+        }
+        Err(error) if error.code() == tonic::Code::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let read_only = owner.as_ref().is_some_and(|v| {
+        v.get("applianceId").and_then(|v| v.as_str()) != Some(app.appliance_id.as_str())
+    });
+    let result = client
+        .probe(ext::ProbeRequest {
+            connection_id: id.into(),
+            prefix: format!(
+                "_filedock/probe/{}/{}",
+                app.appliance_id,
+                uuid::Uuid::now_v7()
+            ),
+            read_only,
+        })
+        .await?
+        .into_inner();
+    save_probe(app, &reference, "fd-s3", result)
+}
+
+async fn test_rclone(
+    app: &App,
+    reference: &ResourceRef,
+    connection: &fd_state::resources::CloudConnectionSpec,
+) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
+    let bucket = match &connection.definition {
+        ConnectionDefinition::S3(s3) => &s3.bucket,
+        _ => "",
+    };
+    let remote = if bucket.is_empty() {
+        reference.id.clone()
+    } else {
+        format!("{}:{}", reference.id, bucket)
+    };
+    let adapter = fd_connectors::rclone::adapter::RcloneAdapter::new();
+    // Fail closed on any ownership read error other than a known missing object.
+    let owner = adapter.read(&remote, "owner.json").await;
+    let read_only = match owner {
+        Ok(bytes) => {
+            serde_json::from_slice::<serde_json::Value>(&bytes)
+                .map_err(internal)?
+                .get("applianceId")
+                .and_then(|v| v.as_str())
+                != Some(app.appliance_id.as_str())
+        }
+        Err(error) if error.contains("404") || error.contains("object not found") => false,
+        Err(error) => return Err(internal(error)),
+    };
+    let prefix = format!(
+        "_filedock/probe/{}/{}",
+        app.appliance_id,
+        uuid::Uuid::now_v7()
+    );
+    adapter.list(&remote, "").await.map_err(internal)?;
+    let mut checks = vec![ext::ProbeCheck {
+        name: "list".into(),
+        ok: true,
+        detail: String::new(),
+    }];
+    if !read_only {
+        adapter
+            .write_verified(&remote, &prefix, b"filedock-probe")
+            .await
+            .map_err(internal)?;
+        adapter
+            .deletefile(&remote, &prefix)
+            .await
+            .map_err(internal)?;
+        checks.push(ext::ProbeCheck {
+            name: "write-read-delete".into(),
+            ok: true,
+            detail: String::new(),
+        });
+    }
+    save_probe(
+        app,
+        reference,
+        "rclone",
+        ext::ProbeResult {
+            checks,
+            write_steps_run: !read_only,
+            ..Default::default()
+        },
+    )
+}
+
+fn save_probe(
+    app: &App,
+    reference: &ResourceRef,
+    connector: &str,
+    probe: ext::ProbeResult,
+) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
+    let now = fd_state::db::now_text();
+    let stored = fd_connectors::StoredTestResult::from_probe(connector, now.clone(), &probe);
+    app.store
+        .write_status(reference, &json!({"lastTest": stored}))
+        .map_err(internal)?;
+    let at = fd_state::db::parse_timestamp(&now).unwrap();
+    Ok(fd_api::core::v1::ConnectionTestResult {
+        tested_at: Some(prost_types::Timestamp {
+            seconds: at.timestamp(),
+            nanos: 0,
+        }),
+        connector_id: connector.into(),
+        checks: probe
+            .checks
+            .into_iter()
+            .map(|c| fd_api::core::v1::ConnectionCheck {
+                name: c.name,
+                ok: c.ok,
+                detail: c.detail,
+            })
+            .collect(),
+        conditional_create: probe.conditional_create,
+        conditional_replace: probe.conditional_replace,
+        provider_checksums: probe.provider_checksums,
+        clock_skew_ms: probe.clock_skew_ms,
+    })
+}
+
+pub async fn run(app: Arc<App>) {
+    #[cfg(target_os = "linux")]
+    if let Err(error) = fd_subsystems::systemd::Systemd::default()
+        .restart("filedock-s3.service")
+        .await
+    {
+        tracing::error!(%error, "could not start fd-s3");
+    }
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    let mut last_probe = std::time::Instant::now() - Duration::from_secs(86400);
+    loop {
+        interval.tick().await;
+        if let Err(error) = configure(&app).await {
+            tracing::warn!(%error, "connector configuration pending");
+            continue;
+        }
+        if last_probe.elapsed() >= Duration::from_secs(86400) {
+            if let Ok(rows) = app
+                .store
+                .list(ResourceKind::CloudConnection, None, usize::MAX / 2)
+            {
+                for row in rows {
+                    if let Err(error) = test_connection(&app, &row.resource.id).await {
+                        tracing::warn!(%error, connection = %row.resource.id, "daily connection probe failed");
+                    }
+                }
+            }
+            last_probe = std::time::Instant::now();
+        }
+    }
+}
+
+pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let tmp = path.with_extension("tmp");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .mode(0o600)
+        .open(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    std::fs::rename(tmp, path)
+}
+fn internal(error: impl std::fmt::Display) -> Status {
+    Status::internal(error.to_string())
+}

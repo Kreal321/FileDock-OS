@@ -107,9 +107,23 @@ impl Systemd {
         let conn = zbus::Connection::system()
             .await
             .map_err(|e| AdapterError::Failed(e.to_string()))?;
+        if properties
+            .get("ExecStart")
+            .is_some_and(|v| v.trim().is_empty())
+        {
+            return Err(AdapterError::Failed("ExecStart must not be empty".into()));
+        }
         let props: Vec<(String, zbus::zvariant::Value<'_>)> = properties
             .iter()
-            .map(|(k, v)| (k.clone(), zbus::zvariant::Value::from(v.as_str())))
+            .map(|(k, v)| {
+                let value = if k == "ExecStart" {
+                    let args: Vec<String> = v.split_whitespace().map(str::to_owned).collect();
+                    zbus::zvariant::Value::from(vec![(args[0].clone(), args, false)])
+                } else {
+                    zbus::zvariant::Value::from(v.as_str())
+                };
+                (k.clone(), value)
+            })
             .collect();
         conn.call_method(
             Some("org.freedesktop.systemd1"),
@@ -120,7 +134,7 @@ impl Systemd {
                 name,
                 "replace",
                 props,
-                Vec::<(String, Vec<zbus::zvariant::OwnedValue>)>::new(),
+                Vec::<(String, Vec<(String, zbus::zvariant::OwnedValue)>)>::new(),
             ),
         )
         .await

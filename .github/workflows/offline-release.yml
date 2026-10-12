@@ -1,0 +1,177 @@
+name: Offline bundle release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Mark this release as a testing prerelease
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offline-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Debian 13 amd64 bundle
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+      archive: ${{ steps.metadata.outputs.archive }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - name: Install Debian build prerequisites
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git sudo build-essential pkg-config libssl-dev \
+            protobuf-compiler dpkg-dev file xz-utils python3 libicu76 zlib1g gnupg
+
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Select package version and release tag
+        id: metadata
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TAG: ${{ github.ref_name }}
+          TEST_RELEASE: ${{ inputs.prerelease }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
+          if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+              raise SystemExit('Use a numeric x.y.z workspace version for Debian release packages.')
+          if os.environ['EVENT_NAME'] == 'push':
+              tag = os.environ['REF_TAG']
+              if tag != f'v{version}':
+                  raise SystemExit(f'Tag must be v{version}, matching Cargo.toml.')
+              prerelease = 'false'
+          else:
+              tag = f'test-{version}-{os.environ["GITHUB_RUN_NUMBER"]}-{os.environ["GITHUB_RUN_ATTEMPT"]}'
+              prerelease = 'true' if os.environ['TEST_RELEASE'] == 'true' else 'false'
+          archive = f'filedock-offline-{tag}-debian13-amd64.tar.gz'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\ntag={tag}\narchive={archive}\nprerelease={prerelease}\n')
+          PY
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Rust and pnpm
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh
+          bash /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          npm install --global pnpm@10.11.0
+
+      - name: Build Core, React, .NET and offline dependencies
+        env:
+          FD_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          make bundle RID=linux-x64 CONFIG=Release
+
+      - name: Archive the installable bundle
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          mkdir -p release/bundle
+          cp dist/*.deb dist/install.sh dist/versions.lock dist/RELEASE_VERSION dist/SHA256SUMS release/bundle/
+          printf 'Release: %s\nPackage version: %s\nCommit: %s\nTarget: Debian 13 amd64\n' \
+            "$RELEASE_TAG" "$PACKAGE_VERSION" "$GITHUB_SHA" > release/bundle/BUILD.txt
+          (cd release/bundle && sha256sum -c SHA256SUMS)
+          tar --sort=name --owner=0 --group=0 --numeric-owner -czf "release/$ARCHIVE" -C release/bundle .
+          (cd release && sha256sum "$ARCHIVE" > "$ARCHIVE.sha256")
+
+      - name: Save release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-release-assets
+          path: |
+            release/*.tar.gz
+            release/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish downloadable GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: offline-release-assets
+          path: release
+
+      - name: Publish bundle and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          ARCHIVE: ${{ needs.build.outputs.archive }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF_NOTES
+          FileDock offline test bundle for a fresh Debian 13 amd64 VM.
+
+          Source commit: $SOURCE_COMMIT
+
+          Download the archive and its .sha256 file from this release. On the target VM:
+
+          \`\`\`bash
+          sha256sum -c "$ARCHIVE.sha256"
+          mkdir -p filedock-bundle
+          tar -xzf "$ARCHIVE" -C filedock-bundle
+          cd filedock-bundle
+          sudo bash install.sh --offline-bundle "\$PWD" --check-only
+          sudo bash install.sh --offline-bundle "\$PWD"
+          \`\`\`
+
+          The installer prints the HTTPS UI address and one-time setup code. Complete setup, save and confirm the recovery key, sign out and sign in, and check all eight health cards. This build does not certify the fresh-VM acceptance test.
+          EOF_NOTES
+          args=(--repo "$GH_REPO" --title "FileDock $RELEASE_TAG offline bundle" --notes-file release-notes.md --latest=false)
+          if [[ "$EVENT_NAME" == push ]]; then
+            args+=(--verify-tag)
+          else
+            args+=(--target "$SOURCE_COMMIT")
+          fi
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256" "${args[@]}"
+          printf '### Download the offline bundle\n\n[Release assets](https://github.com/%s/releases/tag/%s)\n' "$GH_REPO" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

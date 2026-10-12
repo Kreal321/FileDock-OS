@@ -8,7 +8,7 @@ use fd_api::core::v1::{
     core_control_server::CoreControl,
 };
 use fd_journal::OperationState;
-use fd_state::{ApplyError, Change, ChangeOrigin, ResourceKind};
+use fd_state::{ApplyError, Change, ChangeOrigin};
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
@@ -200,7 +200,7 @@ impl CoreControl for CoreControlSvc {
             .events
             .after(after, 1000)
             .map_err(|e| Status::internal(e.to_string()))?;
-        let mut rx = self.app.events.subscribe();
+        let rx = self.app.events.subscribe();
         let stream = async_stream(backlog, rx);
         Ok(Response::new(Box::pin(stream)))
     }
@@ -208,7 +208,7 @@ impl CoreControl for CoreControlSvc {
 
 fn async_stream(
     backlog: Vec<fd_observe::Event>,
-    mut rx: tokio::sync::broadcast::Receiver<fd_observe::Event>,
+    rx: tokio::sync::broadcast::Receiver<fd_observe::Event>,
 ) -> impl Stream<Item = Result<pb::Event, Status>> {
     async_stream_impl(backlog, rx)
 }

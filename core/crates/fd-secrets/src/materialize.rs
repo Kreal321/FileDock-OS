@@ -35,18 +35,18 @@ pub fn materialize(
         keep.insert(name.clone());
         let path = dir.join(&name);
         let plaintext = store.get(reference)?;
-        let _ = fs::remove_file(&path);
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .mode(0o400)
-            .open(&path)?;
+            .open(path.with_extension("tmp"))?;
         file.write_all(&plaintext)?;
         file.sync_all()?;
         let mut perms = file.metadata()?.permissions();
         perms.set_mode(0o400);
-        fs::set_permissions(&path, perms)?;
+        fs::set_permissions(path.with_extension("tmp"), perms)?;
+        fs::rename(path.with_extension("tmp"), &path)?;
         files.push(path);
     }
     if dir.exists() {

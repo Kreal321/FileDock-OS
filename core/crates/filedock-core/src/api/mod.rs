@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod connectors;
 pub mod control;
 pub mod interceptors;
@@ -35,6 +36,8 @@ use self::secrets::SecretsSvc;
 
 pub struct App {
     pub config: Config,
+    pub appliance_id: String,
+    pub extension_token: String,
     pub store: Arc<StateStore>,
     pub journal: Arc<Journal>,
     pub events: Arc<EventBus>,
@@ -55,8 +58,19 @@ pub async fn serve(
     subsystems: SubsystemRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = bind_socket(&config.socket)?;
+    let appliance_id = store.db().with(|conn| {
+        if let Some(id) = fd_state::db::get_setting(conn, "appliance_id")? {
+            return Ok::<_, fd_state::db::DbError>(id.as_str().unwrap_or_default().to_owned());
+        }
+        let id = uuid::Uuid::now_v7().to_string();
+        fd_state::db::put_setting(conn, "appliance_id", &serde_json::json!(id))?;
+        Ok(id)
+    })?;
+    let extension_token = uuid::Uuid::new_v4().to_string();
     let app = Arc::new(App {
         config: config.clone(),
+        appliance_id,
+        extension_token,
         store,
         journal,
         events,
@@ -65,8 +79,40 @@ pub async fn serve(
         recovery: Arc::new(Mutex::new(recovery)),
         subsystems,
     });
+    let bridge_path = config.socket.parent().unwrap().join("extensions.sock");
+    let _ = std::fs::remove_file(&bridge_path);
+    let bridge_listener = UnixListener::bind(&bridge_path)?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&bridge_path, std::fs::Permissions::from_mode(0o600))?;
+    let bridge_app = app.clone();
+    tokio::spawn(async move {
+        if let Err(error) = Server::builder()
+            .add_service(
+                fd_api::extension::v1::core_bridge_server::CoreBridgeServer::new(bridge::Bridge {
+                    app: bridge_app,
+                }),
+            )
+            .serve_with_incoming(UnixListenerStream::new(bridge_listener))
+            .await
+        {
+            tracing::error!(%error, "CoreBridge stopped");
+        }
+    });
+    if cfg!(target_os = "linux") && std::env::var("FD_RUNTIME_ENABLED").as_deref() != Ok("0") {
+        let env_path = config.socket.parent().unwrap().join("fd-s3.env");
+        crate::runtime::write_private(
+            &env_path,
+            format!(
+                "FD_EXTENSION_TOKEN={}\nFD_CORE_SOCKET={}\nFD_S3_SOCKET={}\n",
+                app.extension_token,
+                bridge_path.display(),
+                crate::runtime::s3_socket(&app).display()
+            )
+            .as_bytes(),
+        )?;
+        tokio::spawn(crate::runtime::run(app.clone()));
+    }
     let interceptor = InterfaceInterceptor {
-        version: config.interface_version,
         mgmt_uid: config.mgmt_uid,
     };
     Server::builder()

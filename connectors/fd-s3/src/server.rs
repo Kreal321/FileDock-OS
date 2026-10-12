@@ -18,6 +18,9 @@ use crate::config::{Config, RoutedConnection};
 use crate::integrity::Hasher;
 use crate::ops::{delete, get, put, put_mode, stat, store_for};
 use crate::probe;
+use futures::TryStreamExt;
+use object_store::ObjectStore;
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Clone)]
 struct App {
@@ -30,6 +33,31 @@ pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(parent)?;
     }
     let listener = UnixListener::bind(&config.socket)?;
+    std::fs::set_permissions(&config.socket, std::fs::Permissions::from_mode(0o600))?;
+    if let Ok(token) = std::env::var("FD_EXTENSION_TOKEN") {
+        let path = config.core_socket.clone();
+        let channel = tonic::transport::Endpoint::from_static("http://localhost")
+            .connect_with_connector(tower::service_fn(move |_| {
+                let path = path.clone();
+                async move {
+                    tokio::net::UnixStream::connect(path)
+                        .await
+                        .map(hyper_util::rt::TokioIo::new)
+                }
+            }))
+            .await?;
+        let mut client = ext::core_bridge_client::CoreBridgeClient::new(channel);
+        let mut request = Request::new(ext::RegisterRequest {
+            subsystem_id: "fd-s3".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            socket_path: config.socket.to_string_lossy().into_owned(),
+            capabilities: vec!["cloud.remote".into()],
+        });
+        request
+            .metadata_mut()
+            .insert("fd-extension-token", token.parse()?);
+        client.register(request).await?;
+    }
     let app = App {
         config: Arc::new(Mutex::new(config.clone())),
     };
@@ -61,8 +89,71 @@ impl Subsystem for App {
         &self,
         request: Request<ConfigureRequest>,
     ) -> Result<Response<ConfigureResponse>, Status> {
-        let _ = request;
-        Ok(Response::new(ConfigureResponse::default()))
+        let req = request.into_inner();
+        let value = req
+            .config
+            .as_ref()
+            .map(struct_json)
+            .ok_or_else(|| Status::invalid_argument("config required"))?;
+        let rows = value
+            .get("connections")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| Status::invalid_argument("connections required"))?;
+        let mut config = self.config.lock().await;
+        let mut connections = std::collections::BTreeMap::new();
+        for row in rows {
+            let text = |key: &str| {
+                row.get(key)
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+                    .ok_or_else(|| Status::invalid_argument(format!("missing {key}")))
+            };
+            let secret = |reference: &str| -> Result<std::path::PathBuf, Status> {
+                let path = std::path::PathBuf::from(
+                    req.secret_files
+                        .get(reference)
+                        .ok_or_else(|| Status::invalid_argument("missing secret file"))?,
+                );
+                let actual = path
+                    .canonicalize()
+                    .map_err(|_| Status::invalid_argument("secret file does not exist"))?;
+                let root = config
+                    .secrets_dir
+                    .canonicalize()
+                    .map_err(|_| Status::invalid_argument("secret directory does not exist"))?;
+                if !actual.starts_with(root) {
+                    return Err(Status::permission_denied(
+                        "secret outside connector runtime",
+                    ));
+                }
+                Ok(actual)
+            };
+            let connection = RoutedConnection {
+                id: text("id")?,
+                endpoint: text("endpoint")?,
+                region: text("region")?,
+                bucket: text("bucket")?,
+                virtual_hosted: row
+                    .get("virtual_hosted")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                access_key_file: secret(&text("access_key_ref")?)?,
+                secret_key_file: secret(&text("secret_key_ref")?)?,
+                checksums: row
+                    .get("checksums")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            };
+            if !connection.endpoint.starts_with("https://") {
+                return Err(Status::failed_precondition("connection.https_required"));
+            }
+            connections.insert(connection.id.clone(), connection);
+        }
+        config.connections = connections;
+        Ok(Response::new(ConfigureResponse {
+            accepted: true,
+            message: String::new(),
+        }))
     }
 
     async fn start(&self, _: Request<Empty>) -> Result<Response<Empty>, Status> {
@@ -105,7 +196,9 @@ impl CloudRemote for App {
         let req = request.into_inner();
         let conn = connection(&self.config, &req.connection_id).await?;
         let store = store_for(&conn).await?;
-        Ok(Response::new(probe::run(&store, &req).await))
+        Ok(Response::new(
+            probe::run(&store, &req, conn.checksums).await,
+        ))
     }
 
     async fn stat(&self, request: Request<ObjectRef>) -> Result<Response<ObjectInfo>, Status> {
@@ -127,11 +220,24 @@ impl CloudRemote for App {
         &self,
         request: Request<ListObjectsRequest>,
     ) -> Result<Response<Self::ListStream>, Status> {
-        let _ = request;
-        let (_tx, rx) = tokio::sync::mpsc::channel(1);
-        Ok(Response::new(Box::pin(
-            tokio_stream::wrappers::ReceiverStream::new(rx),
-        )))
+        let req = request.into_inner();
+        let conn = connection(&self.config, &req.connection_id).await?;
+        let store = store_for(&conn).await?;
+        let prefix = object_store::path::Path::from(req.prefix);
+        let entries: Vec<_> = store
+            .list(Some(&prefix))
+            .try_collect()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let stream = tokio_stream::iter(entries.into_iter().map(|entry| {
+            Ok(ObjectInfo {
+                key: entry.location.to_string(),
+                size: entry.size,
+                etag: entry.e_tag.unwrap_or_default(),
+                last_modified: None,
+            })
+        }));
+        Ok(Response::new(Box::pin(stream)))
     }
 
     type GetStream = Pin<Box<dyn Stream<Item = Result<GetObjectChunk, Status>> + Send>>;
@@ -151,7 +257,7 @@ impl CloudRemote for App {
         tokio::spawn(async move {
             let _ = tx
                 .send(Ok(GetObjectChunk {
-                    part: Some(ext::get_object_chunk::Part::Data(data.into())),
+                    part: Some(ext::get_object_chunk::Part::Data(data)),
                 }))
                 .await;
             let _ = tx
@@ -188,6 +294,9 @@ impl CloudRemote for App {
                 hasher.update(&bytes);
                 body.extend_from_slice(&bytes);
             }
+        }
+        if header.size != body.len() as u64 {
+            return Err(Status::invalid_argument("size mismatch"));
         }
         let digest = hasher.finalize();
         if !header.sha256.is_empty() && header.sha256 != digest {
@@ -247,4 +356,27 @@ async fn connection(config: &Mutex<Config>, id: &str) -> Result<RoutedConnection
         .get(id)
         .cloned()
         .ok_or_else(|| Status::not_found(format!("connection {id}")))
+}
+
+fn struct_json(value: &prost_types::Struct) -> serde_json::Value {
+    serde_json::Value::Object(
+        value
+            .fields
+            .iter()
+            .map(|(k, v)| (k.clone(), proto_json(v)))
+            .collect(),
+    )
+}
+fn proto_json(value: &prost_types::Value) -> serde_json::Value {
+    use prost_types::value::Kind;
+    match value.kind.as_ref() {
+        Some(Kind::StructValue(v)) => struct_json(v),
+        Some(Kind::ListValue(v)) => {
+            serde_json::Value::Array(v.values.iter().map(proto_json).collect())
+        }
+        Some(Kind::StringValue(v)) => serde_json::json!(v),
+        Some(Kind::NumberValue(v)) => serde_json::json!(v),
+        Some(Kind::BoolValue(v)) => serde_json::json!(v),
+        _ => serde_json::Value::Null,
+    }
 }

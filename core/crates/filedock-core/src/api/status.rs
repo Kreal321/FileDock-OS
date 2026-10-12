@@ -66,42 +66,57 @@ pub async fn get_system_status(
         }
     }
 
-    for (id, name, present) in [
-        ("rclone", "rclone", command_exists("rclone")),
-        ("fd-s3", "Native S3 connector", command_exists("fd-s3")),
-    ] {
-        components.push(ComponentHealth {
-            id: id.into(),
-            name: name.into(),
-            state: if present {
-                State::Healthy.into()
-            } else {
-                State::Stopped.into()
-            },
-            detail: if present {
-                "installed".into()
-            } else {
-                "not installed".into()
-            },
-        });
+    let s3_health = async {
+        let channel = crate::runtime::channel(crate::runtime::s3_socket(app)).await?;
+        fd_api::extension::v1::subsystem_client::SubsystemClient::new(channel)
+            .health(fd_api::extension::v1::Empty {})
+            .await
     }
+    .await;
+    let s3_ok = s3_health.as_ref().is_ok_and(|r| {
+        r.get_ref().status == fd_api::extension::v1::health_report::Status::Healthy as i32
+    });
+    components.push(ComponentHealth {
+        id: "fd-s3".into(),
+        name: "Native S3 connector".into(),
+        state: if s3_ok {
+            State::Healthy.into()
+        } else {
+            State::Failed.into()
+        },
+        detail: if s3_ok {
+            "serving".into()
+        } else {
+            "connector is not responding".into()
+        },
+    });
+    let rclone_ok = fd_connectors::rclone::adapter::RcloneAdapter::new()
+        .health()
+        .await
+        .is_ok();
+    components.push(ComponentHealth {
+        id: "rclone".into(),
+        name: "rclone".into(),
+        state: if rclone_ok {
+            State::Healthy.into()
+        } else {
+            State::Failed.into()
+        },
+        detail: if rclone_ok {
+            "remote-control service responding".into()
+        } else {
+            "remote-control service unavailable".into()
+        },
+    });
 
     Ok(Response::new(SystemStatus {
         interface_version: app.config.interface_version.into(),
         release_version: app.config.release_version.into(),
-        appliance_id: String::new(),
+        appliance_id: app.appliance_id.clone(),
         appliance_name,
         components,
         last_state_snapshot_at: None,
         state_protection_warning: false,
         notification_channel_missing: true,
     }))
-}
-
-fn command_exists(name: &str) -> bool {
-    std::process::Command::new("sh")
-        .args(["-c", &format!("command -v {name} >/dev/null")])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }

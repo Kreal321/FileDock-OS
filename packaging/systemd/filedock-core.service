@@ -5,7 +5,7 @@ Requires=filedock-core.socket
 Wants=network-online.target
 
 [Service]
-Type=notify
+Type=simple
 User=root
 Group=root
 ExecStart=/usr/lib/filedock/filedock-core
@@ -15,8 +15,6 @@ ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
 StateDirectory=filedock-core filedock
-RuntimeDirectory=filedock
-RuntimeDirectoryMode=0750
 
 [Install]
 WantedBy=multi-user.target

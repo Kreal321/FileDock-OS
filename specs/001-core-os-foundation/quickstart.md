@@ -34,13 +34,15 @@ This guide proves the feature end to end on disposable VMs. Implementation detai
 make proto        # buf lint + generate Rust/C# stubs from proto/
 make core         # cargo build --release (Core Service and fd-s3)
 make management   # web UI build (web/) + dotnet publish (management/)
-make packages     # packaging/: filedock-core, filedock-management, filedock-builtins .debs
+make bundle       # complete offline bundle: FileDock packages + pinned dependencies
 make test         # cargo nextest, dotnet test, vitest, contract checks (manifest schema, buf)
 ```
 
+For the Phase 3 stop point and PVE commands, see [phase3-testing.md](./phase3-testing.md).
+
 ## Install and first-run setup (User Stories 1 and 2)
 
-1. Copy the `.deb` packages and `install.sh` to a fresh VM, then run
+1. Copy all `dist/*.deb`, `dist/versions.lock`, `dist/SHA256SUMS`, and `dist/install.sh` to a fresh VM, then run
    `sudo bash install.sh --offline-bundle ./dist`.
    - **Expect**: preflight passes, installation finishes, and the console prints the UI address
      and a one-time setup code ([cli.md](./contracts/cli.md)).

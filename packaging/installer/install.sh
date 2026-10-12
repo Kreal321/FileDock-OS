@@ -2,13 +2,18 @@
 # FileDock appliance installer (FR-001 to FR-006, FR-020, FR-058).
 set -euo pipefail
 
-VERSION="${FD_VERSION:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LOCK="${FD_VERSIONS_LOCK:-$ROOT/packaging/versions.lock}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION="${FD_VERSION:-$(cat "$SCRIPT_DIR/RELEASE_VERSION" 2>/dev/null || echo 0.1.0)}"
+LOCK="${FD_VERSIONS_LOCK:-$SCRIPT_DIR/versions.lock}"
+[[ -f "$LOCK" ]] || LOCK="$ROOT/packaging/versions.lock"
 YES=0
 CHECK_ONLY=0
 OFFLINE_BUNDLE=""
 RELEASE="$VERSION"
+RELEASE_EXPLICIT=0
+ONLINE_BUNDLE=""
+trap '[[ -z "$ONLINE_BUNDLE" ]] || rm -rf "$ONLINE_BUNDLE"' EXIT
 
 usage() {
   cat <<'EOF'
@@ -18,7 +23,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --release) RELEASE="${2:-}"; shift 2 ;;
+    --release) RELEASE="${2:-}"; RELEASE_EXPLICIT=1; shift 2 ;;
     --offline-bundle) OFFLINE_BUNDLE="${2:-}"; shift 2 ;;
     --yes) YES=1; shift ;;
     --check-only) CHECK_ONLY=1; shift ;;
@@ -26,6 +31,13 @@ while [[ $# -gt 0 ]]; do
     *) echo "unsupported argument: $1" >&2; exit 4 ;;
   esac
 done
+if [[ -n "$OFFLINE_BUNDLE" && -z "${FD_VERSIONS_LOCK:-}" ]]; then
+  LOCK="$OFFLINE_BUNDLE/versions.lock"
+fi
+if [[ -n "$OFFLINE_BUNDLE" && -z "${FD_VERSION:-}" && -f "$OFFLINE_BUNDLE/RELEASE_VERSION" ]]; then
+  VERSION="$(cat "$OFFLINE_BUNDLE/RELEASE_VERSION")"
+  if [[ "$RELEASE_EXPLICIT" -eq 0 ]]; then RELEASE="$VERSION"; fi
+fi
 
 # --- observable host facts (overridable for tests) ---
 os_id() { echo "${FD_TEST_OS_ID:-$(. /etc/os-release 2>/dev/null; echo "${ID:-}")}"; }
@@ -52,14 +64,17 @@ port_in_use() {
     [[ "$FD_TEST_PORT_443" == "1" ]]
     return
   fi
+  if [[ -f /etc/filedock/.installed ]] && systemctl is-active --quiet filedock-management.service; then return 1; fi
   ss -lnt 2>/dev/null | grep -q ":${port} " || netstat -lnt 2>/dev/null | grep -q ":${port} "
 }
 conflicting_samba() {
   [[ "${FD_TEST_CONFLICT_SAMBA:-0}" == "1" ]] && return 0
+  [[ -f /etc/filedock/.installed ]] && return 1
   [[ -f /etc/samba/smb.conf ]] && ! grep -q "FileDock" /etc/samba/smb.conf 2>/dev/null
 }
 conflicting_nfs() {
   [[ "${FD_TEST_CONFLICT_NFS:-0}" == "1" ]] && return 0
+  [[ -f /etc/filedock/.installed ]] && return 1
   [[ -f /etc/exports ]] && [[ -s /etc/exports ]] && ! grep -q "FileDock" /etc/exports 2>/dev/null
 }
 conflicting_docker() {
@@ -182,7 +197,7 @@ EOF
 
 install_tls() {
   local dir="/var/lib/filedock-management/tls"
-  if [[ "$REPAIR" -eq 1 && -f "$dir/tls.crt" ]]; then
+  if [[ "$REPAIR" -eq 1 && -f "$dir/tls.crt" && -f "$dir/tls.key" ]]; then
     return 0
   fi
   if [[ "$REPAIR" -eq 1 ]]; then
@@ -191,18 +206,18 @@ install_tls() {
   if [[ "$REPAIR" -eq 0 ]]; then
     mkdir -p "$dir"
   fi
-  if command -v openssl >/dev/null 2>&1 && [[ ! -f "$dir/tls.crt" ]]; then
+  if command -v openssl >/dev/null 2>&1 && { [[ ! -f "$dir/tls.crt" ]] || [[ ! -f "$dir/tls.key" ]]; }; then
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
       -keyout "$dir/tls.key" -out "$dir/tls.crt" \
-      -subj "/CN=filedock" >/dev/null 2>&1 || true
-    chmod 640 "$dir/tls.key" 2>/dev/null || true
+      -subj "/CN=filedock" >/dev/null 2>&1
+    chmod 640 "$dir/tls.key"
   fi
 }
 
 verify_deb() {
   local name="$1" file="$2"
   local expected
-  expected="$(awk -v n="$name" '$1=="deb" && $2==n {print $4; exit}' "$LOCK")"
+  expected="$(awk -v n="$name" '$1=="deb" && $2==n {print $5; exit}' "$LOCK")"
   [[ -n "$expected" ]] || return 0
   local actual
   actual="$(sha256sum "$file" | awk '{print $1}')"
@@ -212,36 +227,96 @@ verify_deb() {
   fi
 }
 
+configure_repositories() {
+  mkdir -p /etc/apt/keyrings /etc/apt/preferences.d
+  while read -r kind name url suite component key_url fingerprint; do
+    [[ "$kind" == repo ]] || continue
+    local key
+    key="$(mktemp)"
+    curl -fsSL "$key_url" -o "$key"
+    local actual
+    actual="$(gpg --show-keys --with-colons "$key" | awk -F: '$1=="fpr" {print $10; exit}')"
+    [[ "$actual" == "$fingerprint" ]] || { rm -f "$key"; echo "Repository key fingerprint mismatch for $name" >&2; return 1; }
+    gpg --batch --yes --dearmor -o "/etc/apt/keyrings/filedock-$name.gpg" "$key"
+    rm -f "$key"
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/filedock-$name.gpg] $url $suite $component" >"/etc/apt/sources.list.d/filedock-$name.list"
+  done <"$LOCK"
+  awk '$1=="apt" || $1 ~ /^apt@/ { printf "Package: %s\nPin: version %s\nPin-Priority: 1001\n\n", $2, $3 }' "$LOCK" >/etc/apt/preferences.d/filedock
+  apt-get update
+}
+
 install_packages() {
-  if [[ ! -f /etc/debian_version ]]; then
-    echo "Not Debian; skipping apt package install."
-    return 0
+  [[ -f "$LOCK" ]] || { echo "Missing versions.lock: $LOCK" >&2; return 1; }
+  local bundle="$OFFLINE_BUNDLE"
+  if [[ -z "$bundle" ]]; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg openssl
+    configure_repositories || return 1
+    bundle="$(mktemp -d)"
+    ONLINE_BUNDLE="$bundle"
+    local base="${FD_RELEASE_BASE_URL:-https://get.filedock.dev/$RELEASE}"
+    for name in filedock-core filedock-management filedock-builtins; do
+      curl -fsSL "$base/${name}_${RELEASE}_amd64.deb" -o "$bundle/${name}_${RELEASE}_amd64.deb" || return 1
+    done
+    curl -fsSL "$base/SHA256SUMS" -o "$bundle/SHA256SUMS" || return 1
+    (cd "$bundle" && sha256sum -c SHA256SUMS) || return 1
+    while read -r kind name version url checksum; do
+      [[ "$kind" == deb ]] || continue
+      curl -fsSL "$url" -o "$bundle/${name}_${version}_amd64.deb" || return 1
+      verify_deb "$name" "$bundle/${name}_${version}_amd64.deb" || return 1
+    done <"$LOCK"
   fi
-  if [[ -n "$OFFLINE_BUNDLE" ]]; then
-    local bundle="$OFFLINE_BUNDLE"
-    if [[ -d "$bundle" ]]; then
-      for deb in rclone kopia; do
-        local f
-        f="$(find "$bundle" -name "${deb}*.deb" | head -n1 || true)"
-        if [[ -n "$f" ]]; then
-          verify_deb "$deb" "$f" || return 1
-        fi
-      done
-      if command -v apt-get >/dev/null 2>&1; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-upgrade \
-          "$bundle"/filedock-core_*.deb \
-          "$bundle"/filedock-management_*.deb \
-          "$bundle"/filedock-builtins_*.deb 2>/dev/null || \
-          dpkg -i "$bundle"/filedock-*.deb || true
-      fi
-    fi
-    return 0
+  [[ -d "$bundle" ]] || { echo "Bundle directory missing: $bundle" >&2; return 1; }
+  for name in filedock-core filedock-management filedock-builtins; do
+    compgen -G "$bundle/${name}_${RELEASE}_amd64.deb" >/dev/null || { echo "Bundle missing $name $RELEASE" >&2; return 1; }
+  done
+  for name in rclone kopia; do
+    local file
+    file="$(find "$bundle" -maxdepth 1 -name "${name}*.deb" -print -quit)"
+    [[ -n "$file" ]] && verify_deb "$name" "$file" || { echo "Missing or invalid $name package in bundle" >&2; return 1; }
+  done
+  if [[ -f "$bundle/SHA256SUMS" ]]; then
+    (cd "$bundle" && sha256sum -c SHA256SUMS) || return 1
   fi
-  if command -v apt-get >/dev/null 2>&1 && [[ -f "$LOCK" ]]; then
-    mkdir -p /etc/apt/preferences.d
-    awk '$1=="apt" { printf "Package: %s\nPin: version %s\nPin-Priority: 1001\n\n", $2, $3 }' "$LOCK" \
-      >/etc/apt/preferences.d/filedock
+  local args=()
+  [[ -n "$OFFLINE_BUNDLE" ]] && args+=(--no-download)
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "$bundle"/*.deb || return 1
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" $(awk '$1=="apt" || $1 ~ /^apt@/ {printf "%s=%s ", $2, $3}' "$LOCK") || return 1
+}
+
+configure_services() {
+  chown root:filedock-mgmt /run/filedock
+  chmod 0770 /run/filedock
+  chown filedock-mgmt:filedock-mgmt /var/lib/filedock-management
+  chmod 0700 /var/lib/filedock-management
+  chown -R root:filedock-mgmt /var/lib/filedock-management/tls
+  chmod 0750 /var/lib/filedock-management/tls
+  chmod 0640 /var/lib/filedock-management/tls/tls.key
+  if [[ ! -f /etc/filedock/management.env ]]; then
+    cat >/etc/filedock/management.env <<'EOF'
+Database__Path=/var/lib/filedock-management/app.db
+AdminSocket__Path=/run/filedock/management-admin.sock
+Kestrel__HttpsPort=443
+Kestrel__UseHttps=true
+Kestrel__CertificatePath=/var/lib/filedock-management/tls/tls.crt
+Kestrel__KeyPath=/var/lib/filedock-management/tls/tls.key
+Core__Socket=/run/filedock/core.sock
+EOF
+    chmod 0640 /etc/filedock/management.env
+    chown root:filedock-mgmt /etc/filedock/management.env
   fi
+  touch /etc/filedock/.docker-owned
+  systemctl daemon-reload
+  systemd-tmpfiles --create /usr/lib/tmpfiles.d/filedock.conf
+  systemctl enable --now filedock-core.socket filedock-core.service filedock-management.service
+  systemctl enable --now smbd.service nfs-server.service docker.service
+  systemctl restart filedock-core.service filedock-management.service
+  for attempt in $(seq 1 60); do
+    if curl --silent --fail --insecure https://127.0.0.1/health >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo "Management service did not become healthy; inspect journalctl -u filedock-management -u filedock-core" >&2
+  return 1
 }
 
 ui_address() {
@@ -250,14 +325,16 @@ ui_address() {
 
 print_setup_code() {
   local code=""
-  if command -v filedockctl >/dev/null 2>&1; then
-    code="$(filedockctl setup-code --json 2>/dev/null | sed -n 's/.*"code":"\([^"]*\)".*/\1/p' || true)"
-    if [[ -z "$code" ]]; then
-      code="$(filedockctl setup-code 2>/dev/null | awk '/setup code/ {print $NF}' || true)"
-    fi
-  fi
-  if [[ -z "$code" && -n "${FD_TEST_SETUP_CODE:-}" ]]; then
-    code="$FD_TEST_SETUP_CODE"
+  local output
+  if output="$(filedockctl setup-code --json 2>&1)"; then
+    code="$(printf '%s' "$output" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
+    [[ -n "$code" ]] || { echo "Could not retrieve the setup code" >&2; return 1; }
+  elif [[ "$REPAIR" -eq 1 && "$output" == *"already complete"* ]]; then
+    echo "FileDock ${RELEASE} repaired. Setup is already complete."
+    return 0
+  else
+    echo "Setup-code request failed: $output" >&2
+    return 1
   fi
   local addr
   addr="$(ui_address)"
@@ -269,22 +346,14 @@ print_setup_code() {
   fi
 }
 
-if [[ "$REPAIR" -eq 1 ]]; then
-  ensure_users
-  ensure_paths
-  install_journald_cap
-  install_tls
-  install_packages || exit 3
-  echo "FileDock ${RELEASE} repaired. Configuration and user data were left unchanged."
-  exit 0
-fi
-
+[[ "$(id -u)" -eq 0 ]] || { echo "Run the installer as root." >&2; exit 3; }
 ensure_users
 ensure_paths
 install_journald_cap
-install_tls
 install_packages || exit 3
+install_tls
+configure_services || exit 3
+print_setup_code || exit 3
 mkdir -p /etc/filedock
 date -u +"%Y-%m-%dT%H:%M:%SZ" >"$MARKER"
-print_setup_code
 exit 0

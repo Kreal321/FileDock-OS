@@ -6,7 +6,7 @@ namespace FileDock.Management.Core;
 /// <summary>In-process Core stand-in for tests and hosts without core.sock.</summary>
 public sealed class LocalCoreGateway : ICoreGateway
 {
-    private const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    private const string _alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     private readonly ConcurrentDictionary<string, string[]> _pending = new();
     private string _applianceName = "";
 
@@ -22,7 +22,7 @@ public sealed class LocalCoreGateway : ICoreGateway
         var bytes = RandomNumberGenerator.GetBytes(25);
         for (var i = 0; i < raw.Length; i++)
         {
-            raw[i] = Alphabet[bytes[i] % Alphabet.Length];
+            raw[i] = _alphabet[bytes[i] % _alphabet.Length];
         }
 
         var groups = Enumerable.Range(0, 5).Select(i => new string(raw, i * 5, 5)).ToArray();
@@ -37,6 +37,11 @@ public sealed class LocalCoreGateway : ICoreGateway
         if (!_pending.TryGetValue(keyId, out var expected))
         {
             throw new InvalidOperationException("Unknown recovery key.");
+        }
+
+        if (groups.Count != 2 || !groups.ContainsKey(0) || !groups.ContainsKey(2))
+        {
+            throw new ArgumentException("Both requested confirmation groups are required.");
         }
 
         foreach (var (index, value) in groups)

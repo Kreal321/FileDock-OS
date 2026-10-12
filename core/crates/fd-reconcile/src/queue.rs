@@ -132,10 +132,10 @@ impl Reconciler {
     async fn worker(&self) {
         loop {
             let resource = self.queue.take().await;
-            if let Some(controller) = self.controllers.iter().find(|c| c.kind() == resource.kind) {
-                if let Err(error) = controller.reconcile(&resource).await {
-                    tracing::warn!(%resource, %error, "reconcile failed");
-                }
+            if let Some(controller) = self.controllers.iter().find(|c| c.kind() == resource.kind)
+                && let Err(error) = controller.reconcile(&resource).await
+            {
+                tracing::warn!(%resource, %error, "reconcile failed");
             }
         }
     }

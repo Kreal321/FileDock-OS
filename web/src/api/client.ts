@@ -71,5 +71,5 @@ export const api = createApiClient();
 
 function csrfFromCookie(): string {
   const match = document.cookie.match(/(?:^|; )fd_csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : '';
+  return match?.[1] ? decodeURIComponent(match[1]) : '';
 }

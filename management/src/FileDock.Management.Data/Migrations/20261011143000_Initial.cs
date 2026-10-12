@@ -1,10 +1,13 @@
 #pragma warning disable CA1861
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace FileDock.Management.Data.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20261011143000_Initial")]
 public partial class Initial : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -34,6 +37,7 @@ public partial class Initial : Migration
                 Id = table.Column<Guid>(type: "TEXT", nullable: false),
                 AdministratorId = table.Column<Guid>(type: "TEXT", nullable: false),
                 TokenHash = table.Column<byte[]>(type: "BLOB", nullable: false),
+                CsrfToken = table.Column<string>(type: "TEXT", nullable: false),
                 CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                 LastSeenAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                 ClientIp = table.Column<string>(type: "TEXT", nullable: true),
@@ -87,7 +91,7 @@ public partial class Initial : Migration
             },
             constraints: table => table.PrimaryKey("PK_SetupStates", x => x.Id));
 
-        migrationBuilder.InsertData("SetupStates", new[] { "Id", "Status", "SetupCodeIssuedAt", "AttemptCounters" }, new object[] { 1, "AwaitingSetup", DateTimeOffset.MinValue, "{}" });
+        migrationBuilder.Sql("INSERT INTO SetupStates (Id, Status, SetupCodeIssuedAt, AttemptCounters) VALUES (1, 'AwaitingSetup', '0001-01-01 00:00:00+00:00', '{}')");
 
         migrationBuilder.CreateTable(
             name: "Settings",
@@ -98,7 +102,7 @@ public partial class Initial : Migration
             },
             constraints: table => table.PrimaryKey("PK_Settings", x => x.Id));
 
-        migrationBuilder.InsertData("Settings", new[] { "Id" }, new object[] { 1 });
+        migrationBuilder.Sql("INSERT INTO Settings (Id) VALUES (1)");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
