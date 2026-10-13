@@ -39,6 +39,7 @@ __pycache__/
 
 # Local tool caches
 /.tmp/
+/.ci-cache/
 
 # Debian packaging artifacts
 *.deb

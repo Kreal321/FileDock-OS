@@ -32,6 +32,7 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
       PROTOC_INCLUDE: /usr/include
+      NUGET_PACKAGES: ${{ github.workspace }}/.ci-cache/nuget
     outputs:
       tag: ${{ steps.metadata.outputs.tag }}
       version: ${{ steps.metadata.outputs.version }}
@@ -43,7 +44,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates curl git sudo build-essential pkg-config libssl-dev \
-            protobuf-compiler libprotobuf-dev dpkg-dev file xz-utils python3 libicu76 zlib1g gnupg
+            protobuf-compiler libprotobuf-dev dpkg-dev file xz-utils python3 libicu76 zlib1g gnupg tar zstd
 
       - uses: actions/checkout@v5
         with:
@@ -94,11 +95,88 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           npm install --global pnpm@10.11.0
 
-      - name: Build Core, React, .NET and offline dependencies
+      - name: Resolve cache paths and toolchain versions
+        id: cache_config
+        run: |
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          echo "cargo_home=$cargo_home" >> "$GITHUB_OUTPUT"
+          echo "rust=$(rustc -vV | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          echo "dotnet=$(dotnet --version)" >> "$GITHUB_OUTPUT"
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "pnpm_store=$(pnpm -C web store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Cargo downloads and release build outputs
+        id: cargo_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/index
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/cache
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/src
+            ${{ steps.cache_config.outputs.cargo_home }}/git/db
+            ${{ steps.cache_config.outputs.cargo_home }}/git/checkouts
+            target/release
+          key: offline-v1-debian13-amd64-cargo-${{ steps.cache_config.outputs.rust }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/**') }}-${{ hashFiles('core/**/*.rs', 'connectors/**/*.rs', 'proto/**') }}
+          restore-keys: |
+            offline-v1-debian13-amd64-cargo-${{ steps.cache_config.outputs.rust }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/**') }}-
+            offline-v1-debian13-amd64-cargo-${{ steps.cache_config.outputs.rust }}-
+
+      - name: Restore NuGet packages
+        id: nuget_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: offline-v1-debian13-amd64-nuget-${{ steps.cache_config.outputs.dotnet }}-${{ hashFiles('management/**/*.csproj', 'management/**/*.props', 'management/**/*.targets', '**/NuGet.Config', '**/nuget.config', 'global.json') }}
+          restore-keys: |
+            offline-v1-debian13-amd64-nuget-${{ steps.cache_config.outputs.dotnet }}-
+
+      - name: Restore pnpm package store
+        id: pnpm_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.cache_config.outputs.pnpm_store }}
+          key: offline-v1-debian13-amd64-pnpm10.11.0-${{ steps.cache_config.outputs.node }}-${{ hashFiles('web/pnpm-lock.yaml', 'web/package.json') }}
+          restore-keys: |
+            offline-v1-debian13-amd64-pnpm10.11.0-${{ steps.cache_config.outputs.node }}-
+
+      - name: Build Core, React, .NET and Debian packages
         env:
           FD_VERSION: ${{ steps.metadata.outputs.version }}
         run: |
-          make bundle RID=linux-x64 CONFIG=Release
+          make packages RID=linux-x64 CONFIG=Release
+
+      # Save successful compilation before downloading the offline dependencies,
+      # so an APT/release failure does not discard this build's cache.
+      - name: Save Cargo cache
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/index
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/cache
+            ${{ steps.cache_config.outputs.cargo_home }}/registry/src
+            ${{ steps.cache_config.outputs.cargo_home }}/git/db
+            ${{ steps.cache_config.outputs.cargo_home }}/git/checkouts
+            target/release
+          key: ${{ steps.cargo_cache.outputs.cache-primary-key }}
+
+      - name: Save NuGet cache
+        if: steps.nuget_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: ${{ steps.nuget_cache.outputs.cache-primary-key }}
+
+      - name: Save pnpm cache
+        if: steps.pnpm_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.cache_config.outputs.pnpm_store }}
+          key: ${{ steps.pnpm_cache.outputs.cache-primary-key }}
+
+      - name: Download resolved offline dependencies
+        run: |
+          sudo packaging/debian/build-bundle.sh dist
 
       - name: Archive the installable bundle
         env:

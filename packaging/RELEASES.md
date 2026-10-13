@@ -14,9 +14,17 @@ The archive contains the three FileDock Debian packages, all pinned runtime pack
 3. Choose the branch to build. Leave **Mark this release as a testing prerelease** enabled, then run it.
 4. When both jobs succeed, open the release link in the run summary. Manual runs use a unique tag such as `test-0.1.0-12-1`.
 
-Alternatively, pushing a version tag such as `v0.1.0` triggers a release. The tag must match the workspace version in `Cargo.toml`. Version-tag releases are published without the prerelease flag; releases are not automatically promoted to “latest”. A failed build publishes no release. Existing releases are not overwritten.
+Alternatively, pushing a version tag such as `v0.1.0` triggers a release. The tag must match the workspace version in `Cargo.toml`. Version-tag releases are published without the prerelease flag; releases are not automatically promoted to “latest”. Dependency downloads use APT’s solver with an empty installed-package status, so the bundle includes dependencies already present on CI and selects compatible alternatives. A failed build publishes no release. Existing releases are not overwritten.
 
 The workflow uses the built-in `GITHUB_TOKEN`; no personal token secret is required. Repository or organization policies must allow the publishing job's `contents: write` permission. Builds require access to Debian, Docker, GitHub, Rust, npm and .NET download servers. If an exact package pin becomes unavailable, the build fails rather than silently substituting another version.
+
+## Workflow caches
+
+The build job restores and saves Cargo downloads and `target/release`, NuGet packages, and the pnpm package store. Cache keys include Debian/architecture, actual compiler or SDK versions, and dependency-file hashes. Rust build keys also include source/protobuf hashes; fallback keys reuse compatible dependency outputs when source or dependency files change. Cargo still runs and determines what needs recompiling. React and .NET publish outputs are generated on every run.
+
+Caches are saved after successful compilation and before the offline dependency download, so an APT or release failure can reuse that compilation on the next run. The first run fills the caches. Run manually on the default branch first to make caches available to subsequent tag builds under GitHub's cache scope rules. APT metadata, the offline dependency set and release archives are regenerated each run.
+
+To discard these caches, delete them in GitHub's Actions cache page or change the `offline-v1` prefix in the workflow.
 
 ## Download directly on the PVE test VM
 
