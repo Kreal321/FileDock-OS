@@ -44,6 +44,12 @@ public sealed class EfAdminStore(AppDbContext db) : IAdminStore
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task DeleteAsync(Administrator admin, CancellationToken cancellationToken = default)
+    {
+        db.Administrators.Remove(admin);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public Task SaveAsync(CancellationToken cancellationToken = default)
         => db.SaveChangesAsync(cancellationToken);
 
@@ -75,4 +81,15 @@ public sealed class EfSessionStore(AppDbContext db) : ISessionStore
 
     public Task SaveAsync(CancellationToken cancellationToken = default)
         => db.SaveChangesAsync(cancellationToken);
+}
+
+public sealed class EfApiTokenStore(AppDbContext db) : IApiTokenStore
+{
+    public async Task AddAsync(ApiToken token) { db.ApiTokens.Add(token); await db.SaveChangesAsync(); }
+    public Task<ApiToken?> FindAsync(Guid id) => db.ApiTokens.SingleOrDefaultAsync(t => t.Id == id);
+    public Task ReloadAsync(ApiToken token) => db.Entry(token).ReloadAsync();
+    public async Task<IReadOnlyList<ApiToken>> ListAsync() => await db.ApiTokens.AsNoTracking().OrderBy(t => t.Name).ToListAsync();
+    public Task SaveAsync() => db.SaveChangesAsync();
+    public Task RevokeAllAsync() => db.ApiTokens.Where(t => t.RevokedAt == null)
+        .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow));
 }

@@ -12,6 +12,7 @@ public interface IAdminStore
     Task<Administrator?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<int> CountEnabledAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Administrator admin, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Administrator admin, CancellationToken cancellationToken = default);
     Task SaveAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Administrator>> ListAsync(CancellationToken cancellationToken = default);
 }
@@ -23,4 +24,14 @@ public interface ISessionStore
     Task DeleteAsync(Session session, CancellationToken cancellationToken = default);
     Task DeleteForAdminAsync(Guid administratorId, CancellationToken cancellationToken = default);
     Task SaveAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IApiTokenStore
+{
+    Task AddAsync(ApiToken token);
+    Task<ApiToken?> FindAsync(Guid id);
+    Task ReloadAsync(ApiToken token);
+    Task<IReadOnlyList<ApiToken>> ListAsync();
+    Task SaveAsync();
+    Task RevokeAllAsync();
 }

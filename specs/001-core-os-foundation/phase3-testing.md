@@ -116,3 +116,7 @@ Development reset on 2026-10-12:
 
 
 Port revision: Management UI and API both use HTTP port 8021. Browser requests use the same origin. The Rust Core continues to use its Unix socket. Installer preflight checks TCP port 8021. This revised listener has not been run on the VM.
+
+## Phase 3 manual acceptance — 2026-10-12
+
+The user confirmed that setup now completes and the Phase 3 manual check passed on the PVE VM. This records user-reported manual acceptance; it does not claim that the automated VM suite ran. Phase 4 implementation is authorized.

@@ -37,6 +37,13 @@ export function createApiClient(options: ApiClientOptions = {}) {
       credentials: 'same-origin',
     });
     if (!response.ok) {
+      if (
+        response.status === 401 &&
+        path !== '/auth/sign-in' &&
+        path !== '/setup/recovery-key/confirm'
+      ) {
+        window.dispatchEvent(new Event('filedock:session-expired'));
+      }
       const problem = (await response.json().catch(() => ({
         status: response.status,
         title: response.statusText,
@@ -56,6 +63,9 @@ export function createApiClient(options: ApiClientOptions = {}) {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
+    patch: <T>(path: string, body: unknown) =>
+      request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+    delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
     put: <T>(path: string, body: unknown, etag?: string) =>
       request<T>(path, {
         method: 'PUT',

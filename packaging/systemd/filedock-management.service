@@ -15,6 +15,10 @@ RestartSec=2
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/filedock
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 StateDirectory=filedock-management
 UMask=0077
 

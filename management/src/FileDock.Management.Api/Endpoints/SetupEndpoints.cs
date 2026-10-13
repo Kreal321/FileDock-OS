@@ -14,9 +14,9 @@ public static class SetupEndpoints
 {
     public static RouteGroupBuilder MapSetup(this RouteGroupBuilder api)
     {
-        api.MapPost("/setup/verify-code", Verify);
-        api.MapPost("/setup/complete", Complete);
-        api.MapPost("/setup/recovery-key/confirm", Confirm);
+        api.MapPost("/setup/verify-code", Verify).WithMetadata(new Auth.AccessScope("P"));
+        api.MapPost("/setup/complete", Complete).WithMetadata(new Auth.AccessScope("P"));
+        api.MapPost("/setup/recovery-key/confirm", Confirm).WithMetadata(new Auth.AccessScope("S"));
         return api;
     }
 

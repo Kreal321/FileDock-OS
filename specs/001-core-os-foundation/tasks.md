@@ -244,22 +244,22 @@ Sessions, sign-in, and lockout come from US1. This story adds tokens, scope enfo
 administrator management, console recovery commands, and network restrictions, and tests the
 whole access model.
 
-- [ ] T070 [P] [US2] Implement API tokens in `management/src/FileDock.Management.Domain/Tokens/ApiTokenService.cs` and `management/src/FileDock.Management.Api/Auth/TokenAuthHandler.cs` (FR-021):
+- [X] T070 [P] [US2] Implement API tokens in `management/src/FileDock.Management.Domain/Tokens/ApiTokenService.cs` and `management/src/FileDock.Management.Api/Auth/TokenAuthHandler.cs` (FR-021):
   - the format `fdt_<id>_<secret>`, stored only as an Argon2id hash;
   - ReadOnly or Full scope, with an optional expiry;
   - immediate revocation;
   - audit of every use, sampled per minute.
-- [ ] T071 [US2] Implement the R, F, and S scope policies on every endpoint group, with `401` and `403` audited, in `management/src/FileDock.Management.Api/Auth/ScopePolicies.cs`
-- [ ] T072 [US2] Implement `/admins`, `/admins/{id}/password`, and `/tokens` in `management/src/FileDock.Management.Api/Endpoints/AdminEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/TokenEndpoints.cs`
-- [ ] T073 [US2] Implement `filedockctl reset-password` and `filedockctl tokens revoke-all` over the admin socket, audited as `Console`, in `management/src/FileDock.Management.Cli/Commands/ResetPasswordCommand.cs` and `management/src/FileDock.Management.Cli/Commands/TokensCommand.cs` (FR-026)
-- [ ] T074 [US2] Implement UI listener restriction in `management/src/FileDock.Management.Api/Endpoints/NetworkEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/NetworkCommand.cs` (FR-027):
+- [X] T071 [US2] Implement the R, F, and S scope policies on every endpoint group, with `401` and `403` audited, in `management/src/FileDock.Management.Api/Auth/ScopePolicies.cs`
+- [X] T072 [US2] Implement `/admins`, `/admins/{id}/password`, and `/tokens` in `management/src/FileDock.Management.Api/Endpoints/AdminEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/TokenEndpoints.cs`
+- [X] T073 [US2] Implement `filedockctl reset-password` and `filedockctl tokens revoke-all` over the admin socket, audited as `Console`, in `management/src/FileDock.Management.Cli/Commands/ResetPasswordCommand.cs` and `management/src/FileDock.Management.Cli/Commands/TokensCommand.cs` (FR-026)
+- [X] T074 [US2] Implement UI listener restriction in `management/src/FileDock.Management.Api/Endpoints/NetworkEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/NetworkCommand.cs` (FR-027):
   - `GET` and `PUT /system/network`, with the `confirmDisconnect` guard;
   - `filedockctl network reset`.
-- [ ] T075 [US2] Harden `packaging/systemd/filedock-management.service`: `User=filedock-mgmt`, `NoNewPrivileges`, `ProtectSystem=strict`, and only `CAP_NET_BIND_SERVICE`
-- [ ] T076 [P] [US2] Build the administrators, tokens (shown once), and network settings pages in `web/src/features/admins/`, `web/src/features/tokens/`, and `web/src/features/settings/`
-- [ ] T077 [US2] Write API tests in `management/tests/FileDock.Management.ApiTests/AuthTests.cs`: `401` with no session; lockout; idle expiry; CSRF; a Read-only token's mutation gets `403` and is audited; revoked and expired tokens are refused; the last administrator is protected
+- [X] T075 [US2] Harden `packaging/systemd/filedock-management.service`: `User=filedock-mgmt`, `NoNewPrivileges`, `ProtectSystem=strict`, and only `CAP_NET_BIND_SERVICE`
+- [X] T076 [P] [US2] Build the administrators, tokens (shown once), and network settings pages in `web/src/features/admins/`, `web/src/features/tokens/`, and `web/src/features/settings/`
+- [X] T077 [US2] Write API tests in `management/tests/FileDock.Management.ApiTests/AuthTests.cs`: `401` with no session; lockout; idle expiry; CSRF; a Read-only token's mutation gets `403` and is audited; revoked and expired tokens are refused; the last administrator is protected
 
-**Checkpoint**: Access is authenticated, scoped, throttled, and audited.
+**Checkpoint**: Phase 4 implementation is complete and locally validated (19 .NET tests, 2 React tests, Linux Management/CLI publish, and native listener/console smoke check). The independent PVE manual check is documented in [phase4-testing.md](./phase4-testing.md) and remains pending.
 
 ---
 
@@ -827,7 +827,7 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 - [X] T191 Probe live connector health and reject unavailable systemd; repair Kopia manifest and frontend build blockers.
 - [X] T192 Replace the fake cross-connector assertion with explicit live I/O acceptance; add packaging and real Core/API regression checks.
 - [X] T193 Add browser first-run/healthy-dashboard/repair acceptance and document the complete PVE build/install/test commands.
-- [ ] T194 Run the Phase 3 independent acceptance on a fresh Debian 13 amd64 PVE VM, including reboot and repair, and record evidence before Phase 4. The PVE VM installation and service health were checked on 2026-10-12; UI setup, recovery confirmation, sign-out/sign-in, reboot and post-setup repair remain pending.
+- [X] T194 Run the Phase 3 independent acceptance on a fresh Debian 13 amd64 PVE VM, including reboot and repair, and record evidence before Phase 4. The user reported the Phase 3 manual check completed on 2026-10-12; this is user-reported acceptance, not an automated VM-suite run. See phase3-testing.md.
 
 
 ## First-run usability revision (2026-10-12)

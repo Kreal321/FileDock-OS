@@ -88,6 +88,11 @@ public sealed class SetupAndAdminTests
             return Task.CompletedTask;
         }
 
+        public Task DeleteAsync(Administrator admin, CancellationToken cancellationToken = default)
+        {
+            _admins.Remove(admin);
+            return Task.CompletedTask;
+        }
         public Task SaveAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task<IReadOnlyList<Administrator>> ListAsync(CancellationToken cancellationToken = default)

@@ -5,9 +5,15 @@ namespace FileDock.Management.UnitTests;
 public sealed class PasswordHasherTests
 {
     [Fact]
-    public void RejectsShortPasswords()
+    public void RejectsEmptyPasswords()
     {
-        Assert.Throws<ArgumentException>(() => PasswordHasher.Hash("short"));
+        Assert.Throws<ArgumentException>(() => PasswordHasher.Hash(""));
+    }
+
+    [Fact]
+    public void AllowsShortNonEmptyPasswords()
+    {
+        Assert.True(PasswordHasher.Verify("x", PasswordHasher.Hash("x")));
     }
 
     [Fact]

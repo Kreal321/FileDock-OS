@@ -172,3 +172,33 @@ button.ghost {
     transition: none !important;
   }
 }
+
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.navigation [aria-current='page'] {
+  background: var(--copper);
+  color: var(--bg);
+}
+select,
+textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.65rem;
+}
+textarea {
+  min-height: 7rem;
+}
+.inline-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

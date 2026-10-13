@@ -9,3 +9,9 @@ obj/
 *.log
 .env*
 coverage/
+
+# Web acceptance artifacts and build definitions
+web/playwright-report/
+web/test-results/
+Dockerfile*
+.dockerignore

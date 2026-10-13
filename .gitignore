@@ -45,3 +45,8 @@ __pycache__/
 *.deb
 *.buildinfo
 *.changes
+
+# Additional compiler and package artifacts
+*.rlib
+*.egg-info/
+packages/

@@ -10,9 +10,14 @@ public static class AuthEndpoints
 {
     public static RouteGroupBuilder MapAuth(this RouteGroupBuilder api)
     {
+        api.MapGet("/auth/me", (HttpContext context) =>
+        {
+            var actor = (Administrator)context.Items["fd.admin"]!;
+            return Results.Ok(new { actor.Id, actor.Username });
+        }).WithMetadata(new AccessScope("S"));
         api.MapPost("/auth/sign-in", SignIn);
-        api.MapPost("/auth/sign-out", SignOut);
-        api.MapPost("/auth/sign-out-all", SignOutAll);
+        api.MapPost("/auth/sign-out", SignOut).WithMetadata(new AccessScope("S"));
+        api.MapPost("/auth/sign-out-all", SignOutAll).WithMetadata(new AccessScope("S"));
         return api;
     }
 

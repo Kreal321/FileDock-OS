@@ -3,6 +3,7 @@ using FileDock.Management.Api.Auth;
 using FileDock.Management.Api.Endpoints;
 using FileDock.Management.Api.Infrastructure;
 using FileDock.Management.Api.Middleware;
+using FileDock.Management.Api.Network;
 using FileDock.Management.Core;
 using FileDock.Management.Data;
 using FileDock.Management.Domain;
@@ -12,6 +13,7 @@ using FileDock.Management.Domain.Security;
 using FileDock.Management.Domain.Sessions;
 using FileDock.Management.Domain.Setup;
 using FileDock.Management.Domain.Stores;
+using FileDock.Management.Domain.Tokens;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +30,8 @@ builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<SetupCodeService>();
 builder.Services.AddScoped<AdminService>();
 builder.Services.AddScoped<SessionService>();
+builder.Services.AddScoped<IApiTokenStore, EfApiTokenStore>();
+builder.Services.AddScoped<ApiTokenService>();
 builder.Services.AddHostedService<AuditRetention>();
 if (builder.Configuration.GetValue("Core:Optional", false))
 {
@@ -39,19 +43,30 @@ else
     builder.Services.AddSingleton<ICoreGateway>(sp => sp.GetRequiredService<CoreClient>());
 }
 
-builder.Services.AddAuthentication(SessionAuthHandler.SchemeName)
-    .AddScheme<AuthenticationSchemeOptions, SessionAuthHandler>(SessionAuthHandler.SchemeName, _ => { });
+builder.Services.AddAuthentication("fd-auth")
+    .AddPolicyScheme("fd-auth", "Session or API token", options =>
+        options.ForwardDefaultSelector = context => context.Request.Headers.ContainsKey("Authorization")
+            ? TokenAuthHandler.SchemeName : SessionAuthHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, SessionAuthHandler>(SessionAuthHandler.SchemeName, _ => { })
+    .AddScheme<AuthenticationSchemeOptions, TokenAuthHandler>(TokenAuthHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     var path = builder.Configuration["Database:Path"] ?? "app.db";
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
     options.UseSqlite($"Data Source={path}");
 });
 
+var listener = new ListenerConfiguration(builder.Configuration.GetValue("Kestrel:HttpPort", 8021));
+listener.Apply(NetworkService.DefaultAddresses);
+var listenerRoot = new ConfigurationBuilder().Add(listener).Build();
+builder.Services.AddSingleton(listener);
+builder.Services.AddSingleton<IConfigurationRoot>(listenerRoot);
+builder.Services.AddScoped<NetworkService>();
+
 builder.WebHost.ConfigureKestrel(options =>
 {
-    var httpPort = builder.Configuration.GetValue("Kestrel:HttpPort", 8021);
-    options.ListenAnyIP(httpPort);
+    options.Configure(listenerRoot.GetSection("Kestrel"), reloadOnChange: true);
     var adminSocket = builder.Configuration["AdminSocket:Path"];
     if (!string.IsNullOrEmpty(adminSocket))
     {
@@ -64,21 +79,13 @@ app.UseFileDockProblemDetails();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<SetupLockMiddleware>();
-app.Use(async (context, next) =>
-{
-    if (!SessionAuthHandler.CsrfValid(context))
-    {
-        context.Response.StatusCode = 403;
-        await context.Response.WriteAsJsonAsync(new { title = "CSRF", status = 403, detail = "CSRF token missing or invalid." });
-        return;
-    }
-    await next(context);
-});
+app.UseMiddleware<ScopePolicies>();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+    listener.Apply(scope.ServiceProvider.GetRequiredService<NetworkService>().GetBindableAsync().GetAwaiter().GetResult());
 }
 
 var api = app.MapGroup("/api/v1");
@@ -87,6 +94,10 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 api.MapSetup();
 api.MapAuth();
 api.MapSystem();
+api.MapAdmins();
+api.MapTokens();
+api.MapNetwork();
+api.MapAudit();
 AdminSocketEndpoints.Map(app);
 
 app.UseDefaultFiles();

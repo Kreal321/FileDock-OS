@@ -8,7 +8,7 @@ public static class SystemEndpoints
 
     public static RouteGroupBuilder MapSystem(this RouteGroupBuilder api)
     {
-        api.MapGet("/system/status", GetStatus);
+        api.MapGet("/system/status", GetStatus).WithMetadata(new Auth.AccessScope("R"));
         return api;
     }
 

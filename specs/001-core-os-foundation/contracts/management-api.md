@@ -12,7 +12,7 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 - **Authentication**: either a session cookie `fd_http_session` with the header `X-CSRF-Token` on
   mutations, or `Authorization: Bearer fdt_<id>_<secret>` (FR-021). Requests without valid
   credentials get `401`. A Read-only token on any mutating route gets `403`. Both are audited.
-- **Before setup**: until setup is complete, every route except `/setup/*` and `/health` returns
+- **Before setup**: until setup is complete, every API route except `/setup/*`, `/auth/sign-in`, and `/health` returns
   `423 Locked` (FR-020). Every `/setup/*` route requires the setup code, except the
   `/setup/restore/local` routes, which require the recovery key instead (FR-106).
 - **Errors**: `application/problem+json`. Validation errors include
@@ -48,10 +48,11 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 | `POST /setup/complete` `{code, applianceName, adminUsername, adminPassword, adminPasswordConfirmation}` | P | Creates the first administrator, signs them in (sets `fd_http_session`), and generates the recovery key | FR-020, FR-033 |
 | `POST /setup/recovery-key/confirm` `{keyId}` | S | Acknowledges the recovery-key download and finishes setup. The request identifies the current recovery key | FR-033 |
 | `POST /setup/restore/...` | P | Restore Appliance entry, the alternative to setup (see Recovery) | FR-041 |
+| `GET /auth/me` | S | Current administrator identity | FR-023 |
 | `POST /auth/sign-in` `{username, password}` | public | Creates a session. Locks the account for 15 minutes after 5 failures | FR-024 |
 | `POST /auth/sign-out` / `POST /auth/sign-out-all` | S | | FR-023 |
-| `GET/POST /admins`, `PATCH/DELETE /admins/{id}` | S | Last enabled administrator protected | FR-025 |
-| `POST /admins/{id}/password` | S | Change own password | FR-022 |
+| `GET/POST /admins` `{username, password, passwordConfirmation}`, `PATCH/DELETE /admins/{id}` | S | Patch accepts username and/or enabled; last enabled administrator protected | FR-025 |
+| `POST /admins/{id}/password` `{currentPassword, password, passwordConfirmation}` | S | Change own password | FR-022 |
 | `GET /tokens` | S | List tokens with name, scope, expiry, last use, and revoked state | FR-021 |
 | `POST /tokens` `{name, scope: ReadOnly\|Full, expiresAt?}` | S | Returns `{token}` once | FR-021 |
 | `DELETE /tokens/{id}` | S | Revokes immediately | FR-021 |
@@ -61,7 +62,7 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 | Method and path | Scope | Purpose | FR |
 |---|---|---|---|
 | `GET /system/status` | R | Health of services and subsystems, snapshot age, notices | FR-019, FR-040, FR-097 |
-| `GET /system/network` / `PUT /system/network` `{listenAddresses[], confirmDisconnect?}` | R / S | Restrict which interfaces serve the UI | FR-027 |
+| `GET /system/network` / `PUT /system/network` `{listenAddresses[], confirmDisconnect?}` | R / S | Restrict which local IP addresses serve the UI; reload after response. `::` is all interfaces; missing saved interfaces never broaden access, and the console socket stays available | FR-027 |
 | SignalR hub `/hubs/events` | R | Live events, relayed from the Core stream with resume by `seq` | FR-019 |
 | `GET /alerts?state=&minSeverity=` | R | Alert list | FR-096 |
 | `POST /alerts/{id}/ack` | F | Acknowledge an alert | FR-096 |

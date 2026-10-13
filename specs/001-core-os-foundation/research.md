@@ -635,7 +635,7 @@ Each entry gives the decision, the rationale, and the alternatives considered.
 
 - **Decision**:
   - **Sessions**: server-side sessions in `app.db` with a 30-minute idle expiry and a cookie with
-    `HttpOnly`, `Secure`, and `SameSite=Strict`, plus CSRF tokens for mutations.
+    `HttpOnly` and `SameSite=Strict` on the required HTTP listener, plus CSRF tokens for mutations.
   - **Lockout**: tracked per account, 15 minutes after 5 consecutive failures.
   - **First-run setup code**:
     - 8 base32 characters, stored hashed;
@@ -643,13 +643,14 @@ Each entry gives the decision, the rationale, and the alternatives considered.
     - the code is invalidated when setup completes or the installer runs again.
   - **API tokens**: `fdt_<id>_<secret>`, where only an Argon2id hash of the secret is stored.
     Scope is Read-only or Full. Tokens have an optional expiry and are revoked at once. Every use
-    is audited, with entries sampled and aggregated per minute for Read-only polling. Tokens are
+    is audited, with Read-only GET polling sampled once per minute. Full-token and mutating
+    requests are audited individually. Tokens are
     refused for setup, password reset, and token management.
   - **Console password reset**: the `filedockctl reset-password <user>` command runs as root. It
     calls the Management Service over the root-only socket `/run/filedock/management-admin.sock`.
-  - **TLS**: a self-signed certificate is generated at install. The administrator may upload a
-    replacement. The listener addresses are configurable for interface restriction (FR-027), and
-    the default is all addresses on port 443. The appliance never configures UPnP or tunnels.
+  - **HTTP listener**: the UI and API share port 8021, with no TLS or certificate configuration.
+    Listener addresses can be restricted to local interfaces (FR-027); the default is all
+    addresses. The appliance never configures UPnP or tunnels.
 - **Rationale**: These are standard, auditable mechanisms that need no external identity provider,
   matching the spec's out-of-scope list.
 - **Alternatives considered**:

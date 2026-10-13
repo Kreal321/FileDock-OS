@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FileDock.Management.Core;
 using FileDock.Management.Data;
+using FileDock.Management.Domain.Setup;
 using Grpc.Core;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
             builder.UseSetting("Core:Optional", "true");
             builder.UseSetting("Database:Path", Path.Combine(Path.GetTempPath(), $"fd-api-{Guid.NewGuid():N}.db"));
             builder.UseSetting("Kestrel:HttpPort", "0");
+            builder.UseSetting("Logging:LogLevel:Default", "Warning");
         });
     }
 
@@ -38,9 +40,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
     public async Task SetupCompletesOnlyAfterRecoveryKeyConfirmation()
     {
         var client = _factory.CreateClient();
-        var issued = await client.PostAsync("/admin/setup-code", null);
-        issued.EnsureSuccessStatusCode();
-        var code = (await issued.Content.ReadFromJsonAsync<CodeResponse>())!.Code;
+        var code = await IssueCodeAsync(_factory);
 
         var complete = await client.PostAsJsonAsync("/api/v1/setup/complete", new
         {
@@ -87,8 +87,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
             services.AddSingleton<ICoreGateway, FailOnceGateway>();
         }));
         var client = factory.CreateClient();
-        var issued = await client.PostAsync("/admin/setup-code", null);
-        var code = (await issued.Content.ReadFromJsonAsync<CodeResponse>())!.Code;
+        var code = await IssueCodeAsync(factory);
         var body = new { code, applianceName = "harbor", adminUsername = "retry", adminPassword = "correct horse", adminPasswordConfirmation = "correct horse" };
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.PostAsJsonAsync("/api/v1/setup/complete", body)).StatusCode);
         using (var scope = factory.Services.CreateScope())
@@ -138,6 +137,10 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         return "";
     }
 
-    private sealed record CodeResponse(string Code);
+    private static async Task<string> IssueCodeAsync(WebApplicationFactory<Program> factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<SetupCodeService>().IssueAsync();
+    }
     private sealed record GeneratedResponse(string KeyId, string RecoveryKey);
 }

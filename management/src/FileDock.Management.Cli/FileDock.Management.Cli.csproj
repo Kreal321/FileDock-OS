@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>FileDock.Management.Cli</RootNamespace>
     <AssemblyName>filedockctl</AssemblyName>
   </PropertyGroup>

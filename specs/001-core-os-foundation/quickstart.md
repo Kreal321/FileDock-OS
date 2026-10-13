@@ -60,6 +60,8 @@ For the Phase 3 stop point and PVE commands, see [phase3-testing.md](./phase3-te
 
 ## Authentication and tokens (User Story 2)
 
+See [phase4-testing.md](./phase4-testing.md) for the Phase 4 build, PVE and console recovery checks.
+
 - Sign in with a wrong password 5 times.
   - **Expect**: a 15-minute lock, recorded in the audit history.
 - Create a Read-only token, then call `GET /api/v1/system/status` and `POST /api/v1/folders`

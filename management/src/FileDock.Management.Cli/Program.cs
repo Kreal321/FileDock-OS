@@ -18,6 +18,21 @@ setupCode.SetAction(async parse =>
 });
 root.Add(setupCode);
 
+var username = new Argument<string>("username");
+var resetPassword = new Command("reset-password", "Set an administrator password and unlock the account") { username };
+resetPassword.SetAction(async parse => await ResetPasswordCommand.RunAsync(parse.GetValue(socket)!, parse.GetValue(username)!, parse.GetValue(json)));
+root.Add(resetPassword);
+var tokens = new Command("tokens", "Manage API tokens from the console");
+var revokeAll = new Command("revoke-all", "Immediately revoke every API token");
+revokeAll.SetAction(async parse => await TokensCommand.RunAsync(parse.GetValue(socket)!, parse.GetValue(json)));
+tokens.Add(revokeAll);
+root.Add(tokens);
+var network = new Command("network", "Recover management listener access");
+var resetNetwork = new Command("reset", "Restore HTTP management access on all interfaces");
+resetNetwork.SetAction(async parse => await NetworkCommand.RunAsync(parse.GetValue(socket)!, parse.GetValue(json)));
+network.Add(resetNetwork);
+root.Add(network);
+
 root.SetAction(parse =>
 {
     if (parse.GetValue(json))
@@ -32,4 +47,19 @@ root.SetAction(parse =>
     return 0;
 });
 
-return await root.Parse(args).InvokeAsync();
+if (!OperatingSystem.IsLinux() || NativeIdentity.GetEffectiveUserId() != 0)
+{
+    Console.Error.WriteLine("filedockctl requires root on the appliance's Linux console.");
+    return 1;
+}
+try { return await root.Parse(args).InvokeAsync(); }
+catch (Exception ex) when (ex is HttpRequestException or System.Net.Sockets.SocketException or IOException)
+{
+    Console.Error.WriteLine($"Cannot reach the Management Service: {ex.Message}");
+    return 1;
+}
+internal static partial class NativeIdentity
+{
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "geteuid")]
+    internal static partial uint GetEffectiveUserId();
+}

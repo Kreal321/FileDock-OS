@@ -20,7 +20,74 @@ public sealed class AccountLockedException : Exception
 
 public sealed class AdminService(IAdminStore store)
 {
+    private static readonly SemaphoreSlim Gate = new(1, 1);
     public async Task<Administrator> CreateAsync(string username, string password, CancellationToken cancellationToken = default)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try { return await CreateInternalAsync(username, password, cancellationToken); }
+        finally { Gate.Release(); }
+    }
+    public async Task DisableAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await UpdateAsync(id, null, false, cancellationToken);
+    }
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try { await DeleteInternalAsync(id, cancellationToken); }
+        finally { Gate.Release(); }
+    }
+    public async Task ChangePasswordAsync(Guid id, string password, CancellationToken cancellationToken = default)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try { await ChangePasswordInternalAsync(id, password, cancellationToken); }
+        finally { Gate.Release(); }
+    }
+    public async Task<Administrator> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try { return await AuthenticateInternalAsync(username, password, cancellationToken); }
+        finally { Gate.Release(); }
+    }
+    public async Task UpdateAsync(Guid id, string? username, bool? enabled, CancellationToken cancellationToken = default)
+    {
+        await Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var admin = await store.FindByIdAsync(id, cancellationToken) ?? throw new KeyNotFoundException("Administrator not found.");
+            if (enabled == false && admin.Enabled && await store.CountEnabledAsync(cancellationToken) <= 1)
+            {
+                throw new LastAdminException();
+            }
+
+            if (username is not null)
+            {
+                var normalized = Normalize(username);
+                if (normalized.Length is < 1 or > 64)
+                {
+                    throw new ArgumentException("Username must be 1–64 characters.");
+                }
+
+                var other = await store.FindByUsernameAsync(normalized, cancellationToken);
+                if (other is not null && other.Id != id)
+                {
+                    throw new InvalidOperationException("That username is already in use.");
+                }
+
+                admin.Username = normalized;
+            }
+            if (enabled is not null)
+            {
+                admin.Enabled = enabled.Value;
+            }
+
+            admin.UpdatedAt = DateTimeOffset.UtcNow;
+            await store.SaveAsync(cancellationToken);
+        }
+        finally { Gate.Release(); }
+    }
+
+    private async Task<Administrator> CreateInternalAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         PasswordHasher.EnsurePolicy(password);
         var normalized = Normalize(username);
@@ -47,7 +114,7 @@ public sealed class AdminService(IAdminStore store)
         return admin;
     }
 
-    public async Task DisableAsync(Guid id, CancellationToken cancellationToken = default)
+    private async Task DeleteInternalAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var admin = await store.FindByIdAsync(id, cancellationToken)
             ?? throw new KeyNotFoundException("Administrator not found.");
@@ -56,26 +123,10 @@ public sealed class AdminService(IAdminStore store)
             throw new LastAdminException();
         }
 
-        admin.Enabled = false;
-        admin.UpdatedAt = DateTimeOffset.UtcNow;
-        await store.SaveAsync(cancellationToken);
+        await store.DeleteAsync(admin, cancellationToken);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        var admin = await store.FindByIdAsync(id, cancellationToken)
-            ?? throw new KeyNotFoundException("Administrator not found.");
-        if (admin.Enabled && await store.CountEnabledAsync(cancellationToken) <= 1)
-        {
-            throw new LastAdminException();
-        }
-
-        admin.Enabled = false;
-        admin.UpdatedAt = DateTimeOffset.UtcNow;
-        await store.SaveAsync(cancellationToken);
-    }
-
-    public async Task ChangePasswordAsync(Guid id, string password, CancellationToken cancellationToken = default)
+    private async Task ChangePasswordInternalAsync(Guid id, string password, CancellationToken cancellationToken = default)
     {
         PasswordHasher.EnsurePolicy(password);
         var admin = await store.FindByIdAsync(id, cancellationToken)
@@ -87,7 +138,7 @@ public sealed class AdminService(IAdminStore store)
         await store.SaveAsync(cancellationToken);
     }
 
-    public async Task<Administrator> AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
+    private async Task<Administrator> AuthenticateInternalAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         var admin = await store.FindByUsernameAsync(Normalize(username), cancellationToken);
         if (admin is null || !admin.Enabled)
