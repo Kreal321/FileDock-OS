@@ -243,7 +243,7 @@ jobs:
           sudo bash install.sh --offline-bundle "\$PWD"
           \`\`\`
 
-          The installer prints the HTTPS UI address and one-time setup code. Complete setup, save and confirm the recovery key, sign out and sign in, and check all eight health cards. This build does not certify the fresh-VM acceptance test.
+          The installer prints the HTTP UI address (port 8021 for both UI and API) and one-time setup code. Complete setup, download and save the recovery-key TXT file, sign out and sign in, and check all eight health cards. This build does not certify the fresh-VM acceptance test.
           EOF_NOTES
           args=(--repo "$GH_REPO" --title "FileDock $RELEASE_TAG offline bundle" --notes-file release-notes.md --latest=false)
           if [[ "$EVENT_NAME" == push ]]; then

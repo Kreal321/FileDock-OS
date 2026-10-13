@@ -55,6 +55,8 @@ gh release download "$TAG" --repo Kreal321/FileDock-OS \
   --pattern "$ARCHIVE" --pattern "$ARCHIVE.sha256"
 ```
 
-The installer prints the HTTPS UI address and one-time setup code. Finish setup, save and confirm the recovery key, sign out and sign back in, then confirm all eight health cards are Healthy. Reboot and repeat the health check. See `specs/001-core-os-foundation/phase3-testing.md` for the full independent test.
+Offline installation disables repository sources and cached package indexes for its APT commands. It resolves dependencies from the supplied `.deb` files and installed packages; missing dependencies are reported rather than fetched from the network.
+
+The installer prints the HTTP UI address on port 8021 and one-time setup code. The UI is at `http://VM_IP:8021/` and the API is at `http://VM_IP:8021/api/v1`. Finish setup, download and save the recovery-key TXT file, sign out and sign back in, then confirm all eight health cards are Healthy. Reboot and repeat the health check. See `specs/001-core-os-foundation/phase3-testing.md` for the full independent test.
 
 A successful release build proves the build completed; it does not certify fresh-VM installation or subsystem health. The workflow has no VM acceptance stage.

@@ -51,7 +51,7 @@ For the Phase 3 stop point and PVE commands, see [phase3-testing.md](./phase3-te
 3. Open the UI from another machine. Enter a wrong code 5 times.
    - **Expect**: throttling. No page other than setup is reachable (`423` from the API).
 4. Enter the correct code, then create the administrator and appliance name.
-   - **Expect**: the recovery key is shown once, and confirmation of two groups is required.
+   - **Expect**: the recovery key is shown once; clicking Download recovery key and continue downloads a TXT file and finishes setup.
 5. **Expect**: the dashboard shows the Core, the Management Service, the container runtime, and
    the Samba, NFS, rclone, `fd-s3`, and Kopia subsystems as healthy (SC-001).
 6. Re-run the installer.

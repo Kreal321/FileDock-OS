@@ -38,7 +38,7 @@
 - Protocol names (SMB, NFS, WebDAV) and capability identifiers (such as `protocol.smb`) are
   user-visible product concepts, not implementation choices.
 - Defaults with no clarification needed are recorded in the spec. They include the password policy
-  (12 characters, lockout after 5 failures for 15 minutes), a 30-minute idle session, 90-day audit
+  (non-empty password, advisory length over 8 characters, lockout after 5 failures for 15 minutes), a 30-minute idle session, 90-day audit
   retention, a 1 GB log cap, and snapshot retention (30 most recent plus 30 daily).
 - Revision 2026-10-11 (re-validated, all items still pass):
   - The Create Managed Folder flow (User Story 8, FR-062 to FR-074) replaces the four durability

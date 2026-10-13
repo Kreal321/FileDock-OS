@@ -9,7 +9,7 @@ sudo bash install.sh [--release <version>] [--offline-bundle <path>] [--yes] [--
 
 | Phase | Behavior | FR |
 |---|---|---|
-| Preflight (read-only) | Checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or an offline bundle, and no conflicting services (existing Samba or NFS configuration not owned by FileDock, Docker from other sources, port 443 in use). On any failure it prints one line per check with a fix hint, and exits `2` without changing anything | FR-002 |
+| Preflight (read-only) | Checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or an offline bundle, and no conflicting services (existing Samba or NFS configuration not owned by FileDock, Docker from other sources, port 8021 in use). On any failure it prints one line per check with a fix hint, and exits `2` without changing anything | FR-002 |
 | Install | Adds the pinned FileDock and Docker repositories and apt pins from `versions.lock`. Installs `filedock-core`, `filedock-management`, and `filedock-builtins` at exact versions, verifying upstream rclone and Kopia packages by SHA-256. Creates users and groups (`filedock-mgmt`, `filedock-share`), paths (FR-005), units, and the journald cap | FR-001, FR-003, FR-005, FR-006, FR-058 |
 | System Pool | On first install, creates the System Pool image on the root filesystem with the default limits (50%, 100 GB). If the disk is too small, it records the System Pool as Unavailable and prints the reason | FR-098, FR-101 |
 | Detect state | On a fresh install, runs `filedock-core detect-state` read-only (research R22). If appliance-state copies are found, it prints each appliance's name, newest snapshot time, and location. On an interactive console it asks whether to restore, then asks for the recovery key with hidden input, and nothing else. With `--yes`, or without a TTY, it skips the prompt and the first-run page offers the restore instead | FR-106, FR-107 |
@@ -31,7 +31,7 @@ Example output after a successful install:
 
 ```text
 FileDock 0.1.0 installed.
-Open https://192.168.1.40/ to finish setup.
+Open http://192.168.1.40:8021/ to finish setup.
 One-time setup code: 7KQ4-M2XD
 ```
 
@@ -44,7 +44,7 @@ Found appliance state for "filedock-home":
 Restore it now? [Y/n] y
 Recovery key: *****-*****-*****-*****-*****
 Restoring... pools reattached: media. System Pool recreated. Connections: 2 reconnected.
-Restore complete. Open https://192.168.1.40/ and sign in with your existing account.
+Restore complete. Open http://192.168.1.40:8021/ and sign in with your existing account.
 ```
 
 ## `filedockctl` (local administration, root only)

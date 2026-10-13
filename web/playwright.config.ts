@@ -5,8 +5,7 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   reporter: 'list',
   use: {
-    baseURL: process.env.FD_BASE_URL ?? 'https://localhost:8443',
-    ignoreHTTPSErrors: true,
+    baseURL: process.env.FD_BASE_URL ?? 'http://localhost:8021',
     trace: 'retain-on-failure',
   },
 });

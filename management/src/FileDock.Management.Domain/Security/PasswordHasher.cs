@@ -6,13 +6,11 @@ namespace FileDock.Management.Domain.Security;
 
 public sealed class PasswordHasher
 {
-    public const int MinimumLength = 12;
-
     public static void EnsurePolicy(string password)
     {
-        if (password.Length < MinimumLength)
+        if (string.IsNullOrEmpty(password))
         {
-            throw new ArgumentException($"Passwords must be at least {MinimumLength} characters.", nameof(password));
+            throw new ArgumentException("A password is required.", nameof(password));
         }
     }
 

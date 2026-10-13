@@ -46,7 +46,7 @@ apt-get install -y --download-only --no-install-recommends \
   -o "Dir::State::status=$solver_dir/status" \
   -o "Dir::State::extended_states=$solver_dir/extended_states" \
   -o "Dir::Cache::archives=$solver_dir/archives" \
-  "$solver_dir/inputs/"*.deb "${pinned[@]}" curl ca-certificates gnupg openssl
+  "$solver_dir/inputs/"*.deb "${pinned[@]}" curl ca-certificates gnupg
 # Replace dependency artifacts only after resolution and download succeed. This
 # also removes conflicting providers left by a previous bundle-generation run.
 find "$DIST" -maxdepth 1 -type f -name '*.deb' -delete

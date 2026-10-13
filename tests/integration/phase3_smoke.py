@@ -7,7 +7,7 @@ with tempfile.TemporaryDirectory(prefix='fd-p3-') as scratch:
     env={**os.environ,'FD_CORE_SOCKET':str(d/'core.sock'),'FD_CORE_DB':str(d/'core.db'),'FD_SECRETS':str(d/'secrets.enc'),'FD_RECOVERY_KEYS':str(d/'recovery.enc'),'FD_DEK':str(d/'local.key'),'FD_MANIFESTS':str(root/'packaging/subsystems'),'FD_RUNTIME_ENABLED':'0','FD_MGMT_UID':str(os.getuid()),'FD_RECOVERY_ARGON_KIB':'8'}
     corelog=open(d/'core.log','w+'); applog=open(d/'api.log','w+')
     core=subprocess.Popen([str(root/'target/debug/filedock-core')],env=env,stdout=corelog,stderr=subprocess.STDOUT)
-    appenv={**os.environ,'Core__Socket':str(d/'core.sock'),'Database__Path':str(d/'app.db'),'AdminSocket__Path':str(d/'admin.sock'),'Kestrel__HttpsPort':str(port),'Kestrel__UseHttps':'false','ASPNETCORE_CONTENTROOT':str(root/'management/src/FileDock.Management.Api')}
+    appenv={**os.environ,'Core__Socket':str(d/'core.sock'),'Database__Path':str(d/'app.db'),'AdminSocket__Path':str(d/'admin.sock'),'Kestrel__HttpPort':str(port),'ASPNETCORE_CONTENTROOT':str(root/'management/src/FileDock.Management.Api')}
     app=subprocess.Popen(['dotnet',str(root/'management/src/FileDock.Management.Api/bin/Debug/net10.0/FileDock.Management.Api.dll')],env=appenv,stdout=applog,stderr=subprocess.STDOUT)
     try:
         client=httpx.Client(base_url=f'http://127.0.0.1:{port}')
@@ -21,10 +21,9 @@ with tempfile.TemporaryDirectory(prefix='fd-p3-') as scratch:
         code=admin.post('/admin/setup-code').raise_for_status().json()['code']
         assert client.get('/').status_code==200
         assert client.get('/api/v1/system/status').status_code==423
-        created=client.post('/api/v1/setup/complete',json={'code':code,'applianceName':'real-core-smoke','adminUsername':'admin','adminPassword':'Test-Password-123!'}).raise_for_status().json()
+        created=client.post('/api/v1/setup/complete',json={'code':code,'applianceName':'real-core-smoke','adminUsername':'admin','adminPassword':'Test-Password-123!','adminPasswordConfirmation':'Test-Password-123!'}).raise_for_status().json()
         headers={'X-CSRF-Token':client.cookies.get('fd_csrf')}
-        groups=created['recoveryKey'].split('-')
-        client.post('/api/v1/setup/recovery-key/confirm',headers=headers,json={'keyId':created['keyId'],'groups':{str(i):groups[i] for i in created['confirmGroupIndexes']}}).raise_for_status()
+        client.post('/api/v1/setup/recovery-key/confirm',headers=headers,json={'keyId':created['keyId']}).raise_for_status()
         client.post('/api/v1/auth/sign-out',headers=headers).raise_for_status()
         assert client.get('/api/v1/system/status').status_code==401
         client.post('/api/v1/auth/sign-in',json={'username':'admin','password':'Test-Password-123!'}).raise_for_status()

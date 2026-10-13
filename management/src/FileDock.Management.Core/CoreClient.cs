@@ -81,17 +81,12 @@ public sealed class CoreClient : ICoreGateway, IAsyncDisposable
             new GenerateRecoveryKeyRequest(),
             headers: Metadata(actor, requestId, true),
             cancellationToken: cancellationToken);
-        return new GeneratedRecoveryKeyDto(result.KeyId, result.RecoveryKey, result.ConfirmGroupIndexes.ToArray());
+        return new GeneratedRecoveryKeyDto(result.KeyId, result.RecoveryKey);
     }
 
-    public async Task ConfirmRecoveryKeyAsync(string keyId, IReadOnlyDictionary<uint, string> groups, string actor, string requestId, CancellationToken cancellationToken = default)
+    public async Task ConfirmRecoveryKeyAsync(string keyId, string actor, string requestId, CancellationToken cancellationToken = default)
     {
         var request = new ConfirmRecoveryKeyRequest { KeyId = keyId };
-        foreach (var (index, value) in groups)
-        {
-            request.Groups[index] = value;
-        }
-
         await Recovery.ConfirmRecoveryKeyAsync(request, headers: Metadata(actor, requestId, true), cancellationToken: cancellationToken);
     }
 

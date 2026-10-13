@@ -60,8 +60,9 @@ has_network() {
 }
 port_in_use() {
   local port="$1"
-  if [[ -n "${FD_TEST_PORT_443:-}" ]]; then
-    [[ "$FD_TEST_PORT_443" == "1" ]]
+  local override="FD_TEST_PORT_${port}"
+  if [[ -n "${!override:-}" ]]; then
+    [[ "${!override}" == "1" ]]
     return
   fi
   if [[ -f /etc/filedock/.installed ]] && systemctl is-active --quiet filedock-management.service; then return 1; fi
@@ -128,9 +129,9 @@ preflight() {
   check "$(conflicting_docker && echo 0 || echo 1)" \
     "Docker from another source is already running" \
     "Remove the foreign Docker install or pass an offline bundle on a clean host."
-  check "$(port_in_use 443 && echo 0 || echo 1)" \
-    "TCP port 443 is already in use" \
-    "Stop the service using 443, then re-run."
+  check "$(port_in_use 8021 && echo 0 || echo 1)" \
+    "TCP port 8021 is already in use" \
+    "Stop the service using 8021, then re-run."
   if [[ "$fail" -eq 1 ]]; then
     return 2
   fi
@@ -195,25 +196,6 @@ SystemMaxUse=1G
 EOF
 }
 
-install_tls() {
-  local dir="/var/lib/filedock-management/tls"
-  if [[ "$REPAIR" -eq 1 && -f "$dir/tls.crt" && -f "$dir/tls.key" ]]; then
-    return 0
-  fi
-  if [[ "$REPAIR" -eq 1 ]]; then
-    mkdir -p "$dir"
-  fi
-  if [[ "$REPAIR" -eq 0 ]]; then
-    mkdir -p "$dir"
-  fi
-  if command -v openssl >/dev/null 2>&1 && { [[ ! -f "$dir/tls.crt" ]] || [[ ! -f "$dir/tls.key" ]]; }; then
-    openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
-      -keyout "$dir/tls.key" -out "$dir/tls.crt" \
-      -subj "/CN=filedock" >/dev/null 2>&1
-    chmod 640 "$dir/tls.key"
-  fi
-}
-
 verify_deb() {
   local name="$1" file="$2"
   local expected
@@ -250,7 +232,7 @@ install_packages() {
   local bundle="$OFFLINE_BUNDLE"
   if [[ -z "$bundle" ]]; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg openssl
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg
     configure_repositories || return 1
     bundle="$(mktemp -d)"
     ONLINE_BUNDLE="$bundle"
@@ -278,28 +260,45 @@ install_packages() {
   if [[ -f "$bundle/SHA256SUMS" ]]; then
     (cd "$bundle" && sha256sum -c SHA256SUMS) || return 1
   fi
-  local args=()
-  [[ -n "$OFFLINE_BUNDLE" ]] && args+=(--no-download)
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "$bundle"/*.deb || return 1
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" $(awk '$1=="apt" || $1 ~ /^apt@/ {printf "%s=%s ", $2, $3}' "$LOCK") || return 1
+  install_bundle_packages "$bundle" || return 1
 }
+
+install_bundle_packages() (
+  local bundle="$1"
+  # Match the bundle solver: recommended packages are not included offline.
+  local args=(--no-install-recommends)
+  local apt_state=""
+  trap '[[ -z "$apt_state" ]] || rm -rf "$apt_state"' EXIT
+  if [[ -n "$OFFLINE_BUNDLE" ]]; then
+    # --no-download does not restrict dependency candidate selection: repository
+    # metadata can still select archives unavailable locally. Resolve using only
+    # the supplied files and installed packages, with no repository indexes.
+    apt_state="$(mktemp -d)"
+    mkdir -p "$apt_state/lists/partial" "$apt_state/sources"
+    args+=(
+      -o "Dir::Etc::sourcelist=/dev/null"
+      -o "Dir::Etc::sourceparts=$apt_state/sources"
+      -o "Dir::State::lists=$apt_state/lists"
+      -o "Dir::Cache::pkgcache="
+      -o "Dir::Cache::srcpkgcache="
+    )
+  fi
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "$bundle"/*.deb || return 1
+  local pinned
+  mapfile -t pinned < <(awk '$1=="apt" || $1 ~ /^apt@/ {print $2 "=" $3}' "$LOCK")
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "${pinned[@]}" || return 1
+)
 
 configure_services() {
   chown root:filedock-mgmt /run/filedock
   chmod 0770 /run/filedock
   chown filedock-mgmt:filedock-mgmt /var/lib/filedock-management
   chmod 0700 /var/lib/filedock-management
-  chown -R root:filedock-mgmt /var/lib/filedock-management/tls
-  chmod 0750 /var/lib/filedock-management/tls
-  chmod 0640 /var/lib/filedock-management/tls/tls.key
   if [[ ! -f /etc/filedock/management.env ]]; then
     cat >/etc/filedock/management.env <<'EOF'
 Database__Path=/var/lib/filedock-management/app.db
 AdminSocket__Path=/run/filedock/management-admin.sock
-Kestrel__HttpsPort=443
-Kestrel__UseHttps=true
-Kestrel__CertificatePath=/var/lib/filedock-management/tls/tls.crt
-Kestrel__KeyPath=/var/lib/filedock-management/tls/tls.key
+Kestrel__HttpPort=8021
 Core__Socket=/run/filedock/core.sock
 EOF
     chmod 0640 /etc/filedock/management.env
@@ -312,7 +311,7 @@ EOF
   systemctl enable --now smbd.service nfs-server.service docker.service
   systemctl restart filedock-core.service filedock-management.service
   for attempt in $(seq 1 60); do
-    if curl --silent --fail --insecure https://127.0.0.1/health >/dev/null; then return 0; fi
+    if curl --silent --fail http://127.0.0.1:8021/health >/dev/null; then return 0; fi
     sleep 1
   done
   echo "Management service did not become healthy; inspect journalctl -u filedock-management -u filedock-core" >&2
@@ -326,7 +325,7 @@ ui_address() {
 print_setup_code() {
   local code=""
   local output
-  if output="$(filedockctl setup-code --json 2>&1)"; then
+  if output="$(filedockctl --json setup-code 2>&1)"; then
     code="$(printf '%s' "$output" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
     [[ -n "$code" ]] || { echo "Could not retrieve the setup code" >&2; return 1; }
   elif [[ "$REPAIR" -eq 1 && "$output" == *"already complete"* ]]; then
@@ -340,7 +339,7 @@ print_setup_code() {
   addr="$(ui_address)"
   [[ -n "$addr" ]] || addr="127.0.0.1"
   echo "FileDock ${RELEASE} installed."
-  echo "Open https://${addr}/ to finish setup."
+  echo "Open http://${addr}:8021/ to finish setup."
   if [[ -n "$code" ]]; then
     echo "One-time setup code: $code"
   fi
@@ -351,7 +350,6 @@ ensure_users
 ensure_paths
 install_journald_cap
 install_packages || exit 3
-install_tls
 configure_services || exit 3
 print_setup_code || exit 3
 mkdir -p /etc/filedock

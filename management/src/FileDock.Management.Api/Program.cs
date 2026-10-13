@@ -1,4 +1,3 @@
-using System.Security.Cryptography.X509Certificates;
 using FileDock.Management.Api.AdminSocket;
 using FileDock.Management.Api.Auth;
 using FileDock.Management.Api.Endpoints;
@@ -51,23 +50,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    var httpsPort = builder.Configuration.GetValue("Kestrel:HttpsPort", 8443);
-    options.ListenAnyIP(httpsPort, listen =>
-    {
-        if (builder.Configuration.GetValue("Kestrel:UseHttps", false))
-        {
-            var certificate = builder.Configuration["Kestrel:CertificatePath"];
-            var key = builder.Configuration["Kestrel:KeyPath"];
-            if (certificate is not null && key is not null)
-            {
-                listen.UseHttps(X509Certificate2.CreateFromPemFile(certificate, key));
-            }
-            else
-            {
-                listen.UseHttps();
-            }
-        }
-    });
+    var httpPort = builder.Configuration.GetValue("Kestrel:HttpPort", 8021);
+    options.ListenAnyIP(httpPort);
     var adminSocket = builder.Configuration["AdminSocket:Path"];
     if (!string.IsNullOrEmpty(adminSocket))
     {

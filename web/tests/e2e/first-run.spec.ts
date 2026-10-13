@@ -14,18 +14,16 @@ test('fresh appliance setup, recovery key, sign out, sign in and healthy dashboa
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByLabel('Appliance name').fill('phase3-test');
   await page.getByLabel('Administrator username').fill(username);
-  await page.getByLabel('Password (12+ characters)').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByLabel('Re-enter password').fill(password);
   await page.getByRole('button', { name: 'Create administrator' }).click();
   const key = page.getByTestId('recovery-key');
   await expect(key).toBeVisible();
   expect((await page.request.get('/api/v1/system/status')).status()).toBe(423);
-  const groups = (await key.innerText()).trim().split('-');
-  expect(groups.length).toBeGreaterThan(2);
-  for (const input of await page.locator('input[name^="g"]').all()) {
-    const index = Number((await input.getAttribute('name'))!.slice(1));
-    await input.fill(groups[index]);
-  }
-  await page.getByRole('button', { name: 'Confirm recovery key' }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download recovery key and continue' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('filedock-recovery-key.txt');
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByLabel('Username', { exact: true }).fill(username);

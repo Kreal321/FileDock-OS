@@ -1,10 +1,11 @@
 using System.CommandLine;
 using FileDock.Management.Cli.Commands;
 
-var json = new Option<bool>("--json", "-j") { Description = "Print machine-readable JSON" };
+var json = new Option<bool>("--json", "-j") { Description = "Print machine-readable JSON", Recursive = true };
 var socket = new Option<string>("--socket")
 {
     Description = "Management admin socket",
+    Recursive = true,
     DefaultValueFactory = _ => "/run/filedock/management-admin.sock",
 };
 var root = new RootCommand("filedockctl — local administration (root only)") { json, socket };

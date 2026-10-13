@@ -38,7 +38,7 @@ sudo bash install.sh --offline-bundle "$PWD" --check-only
 sudo bash install.sh --offline-bundle "$PWD"
 ```
 
-The installer prints `https://VM_IP/` and a one-time setup code. Open that address from your computer, accept the test certificate, enter the setup code, name the appliance and create an administrator. Save the recovery key somewhere safe and confirm the two requested groups. Sign out and sign back in.
+The installer prints `http://VM_IP:8021/` and a one-time setup code. Open that address from your computer, enter the setup code, name the appliance and create an administrator (`root` is the editable default); enter the password twice. More than 8 characters is suggested, with no minimum-length enforcement. Click Download recovery key and continue, then store the downloaded TXT file somewhere safe. Sign out and sign back in.
 
 All eight cards must show Healthy: FileDock Core, Management Service, Docker Engine, Samba, NFS, Kopia, Native S3 connector and rclone. Kopia is an on-demand engine at this stage; its health means its binary can execute, not that a backup repository is configured. Cloud connection tests and later user stories are separate.
 
@@ -49,7 +49,7 @@ For troubleshooting:
 ```bash
 sudo systemctl status filedock-core filedock-management filedock-s3 filedock-rclone docker smbd nfs-server --no-pager
 sudo journalctl -u filedock-core -u filedock-management -u filedock-s3 -u filedock-rclone -b --no-pager -n 150
-curl -kfsS https://127.0.0.1/health
+curl -fsS http://127.0.0.1:8021/health
 ```
 
 ## Automated browser and repair acceptance
@@ -71,7 +71,7 @@ The harness does not destroy an existing PVE VM. Revert it to its clean snapshot
 For an already installed but still unconfigured VM, obtain a fresh code using `sudo filedockctl setup-code --json`, then run only the browser test:
 
 ```bash
-FD_BASE_URL=https://VM_IP FD_SETUP_CODE=CODE pnpm -C web test:e2e
+FD_BASE_URL=http://VM_IP:8021 FD_SETUP_CODE=CODE pnpm -C web test:e2e
 ```
 
 ## Validation status
@@ -94,3 +94,25 @@ Local validation on 2026-10-11:
 - Installer preflight: 2 passed; 2 VM cases skipped because no VM target or libvirt image is available.
 - Real Core/API integration check: passed; local status returned eight component entries. This does not assert Linux components are healthy on macOS.
 - Rust Clippy with warnings treated as errors, shell syntax and Git whitespace checks: passed.
+
+
+PVE VM installation validation on 2026-10-12:
+
+- Target: Debian 13 amd64 VM at 192.168.68.26; bundle `test-0.1.0-3-1`, commit `7fe47a2ca7436888b7c3c5824efdf298688f5da5`.
+- Fixed a missing semicolon in the temporary APT configuration and transferred the corrected repository installer as `/filedock-bundle/install-fixed.sh`.
+- Offline installation using only local package sources succeeded. The released CLI rejected `setup-code --json`; the working invocation is `--json setup-code`. Repository CLI options now inherit to subcommands and the installer uses the compatible invocation.
+- Completed the install marker after verifying setup-code issuance, then reran the corrected installer; the rerun exited 0. Logs are `/filedock-bundle/install-fixed.log` and `/filedock-bundle/install-repair.log` on the VM.
+- Core, Management, fd-s3, rclone, Docker and Samba are active/running; NFS is active/exited as expected for its service. Kopia executes `--version`, rclone responds to `core/stats`, and HTTPS `/health` returns `{"status":"ok"}`.
+- First-run administrator creation, recovery-key confirmation, sign-out/sign-in, the authenticated eight-card dashboard, reboot, and repair after completed setup are still pending. This is not a full Phase 3 checkpoint pass.
+
+
+Development reset on 2026-10-12:
+
+- Management now serves HTTP on port 8844; HTTPS and recovery-group compatibility have been removed from source.
+- Uninstalled the three FileDock packages plus Docker/containerd, Samba, NFS, rclone and Kopia from the PVE VM at 192.168.68.26. APT purge exited 0.
+- Cleared FileDock configuration, database, recovery keys, runtime files, backups/cache, empty storage directories, service account/groups and journald override. No containers, volumes or mounted FileDock pools were present.
+- Ports 443 and 8844 are clear. The old `/filedock-bundle` is preserved; manual testing of these edits requires a newly built release extracted separately.
+- The updated HTTP build and first-run flow have not been run on the VM. After reinstall, use `http://192.168.68.26:8021/`.
+
+
+Port revision: Management UI and API both use HTTP port 8021. Browser requests use the same origin. The Rust Core continues to use its Unix socket. Installer preflight checks TCP port 8021. This revised listener has not been run on the VM.

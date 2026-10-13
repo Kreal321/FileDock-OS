@@ -101,12 +101,12 @@ def run(*args: str | Path, check: bool = True, timeout: float = 600) -> subproce
 
 
 class ApiClient:
-    """Thin `/api/v1` client. The appliance uses a self-signed certificate until one is set."""
+    """Thin `/api/v1` client for the appliance HTTP service on port 8021."""
 
     def __init__(self, host: str, token: str | None = None) -> None:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.http = httpx.Client(
-            base_url=f"https://{host}/api/v1", headers=headers, verify=False, timeout=30
+            base_url=f"http://{host}:8021/api/v1", headers=headers, timeout=30
         )
 
     def get(self, path: str, **kwargs: object) -> httpx.Response:

@@ -2,7 +2,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-const apiTarget = process.env.FD_API_URL ?? 'https://localhost:8443';
+const apiTarget = process.env.FD_API_URL ?? 'http://localhost:8021';
 
 export default defineConfig({
   plugins: [react()],
@@ -13,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': { target: apiTarget, changeOrigin: true, secure: false },
-      '/hubs': { target: apiTarget, changeOrigin: true, secure: false, ws: true },
+      '/api': { target: apiTarget, changeOrigin: true },
+      '/hubs': { target: apiTarget, changeOrigin: true, ws: true },
     },
   },
   test: {

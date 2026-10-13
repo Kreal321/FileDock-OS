@@ -71,18 +71,17 @@ public static class AuthEndpoints
 
     public static void WriteCookies(HttpContext context, IssuedSession issued)
     {
-        var secure = context.Request.IsHttps;
         context.Response.Cookies.Append(SessionAuthHandler.CookieName, issued.Token, new CookieOptions
         {
             HttpOnly = true,
-            Secure = secure,
+            Secure = false,
             SameSite = SameSiteMode.Strict,
             Path = "/",
         });
         context.Response.Cookies.Append(SessionAuthHandler.CsrfCookie, issued.Csrf, new CookieOptions
         {
             HttpOnly = false,
-            Secure = secure,
+            Secure = false,
             SameSite = SameSiteMode.Strict,
             Path = "/",
         });

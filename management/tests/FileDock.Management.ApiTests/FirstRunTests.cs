@@ -19,7 +19,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         {
             builder.UseSetting("Core:Optional", "true");
             builder.UseSetting("Database:Path", Path.Combine(Path.GetTempPath(), $"fd-api-{Guid.NewGuid():N}.db"));
-            builder.UseSetting("Kestrel:HttpsPort", "0");
+            builder.UseSetting("Kestrel:HttpPort", "0");
         });
     }
 
@@ -48,6 +48,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
             applianceName = "harbor",
             adminUsername = "alice",
             adminPassword = "correct horse",
+            adminPasswordConfirmation = "correct horse",
         });
         complete.EnsureSuccessStatusCode();
         var generated = await complete.Content.ReadFromJsonAsync<GeneratedResponse>();
@@ -56,11 +57,9 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         var stillLocked = await client.GetAsync("/api/v1/system/status");
         Assert.Equal(HttpStatusCode.Locked, stillLocked.StatusCode);
 
-        var groups = generated!.RecoveryKey.Split('-');
-        var confirm = generated.ConfirmGroupIndexes.ToDictionary(i => i, i => groups[i]);
         using var confirmRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/setup/recovery-key/confirm")
         {
-            Content = JsonContent.Create(new { keyId = generated.KeyId, groups = confirm }),
+            Content = JsonContent.Create(new { keyId = generated!.KeyId }),
         };
         confirmRequest.Headers.TryAddWithoutValidation("X-CSRF-Token", ReadSetCookie(complete, "fd_csrf"));
         var confirmed = await client.SendAsync(confirmRequest);
@@ -90,7 +89,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         var client = factory.CreateClient();
         var issued = await client.PostAsync("/admin/setup-code", null);
         var code = (await issued.Content.ReadFromJsonAsync<CodeResponse>())!.Code;
-        var body = new { code, applianceName = "harbor", adminUsername = "retry", adminPassword = "correct horse" };
+        var body = new { code, applianceName = "harbor", adminUsername = "retry", adminPassword = "correct horse", adminPasswordConfirmation = "correct horse" };
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.PostAsJsonAsync("/api/v1/setup/complete", body)).StatusCode);
         using (var scope = factory.Services.CreateScope())
         {
@@ -116,7 +115,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
             return _inner.ApplyApplianceNameAsync(name, actor, id, ct);
         }
         public Task<GeneratedRecoveryKeyDto> GenerateRecoveryKeyAsync(string actor, string id, CancellationToken ct = default) => _inner.GenerateRecoveryKeyAsync(actor, id, ct);
-        public Task ConfirmRecoveryKeyAsync(string id, IReadOnlyDictionary<uint, string> groups, string actor, string requestId, CancellationToken ct = default) => _inner.ConfirmRecoveryKeyAsync(id, groups, actor, requestId, ct);
+        public Task ConfirmRecoveryKeyAsync(string id, string actor, string requestId, CancellationToken ct = default) => _inner.ConfirmRecoveryKeyAsync(id, actor, requestId, ct);
         public Task<SystemStatusDto> GetSystemStatusAsync(CancellationToken ct = default) => _inner.GetSystemStatusAsync(ct);
     }
 
@@ -140,5 +139,5 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     private sealed record CodeResponse(string Code);
-    private sealed record GeneratedResponse(string KeyId, string RecoveryKey, uint[] ConfirmGroupIndexes);
+    private sealed record GeneratedResponse(string KeyId, string RecoveryKey);
 }

@@ -1,6 +1,6 @@
 # Management REST API v1 (contract)
 
-**Served by**: the Management Service, over HTTPS (FR-027).
+**Served by**: the Management Service, over HTTP on port 8021 for both UI and API (FR-027).
 **Base path**: `/api/v1`.
 **Clients**: the web UI, and scripts that use API tokens (research R4).
 
@@ -45,8 +45,8 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 |---|---|---|---|
 | `GET /health` | public | Liveness, with no details | — |
 | `POST /setup/verify-code` `{code}` | P | Validates the one-time setup code. Throttled | FR-020 |
-| `POST /setup/complete` `{code, applianceName, adminUsername, adminPassword}` | P | Creates the first administrator, signs them in (sets `fd_session`), and generates the recovery key | FR-020, FR-033 |
-| `POST /setup/recovery-key/confirm` `{keyId, groups}` | S | Confirms part of the recovery key | FR-033 |
+| `POST /setup/complete` `{code, applianceName, adminUsername, adminPassword, adminPasswordConfirmation}` | P | Creates the first administrator, signs them in (sets `fd_session`), and generates the recovery key | FR-020, FR-033 |
+| `POST /setup/recovery-key/confirm` `{keyId}` | S | Acknowledges the recovery-key download and finishes setup. The request identifies the current recovery key | FR-033 |
 | `POST /setup/restore/...` | P | Restore Appliance entry, the alternative to setup (see Recovery) | FR-041 |
 | `POST /auth/sign-in` `{username, password}` | public | Creates a session. Locks the account for 15 minutes after 5 failures | FR-024 |
 | `POST /auth/sign-out` / `POST /auth/sign-out-all` | S | | FR-023 |
@@ -62,7 +62,6 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 |---|---|---|---|
 | `GET /system/status` | R | Health of services and subsystems, snapshot age, notices | FR-019, FR-040, FR-097 |
 | `GET /system/network` / `PUT /system/network` `{listenAddresses[], confirmDisconnect?}` | R / S | Restrict which interfaces serve the UI | FR-027 |
-| `PUT /system/certificate` | S | Replace the TLS certificate | FR-027 |
 | SignalR hub `/hubs/events` | R | Live events, relayed from the Core stream with resume by `seq` | FR-019 |
 | `GET /alerts?state=&minSeverity=` | R | Alert list | FR-096 |
 | `POST /alerts/{id}/ack` | F | Acknowledge an alert | FR-096 |

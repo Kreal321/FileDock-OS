@@ -7,7 +7,6 @@ type Generated = {
   applianceName: string;
   keyId: string;
   recoveryKey: string;
-  confirmGroupIndexes: number[];
 };
 
 export function SetupWizard({ onDone }: { onDone: () => void }) {
@@ -34,12 +33,19 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     event.preventDefault();
     setError('');
     const form = new FormData(event.currentTarget);
+    const password = String(form.get('adminPassword') ?? '');
+    const passwordConfirmation = String(form.get('adminPasswordConfirmation') ?? '');
+    if (password !== passwordConfirmation) {
+      setError('Passwords do not match.');
+      return;
+    }
     try {
       const result = await api.post<Generated>('/setup/complete', {
         code,
         applianceName: String(form.get('applianceName') ?? ''),
         adminUsername: String(form.get('adminUsername') ?? ''),
-        adminPassword: String(form.get('adminPassword') ?? ''),
+        adminPassword: password,
+        adminPasswordConfirmation: passwordConfirmation,
       });
       setGenerated(result);
       setStep('key');
@@ -48,16 +54,16 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     }
   }
 
-  async function confirm(groups: Record<number, string>) {
+  async function confirm() {
     if (!generated) {
       return;
     }
     setError('');
     try {
-      await api.post('/setup/recovery-key/confirm', { keyId: generated.keyId, groups });
+      await api.post('/setup/recovery-key/confirm', { keyId: generated.keyId });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Those groups did not match.');
+      setError(err instanceof ApiError ? err.message : 'Could not finish setup. Please try again.');
     }
   }
 
@@ -91,15 +97,19 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
           </label>
           <label>
             Administrator username
-            <input name="adminUsername" required autoComplete="username" />
+            <input name="adminUsername" required autoComplete="username" defaultValue="root" />
           </label>
           <label>
-            Password (12+ characters)
+            Password
+            <input name="adminPassword" type="password" required autoComplete="new-password" />
+          </label>
+          <p className="eyebrow">We recommend using more than 8 characters.</p>
+          <label>
+            Re-enter password
             <input
-              name="adminPassword"
+              name="adminPasswordConfirmation"
               type="password"
               required
-              minLength={12}
               autoComplete="new-password"
             />
           </label>
@@ -114,13 +124,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
         </form>
       ) : null}
       {step === 'key' && generated ? (
-        <RecoveryKeyStep
-          recoveryKey={generated.recoveryKey}
-          keyId={generated.keyId}
-          confirmGroupIndexes={generated.confirmGroupIndexes}
-          onConfirm={confirm}
-          error={error}
-        />
+        <RecoveryKeyStep recoveryKey={generated.recoveryKey} onDownloaded={confirm} error={error} />
       ) : null}
     </div>
   );

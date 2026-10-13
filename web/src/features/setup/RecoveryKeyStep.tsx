@@ -1,31 +1,39 @@
-import type { FormEvent } from 'react';
+import { useState } from 'react';
 
 type Props = {
   recoveryKey: string;
-  keyId: string;
-  confirmGroupIndexes: number[];
-  onConfirm: (groups: Record<number, string>) => Promise<void>;
+  onDownloaded: () => Promise<void>;
   error?: string;
 };
 
-export function RecoveryKeyStep({ recoveryKey, confirmGroupIndexes, onConfirm, error }: Props) {
-  const groups = recoveryKey.split('-');
-  const values: Record<number, string> = {};
+export function RecoveryKeyStep({ recoveryKey, onDownloaded, error }: Props) {
+  const [busy, setBusy] = useState(false);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const next: Record<number, string> = {};
-    for (const index of confirmGroupIndexes) {
-      next[index] = String(data.get(`g${index}`) ?? '');
+  async function downloadAndContinue() {
+    if (busy) return;
+    setBusy(true);
+    const url = URL.createObjectURL(
+      new Blob([`${recoveryKey}\n`], { type: 'text/plain;charset=utf-8' }),
+    );
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'filedock-recovery-key.txt';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      await onDownloaded();
+    } finally {
+      // Let the browser start reading the Blob before releasing its URL.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setBusy(false);
     }
-    await onConfirm(next);
   }
 
   return (
     <section className="panel stack">
       <p className="eyebrow">Recovery key</p>
-      <h2>Write this down once</h2>
+      <h2>Download your recovery key</h2>
       <p className="warn">
         If this appliance is lost and you do not have this key, the appliance state cannot be
         recovered.
@@ -33,30 +41,15 @@ export function RecoveryKeyStep({ recoveryKey, confirmGroupIndexes, onConfirm, e
       <p className="recovery-key" data-testid="recovery-key">
         {recoveryKey}
       </p>
-      <p>Confirm groups {confirmGroupIndexes.map((i) => i + 1).join(' and ')} to finish setup.</p>
-      <form className="stack" onSubmit={submit}>
-        {confirmGroupIndexes.map((index) => (
-          <label key={index}>
-            Group {index + 1}
-            <input
-              name={`g${index}`}
-              defaultValue={values[index]}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={groups[index] ? '•••••' : ''}
-              required
-            />
-          </label>
-        ))}
-        {error ? (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <button className="primary" type="submit">
-          Confirm recovery key
-        </button>
-      </form>
+      <p>Keep the downloaded text file somewhere safe.</p>
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <button className="primary" type="button" disabled={busy} onClick={downloadAndContinue}>
+        {busy ? 'Finishing setup…' : 'Download recovery key and continue'}
+      </button>
     </section>
   );
 }

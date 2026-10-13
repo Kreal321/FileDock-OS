@@ -410,12 +410,10 @@ message GenerateRecoveryKeyRequest { bool regenerate = 1; }
 message GeneratedRecoveryKey {
   string key_id = 1;
   string recovery_key = 2;              // shown once; never retrievable again
-  repeated uint32 confirm_group_indexes = 3;  // groups the admin must re-enter
 }
 
 message ConfirmRecoveryKeyRequest {
   string key_id = 1;
-  map<uint32, string> groups = 2;
 }
 
 // The single remote destination. Local copies need no configuration (FR-104).

@@ -33,7 +33,7 @@ These conventions apply to every entity below:
 | Field | Type | Rules |
 |---|---|---|
 | username | string | 1–64 characters, unique, case-insensitive |
-| password_hash | string | Argon2id. The password must be at least 12 characters (FR-022) |
+| password_hash | string | Argon2id. The password must be non-empty; setup recommends more than 8 characters without a length minimum (FR-022) |
 | enabled | bool | The last enabled administrator can't be disabled or removed (FR-025) |
 | failed_attempts | int | Reset on successful sign-in |
 | locked_until | timestamp? | Set for 15 minutes after 5 consecutive failures (FR-024) |

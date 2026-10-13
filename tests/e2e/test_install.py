@@ -33,7 +33,7 @@ PASSING_HOST = {
     "FD_TEST_MEM_KB": "2097152",
     "FD_TEST_DISK_GB": "16",
     "FD_TEST_NETWORK": "1",
-    "FD_TEST_PORT_443": "0",
+    "FD_TEST_PORT_8021": "0",
     "FD_TEST_CONFLICT_SAMBA": "0",
     "FD_TEST_CONFLICT_NFS": "0",
     "FD_TEST_CONFLICT_DOCKER": "0",
@@ -64,7 +64,7 @@ def test_fresh_install_setup_and_sign_in(vm_factory) -> None:
     vm = vm_factory()
     install = vm.install()
     assert install.returncode == 0
-    assert "setup code" in install.stdout.lower() or "Open https://" in install.stdout
+    assert "setup code" in install.stdout.lower() or "Open http://" in install.stdout
 
     api = vm.api()
     try:
@@ -77,7 +77,7 @@ def test_fresh_install_setup_and_sign_in(vm_factory) -> None:
     # A console-issued replacement resets the throttle without waiting 15 minutes.
     code = vm.sudo("filedockctl setup-code --json").stdout
     browser_env = os.environ.copy()
-    browser_env.update(FD_BASE_URL=f"https://{vm.ip}", FD_SETUP_CODE=json.loads(code)["code"])
+    browser_env.update(FD_BASE_URL=f"http://{vm.ip}:8021", FD_SETUP_CODE=json.loads(code)["code"])
     # Exercise the shipped SPA against the real Core and services on the VM.
     browser = subprocess.run(
         ["pnpm", "-C", str(REPO / "web"), "exec", "playwright", "test", "first-run.spec.ts"],

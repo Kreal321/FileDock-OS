@@ -1,6 +1,5 @@
-//! Recovery key generation, wrapping, and group confirmation (FR-032 to FR-034, R11).
+//! Recovery key generation, wrapping, and download acknowledgement (FR-032 to FR-034, R11).
 
-use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -19,7 +18,6 @@ use crate::store::StoreError;
 pub const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 pub const KEY_LEN: usize = 25;
 pub const GROUP_LEN: usize = 5;
-pub const GROUP_COUNT: usize = 5;
 
 const SNAPSHOT_KEY_LEN: usize = 32;
 const SALT_LEN: usize = 16;
@@ -31,7 +29,7 @@ pub enum RecoveryError {
     Failed(String),
     #[error("recovery key {0} was not found")]
     NotFound(String),
-    #[error("confirmation does not match")]
+    #[error("recovery key acknowledgement does not match")]
     ConfirmMismatch,
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
@@ -69,20 +67,13 @@ pub struct KdfParams {
 pub struct GeneratedKey {
     pub key_id: String,
     pub recovery_key: String,
-    pub confirm_group_indexes: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct FileBody {
     snapshot_key: String,
     keys: Vec<RecoveryKeyInfo>,
-    pending: Option<PendingConfirm>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PendingConfirm {
-    key_id: String,
-    groups: BTreeMap<u32, String>,
+    pending_key_id: Option<String>,
 }
 
 pub struct RecoveryKeyStore {
@@ -106,7 +97,7 @@ impl RecoveryKeyStore {
             FileBody {
                 snapshot_key: hex::encode(random_bytes::<SNAPSHOT_KEY_LEN>()),
                 keys: Vec::new(),
-                pending: None,
+                pending_key_id: None,
             }
         };
         Ok(Self {
@@ -118,16 +109,16 @@ impl RecoveryKeyStore {
 
     pub fn generate(&mut self, regenerate: bool) -> Result<GeneratedKey, RecoveryError> {
         if !regenerate
-            && self.body.pending.is_none()
+            && self.body.pending_key_id.is_none()
             && self.body.keys.iter().any(|k| k.superseded_at.is_none())
         {
             return Err(RecoveryError::Failed(
                 "a recovery key already exists; pass regenerate to replace it".into(),
             ));
         }
-        if !regenerate && self.body.pending.is_some() {
+        if !regenerate && self.body.pending_key_id.is_some() {
             self.body.keys.retain(|k| k.superseded_at.is_some());
-            self.body.pending = None;
+            self.body.pending_key_id = None;
         }
         if regenerate {
             let now = now_rfc3339();
@@ -160,56 +151,29 @@ impl RecoveryKeyStore {
             created_at: now_rfc3339(),
             superseded_at: None,
         };
-        let indexes = confirm_indexes();
-        let groups = groups_of(&formatted);
-        let mut pending = BTreeMap::new();
-        for index in &indexes {
-            pending.insert(*index, groups[*index as usize].clone());
-        }
         self.body.keys.push(info);
-        self.body.pending = Some(PendingConfirm {
-            key_id: key_id.clone(),
-            groups: pending,
-        });
+        self.body.pending_key_id = Some(key_id.clone());
         self.persist()?;
         Ok(GeneratedKey {
             key_id,
             recovery_key: formatted,
-            confirm_group_indexes: indexes,
         })
     }
 
-    pub fn confirm(
-        &mut self,
-        key_id: &str,
-        groups: &BTreeMap<u32, String>,
-    ) -> Result<(), RecoveryError> {
-        if self.body.pending.is_none() && self.current().is_some_and(|k| k.key_id == key_id) {
+    pub fn confirm(&mut self, key_id: &str) -> Result<(), RecoveryError> {
+        if self.body.pending_key_id.is_none() && self.current().is_some_and(|k| k.key_id == key_id)
+        {
             return Ok(());
         }
-        let pending = self
-            .body
-            .pending
-            .as_ref()
-            .ok_or(RecoveryError::ConfirmMismatch)?;
-        if pending.key_id != key_id {
+        if self.body.pending_key_id.as_deref() != Some(key_id) {
             return Err(RecoveryError::ConfirmMismatch);
-        }
-        if pending.groups.len() != groups.len() {
-            return Err(RecoveryError::ConfirmMismatch);
-        }
-        for (index, expected) in &pending.groups {
-            let got = groups.get(index).ok_or(RecoveryError::ConfirmMismatch)?;
-            if normalize_group(got) != normalize_group(expected) {
-                return Err(RecoveryError::ConfirmMismatch);
-            }
         }
         self.body
             .keys
             .iter()
             .find(|k| k.key_id == key_id)
             .ok_or_else(|| RecoveryError::NotFound(key_id.into()))?;
-        self.body.pending = None;
+        self.body.pending_key_id = None;
         self.persist()?;
         Ok(())
     }
@@ -305,31 +269,6 @@ pub fn format_key(raw: &[u8; KEY_LEN]) -> String {
         .join("-")
 }
 
-fn groups_of(formatted: &str) -> Vec<String> {
-    formatted.split('-').map(str::to_owned).collect()
-}
-
-fn normalize_group(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_uppercase())
-        .collect()
-}
-
-fn confirm_indexes() -> Vec<u32> {
-    let mut bytes = random_bytes::<2>();
-    let first = u32::from(bytes[0]) % GROUP_COUNT as u32;
-    let mut second = u32::from(bytes[1]) % GROUP_COUNT as u32;
-    if second == first {
-        second = (first + 1) % GROUP_COUNT as u32;
-    }
-    bytes.zeroize();
-    let mut indexes = vec![first, second];
-    indexes.sort_unstable();
-    indexes
-}
-
 fn random_bytes<const N: usize>() -> [u8; N] {
     let mut buf = [0u8; N];
     getrandom::fill(&mut buf).expect("entropy");
@@ -359,14 +298,8 @@ mod tests {
             generated.recovery_key.chars().filter(|c| *c != '-').count(),
             25
         );
-        assert_eq!(generated.confirm_group_indexes.len(), 2);
-        let groups = groups_of(&generated.recovery_key);
-        let mut provided = BTreeMap::new();
-        for index in &generated.confirm_group_indexes {
-            provided.insert(*index, groups[*index as usize].clone());
-        }
-        store.confirm(&generated.key_id, &provided).unwrap();
-        store.confirm(&generated.key_id, &provided).unwrap();
+        store.confirm(&generated.key_id).unwrap();
+        store.confirm(&generated.key_id).unwrap();
         assert!(store.current().is_some());
     }
 
@@ -378,28 +311,19 @@ mod tests {
         let lost = store.generate(false).unwrap();
         let retry = store.generate(false).unwrap();
         assert_ne!(lost.key_id, retry.key_id);
-        let groups = groups_of(&retry.recovery_key);
-        let provided = retry
-            .confirm_group_indexes
-            .iter()
-            .map(|i| (*i, groups[*i as usize].clone()))
-            .collect();
-        assert!(store.confirm(&lost.key_id, &provided).is_err());
-        store.confirm(&retry.key_id, &provided).unwrap();
+        assert!(store.confirm(&lost.key_id).is_err());
+        store.confirm(&retry.key_id).unwrap();
         assert!(store.generate(false).is_err());
     }
 
     #[test]
-    fn wrong_group_is_rejected() {
+    fn wrong_key_id_is_rejected() {
         unsafe { std::env::set_var("FD_RECOVERY_ARGON_KIB", "8") };
         let dir = tempfile::tempdir().unwrap();
         let dek = [3u8; 32];
         let mut store = RecoveryKeyStore::open(dir.path().join("rk.enc"), &dek).unwrap();
         let generated = store.generate(false).unwrap();
-        let mut provided = BTreeMap::new();
-        for index in &generated.confirm_group_indexes {
-            provided.insert(*index, "XXXXX".into());
-        }
-        assert!(store.confirm(&generated.key_id, &provided).is_err());
+        assert!(store.confirm("unknown-key").is_err());
+        assert!(store.confirm(&generated.key_id).is_ok());
     }
 }

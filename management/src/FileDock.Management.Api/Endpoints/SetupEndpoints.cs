@@ -89,6 +89,10 @@ public static class SetupEndpoints
         try
         {
             PasswordHasher.EnsurePolicy(body.AdminPassword ?? "");
+            if (!string.Equals(body.AdminPassword, body.AdminPasswordConfirmation, StringComparison.Ordinal))
+            {
+                return Problem(400, "Invalid setup", "Passwords do not match.");
+            }
             var username = (body.AdminUsername ?? "").Trim().ToLowerInvariant();
             if (username.Length is < 1 or > 64 || string.IsNullOrWhiteSpace(body.ApplianceName))
             {
@@ -115,7 +119,6 @@ public static class SetupEndpoints
                 applianceName = body.ApplianceName,
                 keyId = key.KeyId,
                 recoveryKey = key.RecoveryKey,
-                confirmGroupIndexes = key.ConfirmGroupIndexes,
             });
         }
         catch (RpcException)
@@ -149,7 +152,6 @@ public static class SetupEndpoints
         {
             await core.ConfirmRecoveryKeyAsync(
                 body.KeyId ?? "",
-                body.Groups ?? new Dictionary<uint, string>(),
                 $"admin:{admin.Username}",
                 Guid.NewGuid().ToString("N"));
         }
@@ -171,5 +173,5 @@ public static class SetupEndpoints
 }
 
 public sealed record SetupCodeRequest(string? Code);
-public sealed record SetupCompleteRequest(string? Code, string? ApplianceName, string? AdminUsername, string? AdminPassword);
-public sealed record ConfirmRecoveryRequest(string? KeyId, Dictionary<uint, string>? Groups);
+public sealed record SetupCompleteRequest(string? Code, string? ApplianceName, string? AdminUsername, string? AdminPassword, string? AdminPasswordConfirmation);
+public sealed record ConfirmRecoveryRequest(string? KeyId);

@@ -1,6 +1,5 @@
 //! GenerateRecoveryKey and ConfirmRecoveryKey (FR-033, FR-034).
 
-use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -39,7 +38,6 @@ impl Recovery for RecoverySvc {
         Ok(Response::new(GeneratedRecoveryKey {
             key_id: generated.key_id,
             recovery_key: generated.recovery_key,
-            confirm_group_indexes: generated.confirm_group_indexes,
         }))
     }
 
@@ -49,12 +47,11 @@ impl Recovery for RecoverySvc {
     ) -> Result<Response<pb::Empty>, Status> {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let req = request.into_inner();
-        let groups: BTreeMap<u32, String> = req.groups.into_iter().collect();
         self.app
             .recovery
             .lock()
             .await
-            .confirm(&req.key_id, &groups)
+            .confirm(&req.key_id)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
         Ok(Response::new(pb::Empty {}))
     }

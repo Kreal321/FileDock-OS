@@ -7,7 +7,7 @@ namespace FileDock.Management.Core;
 public sealed class LocalCoreGateway : ICoreGateway
 {
     private const string _alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    private readonly ConcurrentDictionary<string, string[]> _pending = new();
+    private readonly ConcurrentDictionary<string, bool> _recoveryKeys = new();
     private string _applianceName = "";
 
     public Task ApplyApplianceNameAsync(string applianceName, string actor, string requestId, CancellationToken cancellationToken = default)
@@ -28,31 +28,18 @@ public sealed class LocalCoreGateway : ICoreGateway
         var groups = Enumerable.Range(0, 5).Select(i => new string(raw, i * 5, 5)).ToArray();
         var formatted = string.Join('-', groups);
         var keyId = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(formatted)))[..16].ToLowerInvariant();
-        _pending[keyId] = groups;
-        return Task.FromResult(new GeneratedRecoveryKeyDto(keyId, formatted, new uint[] { 0, 2 }));
+        _recoveryKeys[keyId] = false;
+        return Task.FromResult(new GeneratedRecoveryKeyDto(keyId, formatted));
     }
 
-    public Task ConfirmRecoveryKeyAsync(string keyId, IReadOnlyDictionary<uint, string> groups, string actor, string requestId, CancellationToken cancellationToken = default)
+    public Task ConfirmRecoveryKeyAsync(string keyId, string actor, string requestId, CancellationToken cancellationToken = default)
     {
-        if (!_pending.TryGetValue(keyId, out var expected))
+        if (!_recoveryKeys.ContainsKey(keyId))
         {
             throw new InvalidOperationException("Unknown recovery key.");
         }
 
-        if (groups.Count != 2 || !groups.ContainsKey(0) || !groups.ContainsKey(2))
-        {
-            throw new ArgumentException("Both requested confirmation groups are required.");
-        }
-
-        foreach (var (index, value) in groups)
-        {
-            if (index >= expected.Length || !string.Equals(Normalize(value), expected[index], StringComparison.Ordinal))
-            {
-                throw new ArgumentException("Confirmation does not match.");
-            }
-        }
-
-        _pending.TryRemove(keyId, out _);
+        _recoveryKeys[keyId] = true;
         return Task.CompletedTask;
     }
 
@@ -72,6 +59,4 @@ public sealed class LocalCoreGateway : ICoreGateway
         return Task.FromResult(new SystemStatusDto("1.0", "0.1.0", _applianceName, components, false, true));
     }
 
-    private static string Normalize(string value) =>
-        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

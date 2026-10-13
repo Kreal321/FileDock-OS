@@ -313,7 +313,7 @@ plaintext and every copy updates within 5 minutes of each change.
 **Acceptance Scenarios**:
 
 1. **Given** first-run setup, **When** the recovery key step is reached, **Then** the appliance shows a
-   recovery key once and requires the administrator to confirm part of it before continuing.
+   recovery key once and provides a button to download it as a text file and finish setup.
 2. **Given** a secret was saved, **When** any administrator views it, **Then** only a masked form is
    shown. Replacing it is allowed but revealing it is not.
 3. **Given** a registered appliance-state destination, **When** a configuration change is committed,
@@ -924,8 +924,10 @@ that every snapshot stays readable and nothing at the location was rewritten.
   - A token MUST support an optional expiry and MUST be revocable at once.
   - Each use of a token MUST be audited, recording the token's name.
   - Tokens MUST NOT complete first-run setup, reset passwords, or create other tokens.
-- **FR-022**: Administrator passwords MUST be at least 12 characters and MUST be stored only as
-  salted, slow one-way hashes.
+- **FR-022**: Administrator passwords MUST be non-empty and MUST be stored only as
+  salted, slow one-way hashes. Setup MUST suggest more than 8 characters without enforcing a
+  minimum length, and MUST require matching password re-entry. The default setup username MUST
+  be `root` and MUST be editable.
 - **FR-023**: Sessions MUST expire after 30 minutes idle by default. An administrator MUST be able to
   sign out all of their sessions.
 - **FR-024**: After 5 consecutive failed sign-ins, the appliance MUST block further attempts for that
@@ -934,8 +936,8 @@ that every snapshot stays readable and nothing at the location was rewritten.
   accounts. The last enabled administrator MUST NOT be removable.
 - **FR-026**: A password reset MUST be possible only through a local console procedure on the
   appliance.
-- **FR-027**: The management UI MUST be served only over an encrypted connection. A self-generated
-  certificate is used by default, and the administrator MAY replace it.
+- **FR-027**: The management UI and API MUST use HTTP on TCP port 8021 by default.
+  Development builds MUST NOT offer HTTPS listeners or certificate configuration.
   - The UI and API are intended for the local network. They are served on the appliance's network
     interfaces by default.
   - The administrator MUST be able to restrict them to chosen interfaces.
@@ -960,7 +962,8 @@ that every snapshot stays readable and nothing at the location was rewritten.
 **Recovery key and appliance state**
 
 - **FR-033**: First-run setup MUST generate a portable recovery key, show it once, and require the
-  administrator to confirm part of it before continuing.
+  administrator to click a button that downloads it as a text file and finishes setup. Manual
+  recovery-key group re-entry MUST NOT be required.
 - **FR-034**: Administrators MUST be able to regenerate the recovery key. Regeneration MUST be
   audited, and the old key MUST stop opening newly created snapshots.
 - **FR-035**: The appliance MUST classify every piece of managed state into one of four internal
@@ -981,7 +984,7 @@ that every snapshot stays readable and nothing at the location was rewritten.
   - the data needed to open them with the recovery key.
 
   The configuration document covers the core features:
-  - the appliance name and settings, and the appliance certificate;
+  - the appliance name and settings;
   - administrators and their password hashes, and API tokens;
   - pools by identity and name, without their disks (the System Pool also keeps its limits);
   - managed folders;

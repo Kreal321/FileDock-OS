@@ -134,10 +134,10 @@ builds on these.
 
 ### Management Service host
 
-- [X] T041 Create the Management Service host in `management/src/FileDock.Management.Api/Program.cs` and `management/src/FileDock.Management.Api/Infrastructure/`: Kestrel HTTPS listeners from settings, `application/problem+json` errors, `/api/v1` route groups, `/health`, `If-Match` generation helpers, and pagination helpers
+- [X] T041 Create the Management Service host in `management/src/FileDock.Management.Api/Program.cs` and `management/src/FileDock.Management.Api/Infrastructure/`: Kestrel HTTP listener on port 8021, `application/problem+json` errors, `/api/v1` route groups, `/health`, `If-Match` generation helpers, and pagination helpers
 - [X] T042 Create the `app.db` EF Core SQLite context and the initial migration (Administrator, Session, ApiToken, AuditEntry, SetupState, Settings) in `management/src/FileDock.Management.Data/AppDbContext.cs` and `management/src/FileDock.Management.Data/Migrations/`
 - [X] T043 [P] Implement the append-only audit writer (actor, action, target, time, result, with secret fields redacted) and the 90-day retention job in `management/src/FileDock.Management.Domain/Audit/AuditWriter.cs` and `management/src/FileDock.Management.Domain/Audit/AuditRetention.cs` (FR-059)
-- [X] T044 [P] Implement Argon2id password hashing with the 12-character minimum policy in `management/src/FileDock.Management.Domain/Security/PasswordHasher.cs` (FR-022)
+- [X] T044 [P] Implement Argon2id password hashing with a required non-empty password and advisory length guidance in `management/src/FileDock.Management.Domain/Security/PasswordHasher.cs` (FR-022)
 - [X] T045 Implement the Core gRPC client in `management/src/FileDock.Management.Core/CoreClient.cs`: a Unix-socket channel to `/run/filedock/core.sock`, `fd-interface-version`, `fd-actor`, and `fd-request-id` metadata, and mapping of gRPC status codes to problem+json
 - [X] T046 [P] Implement the root-only admin socket `/run/filedock/management-admin.sock` (mode `0600`) and its endpoint group in `management/src/FileDock.Management.Api/AdminSocket/AdminSocketEndpoints.cs`
 - [X] T047 [P] Create the `filedockctl` command framework (System.CommandLine, `--json`, exit codes from contracts/cli.md) in `management/src/FileDock.Management.Cli/Program.cs`
@@ -176,7 +176,7 @@ management, and network restrictions. US4 adds recovery-key regeneration.
 - [X] T052 [P] [US1] Implement health-only adapters for Samba, NFS, Docker, and Kopia in `core/crates/fd-subsystems/src/adapters/samba.rs`, `nfs.rs`, `docker.rs`, and `kopia.rs`
 - [X] T053 [US1] Implement GetSystemStatus (Core, container runtime, health of each built-in subsystem including both connectors, interface version) in `core/crates/filedock-core/src/api/status.rs` (FR-019)
 - [X] T054 [US1] Implement the read-only preflight in `packaging/installer/install.sh` (FR-002):
-  - checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or `--offline-bundle`, and conflicting Samba, NFS, or Docker configuration or port 443 in use;
+  - checks for Debian 13 amd64, at least 2 GB RAM, at least 16 GB system disk, network or `--offline-bundle`, and conflicting Samba, NFS, or Docker configuration or port 8021 in use;
   - one line per failure with a fix hint, then exit `2`.
 - [X] T055 [US1] Implement the install phase in `packaging/installer/install.sh` (FR-001, FR-003, FR-005, FR-058, research R2, R18):
   - repositories and apt pins from `versions.lock`;
@@ -185,7 +185,6 @@ management, and network restrictions. US4 adds recovery-key regeneration.
   - users and groups `filedock-mgmt` and `filedock-share`;
   - the FR-005 paths;
   - the journald `SystemMaxUse=1G` drop-in;
-  - the self-signed TLS certificate;
   - printing the UI address.
 - [X] T056 [US1] Implement repair on re-run, and `--check-only`, in `packaging/installer/install.sh`. Repair never modifies `/var/lib/filedock*`, `/var/backups/filedock`, `/etc/filedock` desired state, or pools. Exit codes follow contracts/cli.md (FR-004)
 - [X] T057 [US1] Implement SetupState and the one-time setup code in `management/src/FileDock.Management.Domain/Setup/SetupCodeService.cs` (FR-020, research R18):
@@ -197,7 +196,7 @@ management, and network restrictions. US4 adds recovery-key regeneration.
 - [X] T060 [P] [US1] Implement the administrator service (create, disable, delete with last-enabled-admin protection, and password change) in `management/src/FileDock.Management.Domain/Admins/AdminService.cs` (FR-022, FR-025)
 - [X] T061 [P] [US1] Implement server-side sessions in `management/src/FileDock.Management.Api/Auth/SessionAuthHandler.cs` (FR-023):
   - stored in `app.db`, with a 30-minute idle expiry;
-  - the `fd_session` cookie with `HttpOnly`, `Secure`, and `SameSite=Strict`;
+  - the `fd_session` cookie with `HttpOnly` and `SameSite=Strict` for HTTP;
   - CSRF checks on mutations;
   - sign-out-all.
 - [X] T062 [US1] Implement `POST /auth/sign-in`, `POST /auth/sign-out`, and `POST /auth/sign-out-all`, with per-account lockout (5 failures, 15 minutes) and an audit entry for every attempt, in `management/src/FileDock.Management.Api/Endpoints/AuthEndpoints.cs` (FR-023, FR-024)
@@ -206,7 +205,7 @@ management, and network restrictions. US4 adds recovery-key regeneration.
   - an Argon2id wrap of the snapshot key (m=256 MiB, t=3, p=1), with the snapshot key created at the same time;
   - key-id records;
   - regeneration, after which older keys open only older snapshots;
-  - confirmation of key groups.
+  - acknowledgement of the recovery-key download.
 - [X] T064 [US1] Implement GenerateRecoveryKey and ConfirmRecoveryKey in `core/crates/filedock-core/src/api/recovery.rs`
 - [X] T065 [US1] Implement the setup endpoints in `management/src/FileDock.Management.Api/Endpoints/SetupEndpoints.cs` (FR-020, FR-033):
   - `POST /setup/verify-code`;
@@ -215,7 +214,7 @@ management, and network restrictions. US4 adds recovery-key regeneration.
 - [X] T066 [US1] Implement `GET /system/status`, mapping GetSystemStatus plus notices, in `management/src/FileDock.Management.Api/Endpoints/SystemEndpoints.cs`
 - [X] T067 [P] [US1] Build the setup wizard and sign-in page in `web/src/features/setup/` and `web/src/features/auth/`:
   - setup code entry, appliance name, and the first administrator;
-  - the recovery-key step in `web/src/features/setup/RecoveryKeyStep.tsx`: shown once, a warning that a lost key after appliance loss means the appliance state can't be recovered, then group confirmation;
+  - the recovery-key step in `web/src/features/setup/RecoveryKeyStep.tsx`: shown once, a warning that a lost key after appliance loss means the appliance state can't be recovered, then a download-and-continue button;
   - the sign-in page with the lockout message.
 - [X] T068 [P] [US1] Build the dashboard with health cards for services and subsystems in `web/src/features/dashboard/`
 - [X] T069 [US1] Write the acceptance test `tests/e2e/test_install.py` (US1 scenarios 1–5, SC-001):
@@ -255,7 +254,6 @@ whole access model.
 - [ ] T073 [US2] Implement `filedockctl reset-password` and `filedockctl tokens revoke-all` over the admin socket, audited as `Console`, in `management/src/FileDock.Management.Cli/Commands/ResetPasswordCommand.cs` and `management/src/FileDock.Management.Cli/Commands/TokensCommand.cs` (FR-026)
 - [ ] T074 [US2] Implement UI listener restriction in `management/src/FileDock.Management.Api/Endpoints/NetworkEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/NetworkCommand.cs` (FR-027):
   - `GET` and `PUT /system/network`, with the `confirmDisconnect` guard;
-  - `PUT /system/certificate`;
   - `filedockctl network reset`.
 - [ ] T075 [US2] Harden `packaging/systemd/filedock-management.service`: `User=filedock-mgmt`, `NoNewPrivileges`, `ProtectSystem=strict`, and only `CAP_NET_BIND_SERVICE`
 - [ ] T076 [P] [US2] Build the administrators, tokens (shown once), and network settings pages in `web/src/features/admins/`, `web/src/features/tokens/`, and `web/src/features/settings/`
@@ -591,7 +589,7 @@ failure").
 - [ ] T154 [US9] Implement share users in `core/crates/fd-subsystems/src/adapters/share_users.rs`: Linux system users with no shell in group `filedock-share`, Samba `tdbsam` passwords, and WebDAV htpasswd entries (research R15)
 - [ ] T155 [P] [US9] Implement SMB exports in `core/crates/fd-subsystems/src/adapters/samba.rs`: render `/etc/filedock/samba/shares.conf` with per-export access rules, then `smbcontrol all reload-config` (FR-082)
 - [ ] T156 [P] [US9] Implement NFS exports in `core/crates/fd-subsystems/src/adapters/nfs.rs`: render `/etc/exports.d/filedock.exports` with client rules (NFSv4, `sec=sys`), then `exportfs -ra` (FR-082)
-- [ ] T157 [P] [US9] Implement WebDAV exports in `core/crates/fd-subsystems/src/adapters/webdav.rs`: one `rclone serve webdav` transient unit per folder, using the appliance TLS certificate and a per-export htpasswd file, on a port allocated from 8440–8499 (FR-082)
+- [ ] T157 [P] [US9] Implement WebDAV exports in `core/crates/fd-subsystems/src/adapters/webdav.rs`: one `rclone serve webdav` transient unit per folder, using HTTP and a per-export htpasswd file, on a port allocated from 8440–8499 (FR-082)
 - [ ] T158 [US9] Implement `/share-users` and `/folders/{id}/exports/{smb|nfs|webdav}` in `management/src/FileDock.Management.Api/Endpoints/ShareEndpoints.cs`
 - [ ] T159 [US9] Implement cloud connections in `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs` and `core/crates/fd-connectors/src/oauth.rs` (FR-083, FR-084):
   - `/connections` CRUD, with `connection.family_unserved` and `connection.credential_type_unsupported`;
@@ -822,11 +820,27 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 
 - [X] T185 Reject missing or incompatible binaries; ship the full .NET CLI/API and installer inputs in Debian packages.
 - [X] T186 Implement strict online/offline installation, checksum verification, complete dependency bundle and service startup.
-- [X] T187 Configure deployed HTTPS, database, admin socket and systemd service permissions; serve the first-run React assets.
+- [X] T187 Configure deployed HTTP on port 8021 for both UI and API, database, admin socket and systemd service permissions; serve the first-run React assets.
 - [X] T188 Authenticate actual Core Unix peers and register/configure the native connector through CoreBridge.
 - [X] T189 Wire rclone RC, transient ExecStart types, routed credentials, connection probes and daily scheduling.
 - [X] T190 Recover from incomplete setup/lost generation responses; serialize first-admin creation and enforce confirmation groups.
 - [X] T191 Probe live connector health and reject unavailable systemd; repair Kopia manifest and frontend build blockers.
 - [X] T192 Replace the fake cross-connector assertion with explicit live I/O acceptance; add packaging and real Core/API regression checks.
 - [X] T193 Add browser first-run/healthy-dashboard/repair acceptance and document the complete PVE build/install/test commands.
-- [ ] T194 Run the Phase 3 independent acceptance on a fresh Debian 13 amd64 PVE VM, including reboot and repair, and record evidence before Phase 4. No VM target was supplied for the local implementation run.
+- [ ] T194 Run the Phase 3 independent acceptance on a fresh Debian 13 amd64 PVE VM, including reboot and repair, and record evidence before Phase 4. The PVE VM installation and service health were checked on 2026-10-12; UI setup, recovery confirmation, sign-out/sign-in, reboot and post-setup repair remain pending.
+
+
+## First-run usability revision (2026-10-12)
+
+- [X] T195 Default the editable administrator username to `root`.
+- [X] T196 Require matching password re-entry in the UI/API; accept non-empty passwords without a minimum length and recommend more than 8 characters.
+- [X] T197 Replace manual recovery-key group entry with a TXT download-and-continue button; allow download acknowledgement in Core and keep setup locked until acknowledgement succeeds.
+
+
+## Development simplification (2026-10-12)
+
+- [X] T198 Remove recovery-group confirmation fields, storage, helpers and legacy client handling; acknowledge only the generated key ID.
+- [X] T199 Serve Management UI/API over HTTP on port 8021; remove HTTPS listener configuration, certificate generation and privileged-port capabilities; update installer, development URLs and documentation.
+- [X] T200 Uninstall the current FileDock test installation on the PVE VM and clear FileDock state for manual reinstallation; preserve the offline bundle.
+
+- [X] T201 Set both Management UI and API to HTTP port 8021 with one listener; update installer/dev API target and documentation.
