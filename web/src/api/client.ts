@@ -18,6 +18,7 @@ export class ApiError extends Error {
 export type ApiClientOptions = {
   baseUrl?: string;
   csrfToken?: string;
+  notifySessionExpiry?: boolean;
 };
 
 export function createApiClient(options: ApiClientOptions = {}) {
@@ -39,6 +40,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
     if (!response.ok) {
       if (
         response.status === 401 &&
+        options.notifySessionExpiry !== false &&
         path !== '/auth/sign-in' &&
         path !== '/setup/recovery-key/confirm'
       ) {

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api } from './api/client.ts';
+import { ApiError, createApiClient } from './api/client.ts';
 import { SignInPage } from './features/auth/SignInPage.tsx';
 import { DashboardPage } from './features/dashboard/DashboardPage.tsx';
 import { AdminsPage } from './features/admins/AdminsPage.tsx';
@@ -9,12 +9,14 @@ import { NetworkPage } from './features/settings/NetworkPage.tsx';
 import { SetupWizard } from './features/setup/SetupWizard.tsx';
 
 const queryClient = new QueryClient();
+// A signed-out startup probe must resolve the gate without clearing its own query.
+const gateApi = createApiClient({ notifySessionExpiry: false });
 
 type Gate = 'setup' | 'signin' | 'ready';
 
 async function readGate(): Promise<Gate> {
   try {
-    await api.get('/system/status');
+    await gateApi.get('/system/status');
     return 'ready';
   } catch (error) {
     if (error instanceof ApiError && error.status === 423) {
@@ -41,7 +43,7 @@ function Shell() {
 
   return (
     <div className="app-shell">
-      {gate.isPending ? <p>Checking the appliance…</p> : null}
+      {gate.isPending && !signedOut ? <p>Checking the appliance…</p> : null}
       {view === 'setup' ? (
         <SetupWizard
           onDone={() => {
@@ -50,7 +52,7 @@ function Shell() {
           }}
         />
       ) : null}
-      {view === 'signin' && !gate.isPending ? (
+      {view === 'signin' && (!gate.isPending || signedOut) ? (
         <SignInPage
           onSignedIn={() => {
             setSignedOut(false);
