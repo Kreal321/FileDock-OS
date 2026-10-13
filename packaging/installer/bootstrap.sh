@@ -32,7 +32,8 @@ done
 [[ -f "${BASH_SOURCE[0]}" ]] || { echo 'Download this script to a file, then run it with bash.' >&2; exit 4; }
 [[ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -ge 2097152 ]] || { echo 'At least 2 GB RAM is required.' >&2; exit 2; }
 [[ "$(df -B1G / | awk 'NR==2 {print $2}')" -ge 16 ]] || { echo 'At least 16 GB system disk capacity is required.' >&2; exit 2; }
-exec 9>/run/lock/filedock-bootstrap.lock
+install -d -m 0700 -o root -g root /run/filedock-bootstrap
+exec 9>/run/filedock-bootstrap/bootstrap.lock
 flock -n 9 || { echo 'Another FileDock bootstrap is running.' >&2; exit 3; }
 for tool in curl python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
