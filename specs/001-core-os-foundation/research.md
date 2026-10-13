@@ -901,3 +901,91 @@ Each entry gives the decision, the rationale, and the alternatives considered.
     streaming itself.
   - `rust-s3`: less actively maintained, with uneven handling of non-AWS services.
   - A connector in Go using the MinIO SDK: a second language for one component.
+
+## R24. UI design tokens, semantic components, and offline visual assets
+
+**Revision**: 2026-10-13; US11 / FR-124, FR-130, FR-132, FR-134.
+
+- **Decision**: Reuse the existing React/Vite application with CSS custom properties and thin
+  components over native controls. Separate semantic foreground/background/focus tokens from
+  brand swatches so actual text/control pairs meet the approved contrast thresholds. Bundle the
+  normal variable Inter WOFF2 from the official v4.1 release, preserving its OFL/copyright notice;
+  record asset source and checksum at implementation. Use original inline SVGs for the small
+  current icon set. No UI framework, icon font, runtime CDN, or chart package is introduced.
+- **Rationale**: The current forms need consistent presentation and semantics, and the appliance
+  must work offline. Vite processes referenced assets and ships public assets in the build
+  ([Vite asset handling](https://vite.dev/guide/assets)). The font release is available from
+  [Inter v4.1](https://github.com/rsms/inter/releases/tag/v4.1); redistribution must retain the
+  [Inter license](https://github.com/rsms/inter/blob/v4.1/LICENSE.txt). The guide's blue/green/amber
+  swatches are not automatically suitable for every text/background combination; actual pairs
+  must satisfy [W3C contrast guidance](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html).
+- **Alternatives considered**: A component/CSS framework adds dependencies and replacement work;
+  page-local styling reproduces inconsistency; CDN fonts fail offline; system fonts alone miss
+  the approved Inter treatment; copying screenshot logos/icons provides poor scaling and unclear
+  provenance. A chart library is reconsidered only with a real measurement/history feature.
+
+## R25. Shared shell, hash navigation, and implementation availability
+
+**Revision**: 2026-10-13; FR-125, FR-126, FR-131, FR-133.
+
+- **Decision**: Use an authenticated AppShell and branded public AuthLayout. A small hash-route
+  registry supports Dashboard and Settings with administrator/token/network/operation/audit
+  child views. Current APIs can populate operation/audit read views; all remaining reference
+  destinations stay absent until their screens and required sources ship. Account identity comes
+  from `/auth/me`. Omit global search and the alert bell until their actual behavior exists.
+  Narrow navigation is a disclosure with native controls and explicit focus handling.
+- **Rationale**: App.tsx currently uses page state, with no router dependency or server deep-link
+  fallback. Hash routes add back/forward and refresh semantics while keeping the HTTP request at
+  `/`, which works with the present static host. Ordinary sidebar navigation should use links
+  and disclosure semantics, not an application menu ([W3C disclosure navigation](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/examples/disclosure-navigation/)).
+  A route registry is a UI implementation inventory, not a replacement for server authorization
+  or subsystem capability discovery.
+- **Alternatives considered**: Keeping ephemeral page state loses addressable views/back/forward;
+  adding a routing dependency and server fallback is unnecessary for this bounded increment;
+  enabling every reference destination creates unusable pages. A universal capability endpoint
+  would expand backend scope; future features integrate their actual availability checks.
+
+## R26. Truthful dashboard models and preserved security/live lifecycle
+
+**Revision**: 2026-10-13; FR-127–FR-129, FR-134, SC-028, SC-030.
+
+- **Decision**: Compose transient typed view models from implemented status, Core health, identity,
+  operations, and audit responses. Retain raw states; distinguish unavailable/unknown from empty
+  or zero and mark cached components stale during a Core or browser-stream outage. Show all
+  applicable notices. Use a bounded recent-operation preview with a paginated full list; keep
+  administrative audit activity distinct from system events. Only actor/action audit filtering
+  is supported today. A local timestamp is "Last fetched", never an invented observation time.
+- **Rationale**: The existing implementation contains no pool/folder/cloud counts, capacity,
+  backup history, cache/CPU/RAM history, alert list, or container inventory. A false protection
+  warning flag alone cannot prove a durable remote recovery point. Preserve one live connection
+  across shell navigation, server mutation guards, the quiet startup 401 probe, session expiry,
+  CSRF, and one-time secrets. Cached read data must not make stale healthy cards appear current.
+- **Alternatives considered**: Screenshot fixtures in production would invent state; merged
+  anonymous "recent activity" obscures audit actors and event scope; mounting subscriptions per
+  page causes unnecessary reconnects; periodic full dashboard polling weakens the existing event
+  design. New collectors/summary endpoints are unnecessary for the approved first UI increment.
+
+## R27. Visual acceptance, accessibility, and incremental delivery
+
+**Revision**: 2026-10-13; FR-135, SC-027–SC-031.
+
+- **Decision**: Add test-only deterministic state fixtures and visual scenarios using existing
+  Playwright/Vitest. Capture all implemented pages and shared states at desktop/360 px, with fixed
+  clocks/data and fonts ready. Generate/compare baselines in the same pinned Linux/Chromium
+  environment, approving the initial images by reference review. Supplement with real 200% browser
+  zoom at 1280 px, keyboard/focus/contrast/44 px target checks, blocked external networking, live
+  dirty-form preservation, and five-person novice acceptance. Preserve prior completed tasks and
+  append new US11 tasks when `/speckit-tasks` runs.
+- **Rationale**: Screenshot output varies with browser/OS, so environment-specific baselines are
+  required ([Playwright visual comparisons](https://playwright.dev/docs/test-snapshots)). Screenshots
+  alone cannot prove keyboard operation, real browser zoom, or the novice task outcome. Reflow
+  review must account for enlarged content and scoped table/chart scrolling ([W3C reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)).
+- **Alternatives considered**: Pixel-matching the entire sample enforces fictional contents;
+  screenshots taken against changing VM data create unstable baselines; a 640 px viewport alone
+  is not proof of actual browser zoom; resetting completed backend tasks loses implementation
+  history. The UI increment does not certify storage/app flows that are still in later stories.
+
+**Phase 0 UI research result**: Decisions R24–R27 resolve the UI revision's stack, asset provenance,
+route integration, real-data scope, state handling, and acceptance approach. No technical
+clarification remains. Independent read-only research reviewed visual tooling and the local
+API/auth/live contracts; no code changes, package installs, or tests were performed.

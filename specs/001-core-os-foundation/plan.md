@@ -2,6 +2,9 @@
 
 **Branch**: `001-core-os-foundation` | **Date**: 2026-10-11 | **Spec**: [spec.md](./spec.md)
 
+**UI revision**: 2026-10-13 — US11, FR-124–FR-135, SC-027–SC-031.
+**Current Git checkout**: `main`; `001-core-os-foundation` is the selected feature identifier.
+
 **Input**: Feature specification from `/specs/001-core-os-foundation/spec.md`
 
 ## Summary
@@ -51,6 +54,12 @@ Recovery rests on these pieces:
 
 There is no high availability, no scale caps, and no local disk encryption in this release.
 
+The UI revision is planned in the existing `web/` application, using the user-approved
+[design guide](./ui-design-guide.md) and [UI contract](./contracts/management-ui.md). It replaces the
+current presentation with a light shared shell and components while retaining the service,
+authentication, and live-event foundations. Existing completed tasks retain their history;
+US11 requires new work and separate visual acceptance before the updated P1 delivery is accepted.
+
 ## Technical Context
 
 **Language/Version**:
@@ -68,7 +77,10 @@ There is no high availability, no scale caps, and no local disk encryption in th
   requests the crate lacks, `sha2`, `tonic` (research R23)
 - Management: ASP.NET Core minimal APIs, SignalR, EF Core with SQLite, `Grpc.Net.Client`,
   Konscious Argon2
-- Web: Vite, React, TanStack Query, `@microsoft/signalr`
+- Web: Vite, React, TanStack Query, `@microsoft/signalr`; shared native HTML controls and CSS
+  custom properties. A small hash-route registry provides navigation without a router dependency.
+  Inter v4.1 is a pinned local font asset with its license; icons are original inline SVGs.
+  No UI framework or charting dependency is needed for the current screens.
 - System, pinned in `versions.lock`: systemd, LVM2, e2fsprogs, smartmontools, Samba,
   `nfs-kernel-server`, rclone, Kopia, and Docker Engine with the Compose plugin
 
@@ -135,7 +147,11 @@ with a single-page app, Debian packaging, and an installer.
 - One appliance, a few administrators, any number of pools and folders.
 - Local disk encryption is out of scope, with a `layers` hook for later (research R9).
 
-All Technical Context items are resolved. See [research.md](./research.md), R1 to R23.
+All Technical Context items are resolved. See [research.md](./research.md), R1 to R27.
+UI view models are transient and introduce no database migrations or new REST/gRPC endpoints.
+The UI continues to ship inside Management on HTTP port 8021. Visual fixtures are test-only.
+Browser coverage is current stable Chromium, Firefox, and WebKit engines; screenshot baselines
+are generated and compared in one pinned Linux/Chromium environment.
 
 ## Constitution Check
 
@@ -224,6 +240,107 @@ Specific points:
 - **Test VMs**: a 256 GB sparse system disk gives a usable System Pool under the defaults. One or
   two extra blank disks are needed for the data-pool, pool-failure, and reinstall tests.
 
+## UI revision: implementation approach and delivery
+
+### Existing implementation and scope
+
+The present screens are setup, sign-in, recovery-key download, Dashboard, Administrators,
+API tokens, and Network settings. Current REST routes also provide identity, operation history,
+and audit history. The redesign includes read-only Operations/detail and Audit views over those
+existing routes so these tools are discoverable under Settings. It adds no new privileged work.
+
+The immediate sidebar has **Dashboard** and **Settings**. Settings links to Administrators,
+API tokens, Network, Operations, and Audit when those screens ship. Other reference destinations
+are added in its prescribed order with their original stories. Search, an alert bell/count,
+folder/pool/cloud statistics, resource/cache graphs, backup successes, and container lists stay
+absent until real screens and sources are available. A false `stateProtectionWarning` flag is
+not evidence that remote recovery coverage exists; the current API lacks the detailed US4 data.
+
+### Shared foundations
+
+- Centralize guide colors, accessible foreground variants, 32/20/16/14 px type scale, 8 px spacing,
+  12 px cards, borders, shadows, and focus states in `web/src/styles/tokens.css`; keep application
+  layout/utility rules in `styles.css`. Brand blue remains `#3B82F6`; white-text primary buttons
+  use a contrast-compliant darker variant, documented in the UI contract.
+- Build thin semantic Button, Field, Select, Switch, Tabs, StatusBadge, Notice, Panel, PageHeader,
+  StateView, Dialog, and responsive table components. Standardize states before migrating forms.
+  Use native elements and disclosure navigation rather than custom application-menu semantics.
+- Ship Inter v4.1 normal variable WOFF2 through Vite's asset processing, using `font-display: swap`
+  and a sans-serif fallback. Record source, release, file checksum, and original OFL/copyright
+  notice. Serve the license under `/assets/licenses/` so it is accessible during setup. Original
+  folder/storage/cloud/service/settings SVGs share sizing and stroke conventions.
+- Build an authenticated AppShell with desktop Sidebar and TopBar and a narrow-screen disclosure
+  menu; keep a separate branded AuthLayout for setup/sign-in. Identity comes from `/auth/me`.
+  Omit the reference's outer guide title, design-legend panels, example user, and sample dates.
+- Use a single hash-route table with `#/dashboard` and Settings child routes. Browser back/forward
+  and refresh preserve valid views without Management deep-link fallback changes. Unknown routes
+  lead to Dashboard with an unavailable-page notice after authentication. Public setup/sign-in
+  gates take precedence over every protected hash; no compatibility aliases are required.
+
+### Data, state, and security integration
+
+Typed adapters compose the existing responses into the view models in [data-model.md](./data-model.md).
+Retain raw state text, distinguish unavailable data from a confirmed zero, and show every applicable
+notice. Derive service counts only from received component records. Current mode, protection, and
+history fields are not interchangeable; there is no generic "everything protected" badge.
+
+One authenticated event subscription stays mounted in AppShell across navigation. Reuse query
+keys, event invalidation, reconnect resync, and the durable backend cursor. Mutations require both
+browser live connectivity and Core `canMutate`; navigation, inspection, retry, and sign-out remain
+usable during an outage. Cached subsystem values are visibly stale even when a fresh HTTP response
+contains them. Local fetch times are labeled as receipt times, not Core observation times.
+
+Preserve the quiet startup auth probe: 423 means setup, 401 means sign-in. Network/502/503 failures
+show appliance-unavailable/retry instead of pretending the session is invalid. Unexpected protected
+401 clears private queries and one-time secret state and ends the live connection. Use session
+cookies and CSRF headers as today; never put credentials or secret state in hashes/storage/screenshots.
+
+Live refetches must not replace a dirty form or move focus. Server checks remain authoritative.
+Disable individual mutation regions/actions instead of enclosing all read-only settings in a
+disabled fieldset. Pending switches/buttons describe saving; accepted long-running work links to
+an operation instead of showing immediate success. Preserve default editable `root`, matching
+password confirmation, advisory length guidance, recovery download-to-continue, last-admin guards,
+current-password checks, token secret-once behavior, and network disconnect acknowledgement.
+
+### Ordered implementation slices for task generation
+
+1. Define typed UI models/adapters and design tokens; add test-only state fixtures and local font,
+   icon, and license assets. Establish shared components and their accessibility/state contracts.
+2. Introduce hash navigation, AppShell/AuthLayout, top-bar identity, responsive disclosure and
+   Settings subnavigation; keep auth and one live subscription intact.
+3. Migrate setup, sign-in, recovery download, administrator, token and network forms without
+   changing their behavior. Verify focus, busy/error states, one-time secrets, and outage guards.
+4. Compose the truthful health-first dashboard, complete notices, recent operations, and clearly
+   labeled administrative activity. Add read-only Operations/detail and Audit screens with paging
+   and only supported filters. Manual reconcile remains optional and is not required for US11.
+5. Establish reviewed visual baselines for all implemented pages and component states; run offline,
+   keyboard, contrast, responsive, dirty-form/live-event and security regression checks. Follow the
+   [UI validation guide](./ui-validation.md) and combined [Phase 4–5 VM guide](./phase5-testing.md).
+6. Apply shared primitives to each later story when it ships. Charts are introduced only alongside
+   real current/history data and textual equivalents; resource/resource-history backends remain
+   in their existing scope, not in this UI increment.
+
+These are design slices, not completion marks. `/speckit-tasks 001` must append US11 work with new
+IDs and dependencies, preserving all existing IDs/completion marks, including completed T001–T087
+and repair/usability tasks T185–T201. The highest current ID is T201; new UI tasks start after it.
+Place the US11 delivery checkpoint after Phase 5 and before later story implementation. It must connect
+later UI tasks to the shared foundations and add SC-027–SC-031 acceptance coverage. No production
+code or automated tests are created/executed during this planning command.
+
+### UI constitution gate: before research and after design
+
+| Principle | UI design check | Result |
+| --- | --- | --- |
+| I — Fast | Layout and assets stay local; one live subscription reuses the control plane; no UI operation enters storage I/O paths | PASS |
+| II — Efficient | Existing stack, small native components, paged lists, bounded previews; no new framework, metric collector, routine full polling, or remote font runtime | PASS |
+| III — Recoverable | Protection/exposure notices stay visible; UI view state is rebuildable; secrets and existing recovery flow retain their safeguards | PASS |
+| IV — Extensible | Available destinations follow implemented features/providers; future screens reuse shared components; no backend-specific protection promises | PASS |
+| V — Single-node | No HA, failover, cloud write/ownership, or zero-loss behavior is introduced; a successful operation is scoped to its real target | PASS |
+| Operating constraints | UI outages/reconnects do not restart data-plane units; authentication, root console, CSRF, and Core mutation guards are preserved | PASS |
+
+Post-design review of the presentation models, UI contract, and validation guide passes the same
+gates. No unresolved technical clarifications or constitution exceptions remain.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -234,11 +351,15 @@ specs/001-core-os-foundation/
 ├── research.md          # Phase 0: decisions R1–R23
 ├── data-model.md        # Phase 1: entities, classification, state machines
 ├── quickstart.md        # Phase 1: build/install/validation guide
+├── ui-design-guide.md   # approved visual requirements
+├── ui-validation.md     # redesign validation and visual/VM acceptance
+├── assets/management-ui-design-guide.png
 ├── contracts/
 │   ├── core-api.proto                 # Management ⇄ Core gRPC
 │   ├── extension-protocol.proto       # Core ⇄ subsystems/extensions (incl. notify.channel)
 │   ├── subsystem-manifest.schema.json # manifest schema (FR-047)
 │   ├── management-api.md              # REST /api/v1 contract (UI + API tokens)
+│   ├── management-ui.md               # UI routes/components/state/data contract
 │   ├── appliance-state-layout.md      # snapshot format + owner.json claim
 │   └── cli.md                         # install.sh and filedockctl
 ├── checklists/requirements.md
@@ -315,6 +436,29 @@ tests/
 
 Makefile                             # proto, core, management, packages, test
 ```
+
+Planned UI additions use these existing roots:
+
+```text
+web/src/styles/tokens.css
+web/src/assets/fonts/InterVariable.woff2
+web/src/assets/fonts/SOURCE.md
+web/public/assets/licenses/inter-OFL.txt
+web/src/components/{Button,Field,Select,Switch,Tabs,Dialog,Panel,PageHeader,StatusBadge,Notice,StateView,DataTable,Icon}.tsx
+web/src/layout/{AppShell,AuthLayout,Sidebar,TopBar}.tsx
+web/src/navigation/{destinations,useHashRoute}.ts
+web/src/api/view-models.ts
+web/src/features/dashboard/dashboard-model.ts
+web/src/features/settings/SettingsPage.tsx
+web/src/features/operations/{OperationsPage,OperationDetailPage}.tsx
+web/src/features/audit/AuditPage.tsx
+web/tests/fixtures/ui-states.ts
+web/tests/e2e/ui-design.spec.ts
+```
+
+Paths describe planned responsibilities; they are not newly generated source files. Fonts are
+acquired and checksummed during implementation, not downloaded on appliance startup. All UI output
+continues to go to Management's `wwwroot` and into the offline release archive.
 
 **Structure Decision**: The repository has three implementation roots, one per runtime the guide
 names: `core/` (Rust), `management/` (.NET), and `web/` (SPA, built into the Management Service's

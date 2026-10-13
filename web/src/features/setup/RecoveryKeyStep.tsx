@@ -1,3 +1,4 @@
+import { Button } from '../../components/Button.tsx';
 import { useState } from 'react';
 
 type Props = {
@@ -34,12 +35,12 @@ export function RecoveryKeyStep({ recoveryKey, onDownloaded, error, canContinue 
   return (
     <section className="panel stack">
       <p className="eyebrow">Recovery key</p>
-      <h2>Download your recovery key</h2>
+      <h1>Download your recovery key</h1>
       <p className="warn">
         If this appliance is lost and you do not have this key, the appliance state cannot be
         recovered.
       </p>
-      <p className="recovery-key" data-testid="recovery-key">
+      <p className="recovery-key" data-testid="recovery-key" data-secret>
         {recoveryKey}
       </p>
       <p>Keep the downloaded text file somewhere safe.</p>
@@ -48,13 +49,13 @@ export function RecoveryKeyStep({ recoveryKey, onDownloaded, error, canContinue 
           {error}
         </p>
       ) : null}
-      <button className="primary" type="button" disabled={busy} onClick={downloadAndContinue}>
+      <Button variant="primary" type="button" busy={busy} onClick={downloadAndContinue}>
         {busy
           ? 'Finishing setup…'
           : canContinue
             ? 'Download recovery key and continue'
             : 'Download recovery key'}
-      </button>
+      </Button>
     </section>
   );
 }

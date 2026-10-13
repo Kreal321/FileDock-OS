@@ -44,8 +44,11 @@ test('live subsystem state and Core loss disable changes and recover without ref
   await expect(sample.getByText('Healthy', { exact: true })).toBeVisible({ timeout: 15_000 });
   try {
     root('systemctl stop filedock-core.socket filedock-core.service');
-    await expect(page.getByRole('alert')).toContainText(/Core|connection/i, { timeout: 10_000 });
-    await page.getByRole('button', { name: 'Network settings', exact: true }).click();
+    await expect(page.getByRole('alert').first()).toContainText(/Core|connection/i, {
+      timeout: 10_000,
+    });
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByRole('link', { name: 'Network settings', exact: true }).first().click();
     await expect(page.getByRole('button', { name: 'Save network settings' })).toBeDisabled();
   } finally {
     root('systemctl start filedock-core.socket filedock-core.service');

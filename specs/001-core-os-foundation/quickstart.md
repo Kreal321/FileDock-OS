@@ -5,6 +5,14 @@
 This guide proves the feature end to end on disposable VMs. Implementation details belong in
 `tasks.md`. This document only describes how to build, install, and validate.
 
+## UI revision validation (US11)
+
+For the new Management UI design, follow [ui-validation.md](./ui-validation.md) after implementation.
+It covers build/package commands, deterministic visual states, keyboard/contrast/zoom checks,
+offline assets, truthful dashboard data, and the combined real-VM regression. Its behavioral
+interface is specified in [contracts/management-ui.md](./contracts/management-ui.md). The new UI
+acceptance is separate from completed Phase 1–5 implementation evidence.
+
 ## Prerequisites
 
 - A Linux build host with Rust stable (edition 2024) and `cargo-nextest`, `protoc`

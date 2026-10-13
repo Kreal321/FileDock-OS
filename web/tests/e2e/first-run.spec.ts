@@ -46,8 +46,9 @@ test('fresh appliance setup, recovery key, sign out, sign in and healthy dashboa
     )
     .toBe(true);
   await page.reload();
-  await expect(page.locator('article.card')).toHaveCount(expected.length);
-  await expect(page.locator('article.card > p:not(.eyebrow)')).toHaveText(
+  await expect(page.getByText(/Live connection unavailable/)).toHaveCount(0);
+  await expect(page.locator('article.service-card')).toHaveCount(expected.length);
+  await expect(page.locator('article.service-card .badge')).toHaveText(
     expected.map(() => 'Healthy'),
   );
 });

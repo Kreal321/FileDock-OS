@@ -2,116 +2,127 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, createApiClient } from './api/client.ts';
 import { SignInPage } from './features/auth/SignInPage.tsx';
+import { SetupWizard } from './features/setup/SetupWizard.tsx';
 import { DashboardPage } from './features/dashboard/DashboardPage.tsx';
 import { AdminsPage } from './features/admins/AdminsPage.tsx';
 import { TokensPage } from './features/tokens/TokensPage.tsx';
 import { NetworkPage } from './features/settings/NetworkPage.tsx';
-import { CoreStatusBanner } from './components/CoreStatusBanner.tsx';
-import { useLiveCoreStatus } from './api/useLiveCoreStatus.ts';
-import { SetupWizard } from './features/setup/SetupWizard.tsx';
-
-// A signed-out startup probe must resolve the gate without clearing its own query.
+import { SettingsPage } from './features/settings/SettingsPage.tsx';
+import { OperationsPage } from './features/operations/OperationsPage.tsx';
+import { OperationDetailPage } from './features/operations/OperationDetailPage.tsx';
+import { AuditPage } from './features/audit/AuditPage.tsx';
+import { AuthLayout } from './layout/AuthLayout.tsx';
+import { AppShell } from './layout/AppShell.tsx';
+import { Panel } from './components/Panel.tsx';
+import { Button } from './components/Button.tsx';
+import { useHashRoute, resetNavigation } from './navigation/useHashRoute.ts';
 const gateApi = createApiClient({ notifySessionExpiry: false });
-
-type Gate = 'setup' | 'signin' | 'ready';
-
-async function readGate(): Promise<Gate> {
+async function readGate() {
   try {
     await gateApi.get('/system/status');
-    return 'ready';
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 423) {
-      return 'setup';
-    }
-    return 'signin';
+    return 'ready' as const;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 423) return 'setup' as const;
+    if (e instanceof ApiError && e.status === 401) return 'signin' as const;
+    throw e;
   }
 }
-
 function Shell() {
-  const queryClient = useQueryClient();
+  const cache = useQueryClient();
+  const route = useHashRoute();
   const [signedOut, setSignedOut] = useState(false);
-  const [page, setPage] = useState<'dashboard' | 'admins' | 'tokens' | 'network'>('dashboard');
   const signOut = useCallback(() => {
-    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'session-gate' });
-    setPage('dashboard');
     setSignedOut(true);
-  }, [queryClient]);
+    resetNavigation();
+    void cache.cancelQueries({ predicate: (q) => q.queryKey[0] !== 'session-gate' });
+    cache.removeQueries({ predicate: (q) => q.queryKey[0] !== 'session-gate' });
+    cache.setQueryData(['session-gate'], 'signin');
+  }, [cache]);
   useEffect(() => {
     window.addEventListener('filedock:session-expired', signOut);
     return () => window.removeEventListener('filedock:session-expired', signOut);
   }, [signOut]);
-  const gate = useQuery({ queryKey: ['session-gate'], queryFn: readGate });
-  const view = signedOut ? 'signin' : (gate.data ?? 'signin');
-
+  const gate = useQuery({
+    queryKey: ['session-gate'],
+    queryFn: readGate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const refresh = () => {
+    setSignedOut(false);
+    void gate.refetch();
+  };
+  const view = signedOut ? 'signin' : gate.data;
+  if (gate.isPending && !signedOut)
+    return (
+      <AuthLayout>
+        <Panel className="stack">
+          <h1>Checking the appliance…</h1>
+          <p role="status">Connecting to FileDock.</p>
+        </Panel>
+      </AuthLayout>
+    );
+  if (gate.isError && !signedOut)
+    return (
+      <AuthLayout>
+        <Panel className="stack">
+          <h1>Appliance unavailable</h1>
+          <p role="alert">Cannot reach the appliance. Check its connection and try again.</p>
+          <Button onClick={refresh} busy={gate.isFetching}>
+            Retry
+          </Button>
+        </Panel>
+      </AuthLayout>
+    );
+  if (view === 'setup')
+    return (
+      <AuthLayout>
+        <SetupWizard onDone={refresh} />
+      </AuthLayout>
+    );
+  if (view !== 'ready')
+    return (
+      <AuthLayout>
+        <SignInPage onSignedIn={refresh} />
+      </AuthLayout>
+    );
   return (
-    <div className="app-shell">
-      {gate.isPending && !signedOut ? <p>Checking the appliance…</p> : null}
-      {view === 'setup' ? (
-        <SetupWizard
-          onDone={() => {
-            setSignedOut(false);
-            void gate.refetch();
-          }}
-        />
-      ) : null}
-      {view === 'signin' && (!gate.isPending || signedOut) ? (
-        <SignInPage
-          onSignedIn={() => {
-            setSignedOut(false);
-            void gate.refetch();
-          }}
-        />
-      ) : null}
-      {view === 'ready' ? <Appliance page={page} setPage={setPage} signOut={signOut} /> : null}
-    </div>
+    <AppShell route={route} onSignOut={signOut}>
+      {(canMutate, connected, browserConnected) => {
+        switch (route.id) {
+          case 'settings':
+            return <SettingsPage />;
+          case 'administrators':
+            return (
+              <AdminsPage
+                connected={browserConnected}
+                canMutate={canMutate}
+                onSignedOut={signOut}
+              />
+            );
+          case 'tokens':
+            return <TokensPage connected={browserConnected} canMutate={canMutate} />;
+          case 'network':
+            return <NetworkPage connected={browserConnected} canMutate={canMutate} />;
+          case 'operations':
+            return <OperationsPage connected={connected} />;
+          case 'operation-detail':
+            return <OperationDetailPage id={route.operationId!} connected={connected} />;
+          case 'audit':
+            return <AuditPage connected={browserConnected} />;
+          default:
+            return <DashboardPage connected={connected} />;
+        }
+      }}
+    </AppShell>
   );
 }
-
-function Appliance({
-  page,
-  setPage,
-  signOut,
-}: {
-  page: 'dashboard' | 'admins' | 'tokens' | 'network';
-  setPage: (page: 'dashboard' | 'admins' | 'tokens' | 'network') => void;
-  signOut: () => void;
-}) {
-  const health = useLiveCoreStatus();
-  return (
-    <div className="stack">
-      <CoreStatusBanner health={health} />
-      <nav className="navigation" aria-label="Main navigation">
-        {(['dashboard', 'admins', 'tokens', 'network'] as const).map((item) => (
-          <button
-            className="ghost"
-            key={item}
-            aria-current={page === item ? 'page' : undefined}
-            onClick={() => setPage(item)}
-          >
-            {item === 'admins'
-              ? 'Administrators'
-              : item === 'network'
-                ? 'Network settings'
-                : item === 'tokens'
-                  ? 'API tokens'
-                  : 'Dashboard'}
-          </button>
-        ))}
-      </nav>
-      {page === 'dashboard' ? <DashboardPage onSignOut={signOut} /> : null}
-      <fieldset className="change-controls stack" disabled={!health?.canMutate}>
-        {page === 'admins' ? <AdminsPage onSignedOut={signOut} /> : null}
-        {page === 'tokens' ? <TokensPage /> : null}
-        {page === 'network' ? <NetworkPage /> : null}
-      </fieldset>
-    </div>
-  );
-}
-
 export function App() {
-  const [queryClient] = useState(() => new QueryClient());
+  const [cache] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={cache}>
       <Shell />
     </QueryClientProvider>
   );

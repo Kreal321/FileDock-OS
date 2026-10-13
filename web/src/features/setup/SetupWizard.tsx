@@ -1,3 +1,5 @@
+import { Field } from '../../components/Field.tsx';
+import { Button } from '../../components/Button.tsx';
 import { useState, type FormEvent } from 'react';
 import { ApiError, api, hasCsrfCookie } from '../../api/client.ts';
 import { RecoveryKeyStep } from './RecoveryKeyStep.tsx';
@@ -16,23 +18,29 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState('');
   const [needsSignIn, setNeedsSignIn] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   async function verify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     setError('');
     const form = new FormData(event.currentTarget);
     const next = String(form.get('code') ?? '');
+    setBusy(true);
     try {
       await api.post('/setup/verify-code', { code: next });
       setCode(next);
       setStep('admin');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not verify the setup code.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function complete(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     setError('');
     const form = new FormData(event.currentTarget);
     const password = String(form.get('adminPassword') ?? '');
@@ -41,6 +49,7 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       setError('Passwords do not match.');
       return;
     }
+    setBusy(true);
     try {
       const result = await api.post<Generated>('/setup/complete', {
         code,
@@ -59,6 +68,8 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Setup could not be completed.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -113,55 +124,59 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       {step === 'code' ? (
         <form className="panel stack" onSubmit={verify}>
           <p className="eyebrow">First run</p>
-          <h2>Enter the one-time setup code</h2>
-          <label>
-            Setup code
-            <input name="code" autoComplete="one-time-code" required placeholder="7KQ4-M2XD" />
-          </label>
+          <h1>Enter the one-time setup code</h1>
+          <Field
+            label="Setup code"
+            name="code"
+            autoComplete="one-time-code"
+            required
+            placeholder="7KQ4-M2XD"
+          />
           {error ? (
             <p className="error" role="alert">
               {error}
             </p>
           ) : null}
-          <button className="primary" type="submit">
+          <Button variant="primary" type="submit" busy={busy}>
             Continue
-          </button>
+          </Button>
         </form>
       ) : null}
       {step === 'admin' ? (
         <form className="panel stack" onSubmit={complete}>
           <p className="eyebrow">Identity</p>
-          <h2>Name the appliance and create the first administrator</h2>
-          <label>
-            Appliance name
-            <input name="applianceName" required defaultValue="filedock" />
-          </label>
-          <label>
-            Administrator username
-            <input name="adminUsername" required autoComplete="username" defaultValue="root" />
-          </label>
-          <label>
-            Password
-            <input name="adminPassword" type="password" required autoComplete="new-password" />
-          </label>
+          <h1>Name the appliance and create the first administrator</h1>
+          <Field label="Appliance name" name="applianceName" required defaultValue="filedock" />
+          <Field
+            label="Administrator username"
+            name="adminUsername"
+            required
+            autoComplete="username"
+            defaultValue="root"
+          />
+          <Field
+            label="Password"
+            name="adminPassword"
+            type="password"
+            required
+            autoComplete="new-password"
+          />
           <p className="eyebrow">We recommend using more than 8 characters.</p>
-          <label>
-            Re-enter password
-            <input
-              name="adminPasswordConfirmation"
-              type="password"
-              required
-              autoComplete="new-password"
-            />
-          </label>
+          <Field
+            label="Re-enter password"
+            name="adminPasswordConfirmation"
+            type="password"
+            required
+            autoComplete="new-password"
+          />
           {error ? (
             <p className="error" role="alert">
               {error}
             </p>
           ) : null}
-          <button className="primary" type="submit">
+          <Button variant="primary" type="submit" busy={busy}>
             Create administrator
-          </button>
+          </Button>
         </form>
       ) : null}
       {step === 'key' && generated ? (
@@ -176,13 +191,16 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
             <form className="panel stack" onSubmit={signIn}>
               <h2>Sign in to continue setup</h2>
               <p>Sign in as {generated.username}. Your recovery key stays the same.</p>
-              <label>
-                Administrator password
-                <input name="password" type="password" required autoComplete="current-password" />
-              </label>
-              <button className="primary" type="submit" disabled={signingIn}>
+              <Field
+                label="Administrator password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+              />
+              <Button variant="primary" type="submit" busy={signingIn}>
                 {signingIn ? 'Signing in…' : 'Sign in'}
-              </button>
+              </Button>
             </form>
           ) : null}
         </div>

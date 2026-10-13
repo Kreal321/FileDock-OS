@@ -7,10 +7,13 @@ description: "Task list for 001-core-os-foundation"
 **Input**: Design documents from `/specs/001-core-os-foundation/`
 
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
-[data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
+[data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md),
+[ui-design-guide.md](./ui-design-guide.md), [management-ui.md](./contracts/management-ui.md),
+[ui-validation.md](./ui-validation.md)
 
 **Tests**: Included where the spec or plan requires them. The success criteria are defined by
-acceptance, failure-injection, disaster-recovery, and fill tests (SC-001 to SC-026). The plan also
+acceptance, failure-injection, disaster-recovery, and fill tests (SC-001 to SC-031). US11 explicitly requires screen/state, accessibility, offline and novice
+acceptance coverage (FR-135). The plan also
 names specific contract tests: `fdconfig` coverage, the cross-connector layout, and schema and
 proto checks. Unit tests for individual modules are not listed separately.
 
@@ -20,7 +23,7 @@ be implemented and validated as an increment.
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependency on an incomplete task)
-- **[Story]**: The user story the task belongs to (US1 to US10)
+- **[Story]**: The user story the task belongs to (US1 to US11)
 - Paths follow the Project Structure in plan.md. One deviation: the Cargo workspace root is the
   repository-root `Cargo.toml`, so `core/crates/*` and `connectors/fd-s3` can share one workspace
   (Cargo needs members below the workspace root).
@@ -289,12 +292,106 @@ US9. Until then, a sample subsystem stands in.
   - UI updates arrive within 2 seconds;
   - power is cut during a configuration change.
 
-**Checkpoint**: The P1 stories are complete. The appliance installs, is secure, and keeps itself
-running.
+**Checkpoint**: The original US1–US3 implementation is complete. The appliance installs, is secure,
+and keeps itself running. The new P1 US11 redesign and its acceptance remain pending.
 
 Implementation T078–T087 is complete. Combined Incremental Delivery 1 / Phases 4–5 manual VM
 acceptance is pending; follow [phase5-testing.md](./phase5-testing.md). The US3 data-plane checks
 use the disposable sample subsystem until US9 provides real share and app provisioning.
+
+---
+
+## Phase 5A: User Story 11 - Consistent Management UI design (Priority: P1)
+
+**Goal**: Apply the approved light FileDock design to every current screen using shared accessible
+components, truthful service status, and responsive navigation. Add read-only Operations/detail
+and Audit views over existing APIs. Preserve setup, security, live updates, and outage behavior.
+
+**Independent Test**: Follow [ui-validation.md](./ui-validation.md): compare every implemented
+screen/state to the guide, exercise healthy/failed/empty/stale/unreachable states at 1440 px and
+360 px, check actual 200% browser zoom at 1280 px and keyboard operation, verify offline assets,
+then rerun combined Phase 4–5 acceptance on the packaged PVE VM. Five novice administrators perform
+SC-031, with at least four completing all three tasks unassisted within two minutes.
+
+**Scope and history**: T001–T201 retain their IDs and completion marks. T202–T235 are new work;
+completed service tasks do not certify the redesigned UI. Execute this phase after Phase 5 and
+before Phase 6. Numeric IDs are appended for history; the dependency table below defines execution
+order. Future storage charts, search, alerts bell, and unsupported destinations are not added here.
+No backend endpoint, database migration, compatibility route, or listener change is needed.
+
+### Acceptance tests first (FR-124–FR-135, SC-027–SC-031)
+
+Write the requested checks before the corresponding implementation and demonstrate the expected
+failures. Synthetic fixtures must never enter production modules. Initial visual baselines require
+human comparison with the guide after implementation; generating images alone is not acceptance.
+
+- [X] T202 [US11] Create deterministic test-only API/event fixtures in `web/tests/fixtures/ui-states.ts` for complete/partial/missing service records, raw unknown states, stopped/failed/degraded, cached Core data, browser disconnect, notices, paged operations/audit, empty lists, identity, 423/401/502/503 and protected-session expiry; use synthetic secrets only
+- [X] T203 [P] [US11] Add adapter contract tests in `web/src/api/view-models.test.ts` and `web/src/features/dashboard/dashboard-model.test.ts` for truthful missing/zero/stale values, local receipt versus observation time, all eight expected services, all notices, actual-record counts and unavailable protection coverage (FR-127–FR-129)
+- [X] T204 [P] [US11] Add shared component tests in `web/src/components/components.test.tsx` for accessible names, text plus icon statuses, focus/busy/disabled/error states, native forms, switch save/failure, true tabs keyboard semantics, dialog Escape/focus restoration, and responsive table region labeling (FR-130–FR-132)
+- [X] T205 [P] [US11] Add route/disclosure tests in `web/src/navigation/useHashRoute.test.tsx` and `web/src/layout/AppShell.test.tsx` for valid direct hashes, history, unknown-route notice, protected-route gates, real identity, sign-out reset, active links, skip link, narrow-menu Escape/focus restoration and hidden links excluded from focus (FR-125–FR-126, FR-133)
+- [X] T206 [P] [US11] Add form continuity/security regression tests in `web/tests/forms-ui.test.tsx` for editable root, password confirmation and advisory length, recovery download/reauthentication, last-admin guard, current-password checks, token secret-once, network acknowledgement, dirty inputs/focus across live refetch and individual mutation guards (FR-130, FR-134)
+- [X] T207 [P] [US11] Create fixture-driven browser scenarios in `web/tests/e2e/ui-design.spec.ts` and pin deterministic screenshot settings in `web/playwright.config.ts`: fixed locale/clock/data, font readiness, reduced motion, all current/new pages and shared states, 1440/360 px, route history, keyboard, long text, offline external-request blocking and secret masking; keep existing real-appliance scenarios usable (FR-135, SC-027–SC-030)
+
+### Shared design foundations
+
+- [X] T208 [P] [US11] Define semantic palette and accessible variants, typography, 8/16/24/32 px spacing, 12 px radius, borders/shadows, focus/44 px targets and reduced-motion tokens in `web/src/styles/tokens.css`; replace existing theme/layout rules in `web/src/styles.css` with guide-aligned responsive defaults (FR-124, FR-131–FR-132)
+- [X] T209 [P] [US11] Bundle pinned Inter v4.1 normal variable font in `web/src/assets/fonts/InterVariable.woff2`, record original source/release/SHA-256 in `web/src/assets/fonts/SOURCE.md`, and ship copyright/OFL in `web/public/assets/licenses/inter-OFL.txt`; register local font loading with swap/fallback in `web/src/styles/fonts.css` (FR-124, SC-030)
+- [X] T210 [P] [US11] Create original consistent inline SVG icons in `web/src/components/Icon.tsx` for brand, service, navigation and semantic states; decorative icons are hidden from assistive technology and meaningful icons have names without requiring remote assets (FR-124, FR-132)
+- [X] T211 [P] [US11] Implement typed NavigationDestination, identity, DataView, status/Core connection and operation/activity/form models and response adapters in `web/src/api/view-models.ts`; preserve raw states, distinguish local receipt time and stale/unavailable data, and derive effective mutation permission from both live transport and Core (data-model.md, FR-128–FR-129)
+- [X] T212 [US11] Implement native accessible form/action primitives in `web/src/components/Button.tsx`, `Field.tsx`, `Select.tsx`, and `Switch.tsx` with consistent pending/error/disabled states, descriptive feedback, target sizes and server-error association; satisfy T204 without global opacity reducing contrast
+- [X] T213 [P] [US11] Implement display primitives in `web/src/components/Panel.tsx`, `PageHeader.tsx`, `StatusBadge.tsx`, `Notice.tsx`, and `StateView.tsx` with complete loading/empty/error/stale/unavailable presentation, scoped status words/icons, persistent warnings and retry (FR-127–FR-132)
+- [X] T214 [P] [US11] Implement true in-page tabs and modal confirmation primitives in `web/src/components/Tabs.tsx` and `Dialog.tsx` with names, keyboard operation, focus containment/restoration and busy/error behavior; use ordinary links for page navigation (FR-130, FR-132)
+- [X] T215 [P] [US11] Implement `web/src/components/DataTable.tsx` with semantic headers, named horizontal scroll regions, accessible paging/row actions, wrapping long values and distinguishable loading/empty/error/stale states; page content must not overflow (FR-130–FR-132)
+
+### Navigation and session integration
+
+- [X] T216 [US11] Implement one typed destination registry and hash navigation in `web/src/navigation/destinations.ts` and `useHashRoute.ts` for Dashboard, Settings and its Administrators/Tokens/Network/Operations/detail/Audit routes; handle refresh/back/forward, unknown-route notice and session reset without compatibility aliases or unsupported enabled destinations
+- [X] T217 [P] [US11] Build branded public `web/src/layout/AuthLayout.tsx` with loading/unavailable/retry presentation, responsive form panels and offline typography; setup/sign-in never expose authenticated navigation (FR-124–FR-125)
+- [X] T218 [US11] Build `web/src/layout/AppShell.tsx`, `Sidebar.tsx`, and `TopBar.tsx` with desktop sidebar, mobile disclosure, skip link, real `/auth/me` identity and sign-out; keep one authenticated live subscription mounted across routes and omit search/bell until supported (FR-125–FR-126, FR-133)
+- [X] T219 [US11] Integrate layouts/routes/fonts in `web/src/App.tsx` and startup/session handling in `web/src/api/client.ts`; extend `web/src/App.test.tsx` to distinguish setup 423, expected sign-in 401, network/502/503 retry and unexpected protected 401; on expiry/sign-out clear private queries and secret state, close the live subscription, and reset navigation while preserving cookie/CSRF behavior
+
+### Migrate current pages and expose existing read-only APIs
+
+- [X] T220 [P] [US11] Migrate setup and recovery download in `web/src/features/setup/SetupWizard.tsx` and `web/src/features/setup/RecoveryKeyStep.tsx` to shared components/AuthLayout; preserve editable root, non-empty matching passwords with advisory length, download-to-continue and recovery reauthentication without group checks (FR-134)
+- [X] T221 [P] [US11] Migrate `web/src/features/auth/SignInPage.tsx` to shared fields/actions and accessible lock/error/busy feedback while retaining sign-in semantics, password handling and protected-route gates (FR-134)
+- [X] T222 [P] [US11] Migrate `web/src/features/admins/AdminsPage.tsx` to shared panels/table/forms/dialogs; retain last-admin/current-password safeguards, input/focus continuity, server errors and separate read-only inspection from mutation disabling (FR-130, FR-134)
+- [X] T223 [P] [US11] Migrate `web/src/features/tokens/TokensPage.tsx` to shared panels/table/forms/dialogs; preserve scope selection, creation/revocation and secret-once display in memory, clear secrets on expiry/sign-out and exclude them from captures/storage (FR-130, FR-134)
+- [X] T224 [P] [US11] Migrate `web/src/features/settings/NetworkPage.tsx` to shared fields/switches/notices/dialogs; retain listener/subnet validation and disconnect acknowledgement, saving/error feedback and dirty inputs across refetch (FR-130, FR-134)
+- [X] T225 [P] [US11] Build Settings overview/subnavigation in `web/src/features/settings/SettingsPage.tsx` linking Administrators, Tokens, Network, Operations and Audit; all are discoverable and read-only navigation remains usable during outages (FR-125–FR-126)
+- [X] T226 [P] [US11] Build `web/src/features/operations/OperationsPage.tsx` and `OperationDetailPage.tsx` over existing list/detail APIs with page tokens, active-only filtering, real step/state/error data, missing-detail handling and stale/unavailable notices; add no required manual-reconcile mutation (FR-126–FR-128)
+- [X] T227 [P] [US11] Build `web/src/features/audit/AuditPage.tsx` over existing paged audit API with actor/action filters and labeled administrative activity; expose no unsupported time filter, file activity or raw secret-bearing detail dump (FR-126–FR-128)
+- [X] T228 [P] [US11] Implement `web/src/features/dashboard/dashboard-model.ts` and migrate `DashboardPage.tsx` to health-first summary/panels, all expected Core/Management/Docker/built-in services, every applicable notice and five-row real operations/audit previews with View All; show protection information unavailable until detailed coverage exists and omit unsupported sample counts/history/charts (FR-127–FR-129)
+- [X] T229 [US11] Integrate all pages with persistent live state in `web/src/App.tsx`, `web/src/api/useLiveCoreStatus.ts`, `web/src/api/events.ts`, and `web/src/components/CoreStatusBanner.tsx`; preserve reconnect resync/event invalidation and dirty form/focus context, visibly mark cached data stale, guard only mutations using browser connectivity plus Core permission and keep inspection/retry/sign-out usable
+
+### Reviewed visual and real-appliance acceptance
+
+- [ ] T230 [US11] Review every page/state capture against `specs/001-core-os-foundation/ui-design-guide.md` and establish approved baselines in `web/tests/e2e/ui-design.spec.ts-snapshots/`; document intentional health-first adaptations, font/browser versions and masked secret regions in `specs/001-core-os-foundation/ui-acceptance.md` rather than blindly approving snapshot updates (SC-027)
+- [X] T231 [US11] Run lint/build and requested unit/browser/visual/security/offline checks per `specs/001-core-os-foundation/ui-validation.md`; inspect packaged local font/icon/license assets and absence of production fixtures/CDN requests, fix failures, and record actual commands/results in `specs/001-core-os-foundation/ui-acceptance.md` (SC-027–SC-030)
+- [ ] T232 [US11] Perform real 1280 px/200% browser zoom, 360 px reflow, keyboard/focus/dialog/disclosure, contrast/44 px target, reduced-motion and dirty-form/live-refetch reviews for every implemented screen; record measured results/evidence in `specs/001-core-os-foundation/ui-acceptance.md` and leave acceptance pending until actual manual evidence is available (FR-131–FR-135, SC-029)
+- [ ] T233 [US11] Build/install the redesigned offline bundle on a fresh supported PVE VM and rerun `specs/001-core-os-foundation/phase5-testing.md` plus `ui-validation.md`: setup/recovery download, sign-in, admin/token/network security, live/outage recovery, data-plane independence and fresh-cache external-network-blocked UI at HTTP 8021; record commit/archive checksum/results in `specs/001-core-os-foundation/ui-acceptance.md`, keeping manual checks pending without real VM evidence (SC-030)
+- [ ] T234 [US11] Conduct the five-novice-admin review from `specs/001-core-os-foundation/ui-validation.md` using non-secret representative data; record individual elapsed times and assistance for failed-service identification, administrator management and sign-out in `specs/001-core-os-foundation/ui-acceptance.md`; require at least four of five to complete all three within two minutes and leave pending until participants provide evidence (SC-031)
+- [ ] T235 [US11] Complete the FR-124–FR-135 / SC-027–SC-031 coverage and acceptance matrix in `specs/001-core-os-foundation/ui-acceptance.md`, linking automated/manual/VM/novice evidence and documenting any remaining failures; mark US11 accepted only when all criteria pass and update `specs/001-core-os-foundation/checklists/validation.md` without treating earlier completion as redesign acceptance
+
+**2026-10-13 implementation status**: T202–T229 and local automated validation T231 are complete.
+Lint/build, 29 unit tests and 23 macOS Chromium browser scenarios pass. Forty-four reviewed macOS
+screenshot candidates exist. T230 is pending canonical Linux baseline approval; T232–T235 are
+pending the user's combined P1 manual/VM/novice acceptance. See [ui-acceptance.md](./ui-acceptance.md).
+No PVE install or manual acceptance result is implied by these implementation marks.
+
+### US11 dependency waves and parallel work
+
+| Wave | Tasks | Prerequisites / sequencing |
+| --- | --- | --- |
+| A: requested checks | T202, then T203–T207 | Existing Phase 1–5 foundation; test tasks use T202 fixtures and separate files |
+| B: foundations | T208–T211 | A written; these tasks own separate files; T209 owns fonts.css, T208 owns styles.css |
+| C: primitives | T212, then T213–T215 | B complete; T212 establishes form conventions before parallel display/dialog/table work |
+| D: layouts | T216–T217, then T218, then T219 | C complete; route registry and AuthLayout are independent; shell precedes App integration |
+| E: pages | T220–T228 | D complete; independent feature files, no concurrent shared style/App edits |
+| F: integration | T229 | All E pages complete; shared App/live-state files edited sequentially |
+| G: acceptance | T230–T235 | F complete; sequential baseline review, automated checks, manual accessibility, real VM, novice evidence, final matrix |
+
+**Checkpoint**: Revised P1 delivery is US1 + US2 + US3 + US11. Phase 6 may proceed after the
+redesign acceptance gate passes; missing VM, zoom or novice evidence remains explicitly pending.
 
 ---
 
@@ -709,6 +806,8 @@ native connector is hardened for control.
 - **Foundational (Phase 2)**: depends on Setup, and blocks every user story.
 - **User stories (Phases 3–12)**: each depends on Foundational. Run them in priority order (P1, then
   P2, then P3), or in parallel where the cross-story notes allow.
+- **UI revision (Phase 5A)**: US11 follows completed Phase 5; use T202–T235 dependency waves.
+  Complete its acceptance checkpoint before later story implementation. Existing IDs remain stable.
 - **Polish (Phase 13)**: depends on the stories it validates. T183 and T184 need all of them.
 
 ### User Story Dependencies
@@ -718,6 +817,7 @@ native connector is hardened for control.
 | US1 (P1) | Foundational | The MVP. Includes the administrator service, sessions, sign-in, and the recovery key, because setup needs them |
 | US2 (P1) | US1 | Builds on US1's administrators and sessions |
 | US3 (P1) | Foundational | The full independence test (T087) uses a share and a container from US9 |
+| US11 (P1) | US1, US2, US3 | Shared UI foundations and current-screen migration; existing Operations/Audit APIs only; T202–T235 before Phase 6 |
 | US4 (P2) | US1 (recovery key) | Object-storage copies use the connector backbone from Phase 2 |
 | US5 (P2) | US4 | Pool reattach and mapping need US9. Package reinstall needs US6 (T123) |
 | US6 (P2) | Foundational | Data bindings need managed folders from US8 |
@@ -726,10 +826,32 @@ native connector is hardened for control.
 | US9 (P3) | US8 | Exports and apps attach to managed folders |
 | US10 (P3) | Phase 2 connector backbone, US4 (owned locations) | Third-party connectors need US6 |
 
+### Later UI dependencies on US11
+
+After T235, later UI tasks reuse the tokens, primitives, shell and routing from T208–T219 and
+respect live/form invariants from T229. Their existing backend/capability dependencies remain.
+
+| Existing task / story | Required UI integration when that story ships |
+| --- | --- |
+| T088, T101 / US4 | Protection/recovery screens use shared components; detailed durable coverage may replace the US11 unavailable notice only with actual data |
+| T114–T115 / US5 | Restore/location flows preserve loss, ownership, takeover and recovery warnings using shared dialogs/notices |
+| T127 / US6 | Extensions navigation becomes enabled only with its real view/provider; permission and data-binding confirmations remain |
+| T134 / US7 | Extend the existing US11 Audit view instead of duplicating it; add real logs/activity/alerts, and search/bell only when supported |
+| T141 / US8 | Managed Folders navigation/cards use real mode and separate protection state, including exposure notices |
+| T153, T160, T162 / US9 | Enable Pools/Cloud/Shares/Docker destinations only with working views/sources; actual capacity/container metrics and chart text equivalents only |
+| T175 / US10 | Routes/connectors use shared forms/dialogs and retain impact acknowledgements/claim safety warnings |
+| T180, T184 / Polish | Include all later screens in copy, visual/state, accessibility/offline and full acceptance coverage |
+
+Every later UI task extends `web/src/navigation/destinations.ts` as needed and updates
+`web/tests/e2e/ui-design.spec.ts` and `specs/001-core-os-foundation/ui-acceptance.md` for its
+implemented screens/states; these shared files require sequential integration. Backup/Tiering
+remain governed by their separate features and receive no invented view/provider in feature 001.
+
 ### Within Each Story
 
-- Core resources and services, then gRPC, then Management endpoints, then web, then acceptance
-  tests.
+- Existing story order remains Core resources/services → gRPC → Management endpoints → web →
+  acceptance. US11 adds requested checks before corresponding UI implementation, followed by
+  reviewed visual baselines and real acceptance; its detailed waves take precedence.
 - Tasks in the same file are sequential, even across stories: `install.sh`, `api/recovery.rs`,
   `ownership.rs`, `route_change.rs`, `lifecycle.rs`, and `ConnectionEndpoints.cs`.
 
@@ -757,6 +879,18 @@ Task: "Implement the rclone general connector in core/crates/fd-connectors/src/r
 Task: "Implement the audit writer in management/src/FileDock.Management.Domain/Audit/AuditWriter.cs"
 Task: "Implement Argon2id hashing in management/src/FileDock.Management.Domain/Security/PasswordHasher.cs"
 Task: "Create the web app shell in web/src/main.tsx, web/src/App.tsx, web/src/api/client.ts"
+```
+
+## Parallel Example: User Story 11
+
+After T219, these independent page tasks may run together; integrate shared App/styles changes in
+T229 after all page tasks finish:
+
+```text
+T222: Migrate web/src/features/admins/AdminsPage.tsx
+T223: Migrate web/src/features/tokens/TokensPage.tsx
+T226: Build web/src/features/operations/OperationsPage.tsx and OperationDetailPage.tsx
+T227: Build web/src/features/audit/AuditPage.tsx
 ```
 
 ## Parallel Example: User Story 9
@@ -793,7 +927,9 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 
 ### Incremental delivery
 
-1. US1, US2, US3: the secure, self-healing appliance (all P1).
+1. US1, US2, US3, then US11: the secure, self-healing appliance with the approved Management UI
+   (all P1). US1 remains the original installation MVP; the revised P1 release includes T202–T235
+   and the combined VM/visual/accessibility/offline/novice acceptance gate.
 2. US4, then US5: recoverability. US5's full flows complete after US6 and US9.
 3. US6, US7, US8: extensibility, operations, and the folder flow.
 4. US9: storage, shares, and apps. Re-run T087 and T116 to T117 end to end.
@@ -806,7 +942,8 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 - **Rust connectors**: fd-s3 and the rclone adapter in Phase 2, then US10 hardening.
 - **.NET**: the Management host, then US1 and US2 endpoints, then the restore and extension
   endpoints.
-- **Web**: shell, setup, and dashboard, then each story's feature folder.
+- **Web**: execute US11 waves after Phase 5, validate the P1 gate, then reuse its components and
+  navigation in each later story's feature folder.
 - **Packaging and e2e**: installer, Debian packages, VM harness, then the acceptance tests per
   story.
 

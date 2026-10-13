@@ -72,3 +72,15 @@ test('initial connection failure is retried and disposal cancels retries', async
   await vi.advanceTimersByTimeAsync(60000);
   expect(mock.start).toHaveBeenCalledTimes(2);
 });
+
+test('late reconnect callbacks cannot repopulate disposed session queries', async () => {
+  const cache = new QueryClient();
+  const dispose = connectEvents(cache);
+  await Promise.resolve();
+  dispose();
+  cache.clear();
+  mock.handlers.reconnected!();
+  mock.handlers['core-health']!({ state: 'Healthy', canMutate: true, detail: 'late' });
+  expect(cache.getQueryData(['events-connected'])).toBeUndefined();
+  expect(cache.getQueryData(['core-health'])).toBeUndefined();
+});

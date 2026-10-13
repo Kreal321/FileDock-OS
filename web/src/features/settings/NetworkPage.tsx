@@ -1,3 +1,8 @@
+import { PageHeader } from '../../components/PageHeader.tsx';
+import { dataView } from '../../api/view-models.ts';
+import { StateView } from '../../components/StateView.tsx';
+import { TextAreaField } from '../../components/Field.tsx';
+import { Button } from '../../components/Button.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
@@ -6,7 +11,13 @@ type Network = {
   port: number;
   availableAddresses: { interfaceName: string; address: string }[];
 };
-export function NetworkPage() {
+export function NetworkPage({
+  canMutate = true,
+  connected = true,
+}: {
+  canMutate?: boolean;
+  connected?: boolean;
+}) {
   const cache = useQueryClient();
   const query = useQuery({
     queryKey: ['network'],
@@ -17,6 +28,7 @@ export function NetworkPage() {
   const [busy, setBusy] = useState(false);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canMutate || busy) return;
     const form = new FormData(event.currentTarget);
     setBusy(true);
     setError('');
@@ -42,7 +54,12 @@ export function NetworkPage() {
   }
   return (
     <section className="stack">
-      <h1>Network settings</h1>
+      <PageHeader title="Network settings" description="Local access to appliance management." />
+      <StateView
+        {...dataView(query.data, query.isPending, query.error, query.dataUpdatedAt, !connected)}
+        onRetry={() => void query.refetch()}
+        empty="No records returned."
+      />
       <p>
         The UI and API use HTTP on port {query.data?.port ?? 8021}. Choose local IP addresses, or
         use :: for all interfaces.
@@ -50,16 +67,15 @@ export function NetworkPage() {
       <p>
         If access is lost, run <code>filedockctl network reset</code> as root from the VM console.
       </p>
+      {query.isPending ? <p role="status">Loading network settings…</p> : null}
       {query.data ? (
         <form className="panel stack" onSubmit={save}>
-          <label>
-            Listen addresses (one per line)
-            <textarea
-              name="addresses"
-              required
-              defaultValue={query.data.listenAddresses.join('\n')}
-            />
-          </label>
+          <TextAreaField
+            label="Listen addresses (one per line)"
+            name="addresses"
+            required
+            defaultValue={query.data.listenAddresses.join('\n')}
+          />
           <ul>
             {query.data.availableAddresses.map((address) => (
               <li key={`${address.interfaceName}-${address.address}`}>
@@ -71,9 +87,9 @@ export function NetworkPage() {
             <input name="confirmDisconnect" type="checkbox" />
             Allow this change to disconnect my current connection
           </label>
-          <button className="primary" disabled={busy} type="submit">
+          <Button variant="primary" disabled={!canMutate} busy={busy} type="submit">
             Save network settings
-          </button>
+          </Button>
         </form>
       ) : null}
       {error || query.error ? (

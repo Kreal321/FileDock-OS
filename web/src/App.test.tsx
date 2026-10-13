@@ -32,3 +32,19 @@ test('an expected startup 401 opens sign-in without expiring the session gate', 
   expect(expired).not.toHaveBeenCalled();
   window.removeEventListener('filedock:session-expired', expired);
 });
+
+for (const status of [502, 503])
+  test(`startup ${status} shows retry rather than sign-in`, async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })));
+    render(<App />);
+    expect(
+      await screen.findByRole('heading', { name: 'Appliance unavailable' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+test('network failure shows retry', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Network unavailable')));
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: 'Appliance unavailable' })).toBeInTheDocument();
+});

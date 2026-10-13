@@ -42,6 +42,12 @@ provider family and use, for example S3 to the native connector and cloud drives
 administrator can change the routes in extension management. Hybrid Backup repositories on
 S3-compatible storage use the backup engine's own S3 access by default.
 
+**Revised**: 2026-10-13. The Management UI follows the user-supplied light-theme,
+storage-focused visual reference and [UI design guide](./ui-design-guide.md). This adds US11,
+FR-124–FR-135, and SC-027–SC-031 without changing existing storage, security, recovery, or
+capability requirements. The image's example dashboard data and functions are illustrative;
+only actual supported functionality and observed data may be presented as available.
+
 ## Overview
 
 This feature delivers the base FileDock OS appliance that every storage mode depends on. It covers:
@@ -183,6 +189,15 @@ with a target recovery point as recent as 5 minutes.
   do conditional writes there? → A: Keep it on the general connector. Azure Blob owned locations
   have basic claim safety, with the acknowledgement and the dashboard warning.
 
+### Session 2026-10-13 — Management UI design
+
+- The administrator supplied a FileDock Management UI Design Guide and requested that its visual
+  design apply throughout the system. Its sample dashboard content does not establish correct
+  product functionality. Adopt its light theme, navigation shell, typography, colors, rounded
+  cards, spacing, and component style; retain the functional requirements and actual data as the
+  authority for what the system can do. The reference is retained in
+  [assets/management-ui-design-guide.png](./assets/management-ui-design-guide.png).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Install the appliance and reach the management UI (Priority: P1)
@@ -286,6 +301,47 @@ desired state and reports it.
    in the UI within 2 seconds without a page refresh.
 5. **Given** the Core Service is unavailable, **When** an administrator uses the UI, **Then** the UI
    shows that the core is unreachable, blocks changes, and recovers by itself when the core returns.
+
+---
+
+### User Story 11 - Navigate a consistent, clear management interface (Priority: P1)
+
+The administrator uses a consistent FileDock interface to understand appliance health, find the
+available management areas, and make changes without confusing unavailable features or stale
+information with a healthy, configured system. The user-approved visual design applies to setup,
+sign-in, the dashboard, settings, and every later management screen.
+
+**Why this priority**: The existing P1 appliance needs a clear and consistent interface for its
+combined manual acceptance. The new design must preserve visible failures and security guardrails.
+
+**Independent Test**: Review setup, sign-in, dashboard, and administrator/network/token screens
+against the [approved design guide](./ui-design-guide.md), using healthy, failed, empty, and
+unreachable appliance states. Repeat the review at desktop and narrow widths and using only a
+keyboard. Later feature screens undergo the same review when their functionality is implemented.
+
+**Acceptance Scenarios**:
+
+1. **Given** an implemented management screen, **When** the administrator opens it, **Then** its
+   colors, type hierarchy, spacing, cards, controls, and status labels follow the approved design
+   guide. Authenticated screens share the sidebar/top-bar layout on desktop.
+2. **Given** an implemented destination with no configured resources, **When** it is opened,
+   **Then** it shows a useful empty state and a supported next action. A feature not yet available
+   is omitted or clearly unavailable, with no nonfunctional navigation or decorative controls.
+3. **Given** actual appliance status and configured resources, **When** the dashboard is shown,
+   **Then** its cards, lists, capacity bars, and activity reflect those values. No sample user,
+   folder, date, count, history, or backup success from the reference is presented as actual data.
+4. **Given** a failed subsystem, a stale recovery point, missing protection, or a lost Core
+   connection, **When** the administrator views the redesigned UI, **Then** the condition remains
+   visible with an appropriate label and existing recovery actions. Unsafe changes remain blocked.
+5. **Given** a user on a 360 px-wide viewport or at 200% zoom on a 1280 px-wide viewport,
+   **When** they use an implemented screen, **Then** navigation and actions remain reachable,
+   panels retain their reading order, and horizontal scrolling is limited to tables or charts.
+6. **Given** keyboard-only use or reduced-motion preferences, **When** the administrator completes
+   setup, signs in, or uses management controls, **Then** focus, labels, status meaning, and all
+   essential actions remain usable without relying on color, hover, animation, or a mouse.
+7. **Given** the appliance has no internet access, **When** the administrator opens the UI,
+   **Then** its branding, icons, typography or readable fallback, and controls remain usable.
+   Required password confirmation and recovery-key download behavior remain unchanged.
 
 ---
 
@@ -734,6 +790,21 @@ that every snapshot stays readable and nothing at the location was rewritten.
 ---
 
 ### Edge Cases
+
+- A redesigned card has no measurements or history. It shows Unknown/Unavailable or an explicit
+  empty state; it never shows zero usage or a healthy trend as a substitute for missing data.
+- A feature shown in the reference has not been implemented or has no available provider. Its
+  navigation/action is omitted or marked unavailable, while implemented areas with zero resources
+  remain accessible.
+- A long appliance/folder name, translated-size text, narrow viewport, or enlarged text would
+  overflow a card. Content wraps or truncates with a way to reveal the complete value; essential
+  actions and protection warnings remain visible.
+- The live connection fails while a healthy summary is visible. The view marks stale information
+  and keeps the Core warning/change restrictions; the redesign cannot imply continued freshness.
+- A backup succeeded for only one folder while appliance-state protection is missing. Success is
+  scoped to that folder, and the broader protection warning remains visible.
+- A display color is difficult to distinguish or lacks text contrast. A label/icon preserves the
+  meaning, and readable text/focus colors take precedence over copying the screenshot literally.
 
 - Power is lost during installation. Re-running the installer finishes or repairs the installation.
 - The administrator restricts the UI to one network interface while signed in through another. The
@@ -1637,6 +1708,62 @@ that every snapshot stays readable and nothing at the location was rewritten.
     service upgrade detected at the next connection test.
   - Basic claim safety MUST NOT relax the check before each write session (FR-091).
 
+**Management UI visual design and presentation**
+
+The approved [UI design guide](./ui-design-guide.md), including its retained reference image,
+is normative for presentation. Functional behavior remains governed by the requirements above.
+
+- **FR-124**: Every management screen MUST follow the guide's light theme, FileDock identity,
+  type hierarchy, color roles, 8 px spacing rhythm, rounded white cards, and restrained borders
+  and shadows. The design MUST remain usable offline, including icons and a readable typeface.
+- **FR-125**: Authenticated desktop screens MUST use a shared left navigation sidebar, top bar,
+  and main content area. Navigation MUST show the active destination, preserve the guide's
+  icon-plus-label hierarchy, and expose implemented areas through the specified destination
+  labels. Setup and sign-in MUST use the same visual language without exposing authenticated
+  information or navigation before access is granted.
+- **FR-126**: Navigation, search, alert controls, links, and actions MUST lead to real supported
+  behavior. An implemented area with no resources MUST remain accessible with an empty state;
+  an unavailable feature MUST be omitted or explicitly unavailable without an enabled action.
+  The guide MUST NOT add features from the sample image to this release's functional scope.
+- **FR-127**: The dashboard MUST use compact summary cards followed by related content panels,
+  reflecting the guide's hierarchy. It MUST retain Core, Management Service, container runtime,
+  and built-in subsystem health. Folder/pool lists, connection counts, protection, recent activity,
+  cache/resource charts, and container summaries MUST appear only when corresponding functionality
+  and actual information are available; missing data MUST be explicitly unavailable or omitted.
+- **FR-128**: Displayed counts, names, paths, capacity bars, timestamps, statuses, and trends MUST
+  come from actual appliance information, with clear scope and units. Unknown, loading, stale,
+  empty, stopped, and failed states MUST be distinguishable. Missing history MUST NOT be invented,
+  and missing measurements MUST NOT be converted to zero or Healthy.
+- **FR-129**: The redesigned dashboard and detail screens MUST preserve the existing exposure,
+  recovery-point, claim-safety, notification, and Core connection warnings. Summary success MUST
+  identify what it covers. A storage-mode badge MUST NOT imply backup or protection unsupported by
+  the resource's recorded state. FR-019 change blocking and live-status behavior MUST be retained.
+- **FR-130**: Buttons, fields, selects, switches, tabs, dialogs, tables, cards, and status badges
+  MUST follow the shared component rules in the guide, including primary/secondary/danger roles
+  and visible focus, busy, disabled, error, and saved states. Destructive confirmation, secret
+  masking/one-time display, and the existing form validation rules MUST be preserved.
+- **FR-131**: Layout MUST adapt at 360 px-wide viewports and at 200% zoom on a 1280 px-wide viewport.
+  Navigation MUST remain accessible, cards MUST wrap and panels stack in reading order, and all
+  essential controls and warnings MUST remain visible. Only table/chart regions may require
+  horizontal scrolling; the main page MUST NOT.
+- **FR-132**: Essential UI actions MUST be keyboard-accessible with visible focus and accessible
+  names. Status meaning MUST include text and an icon or shape. Ordinary text MUST have at least
+  4.5:1 contrast, large text at least 3:1, and control/focus indicators at least 3:1 against adjacent
+  colors. Touch targets MUST be at least 44 by 44 px; optional motion MUST respect reduced-motion
+  preferences, and charts MUST include textual value summaries.
+- **FR-133**: Search, when available, MUST find supported resources and settings and navigate to
+  real results, without implying search of user file contents. The account menu MUST identify the
+  signed-in administrator and keep sign-out accessible. Alert controls MUST show actual alert
+  information; they MUST NOT imply built-in external notifications.
+- **FR-134**: Setup, sign-in, recovery, administrator/token management, network settings, and every
+  later feature screen MUST receive the shared visual treatment without changing their authorized
+  operations, required inputs, flow order, confirmations, or security boundaries. Information
+  refreshed live MUST preserve the user's entered values, focus, and useful visible context.
+- **FR-135**: Visual acceptance MUST compare every implemented screen and shared component against
+  the guide at desktop and narrow widths and in healthy, loading, empty, failed, and unavailable
+  states. Existing completion of service or UI tasks MUST NOT be treated as evidence that this
+  new design revision has been implemented or accepted.
+
 ### Key Entities
 
 - **Appliance**: The installed FileDock instance. It has a name, release version, health, its
@@ -1803,7 +1930,34 @@ that every snapshot stays readable and nothing at the location was rewritten.
 - **SC-026**: In fault-injection tests that truncate or corrupt objects in transit, 0 corrupted
   objects are reported as successfully written or read through the native S3 connector.
 
+- **SC-027**: In visual acceptance, 100% of implemented management screens conform to the guide's
+  shared shell where applicable, typography hierarchy, palette roles, spacing, card treatment,
+  controls, and status presentation. Any intentional functional adaptation is identified in the
+  review and consistent with FR-126–FR-129.
+- **SC-028**: Across healthy, failed, unknown, empty, stale, and unsupported-feature scenarios,
+  100% of displayed values and enabled actions correspond to actual available data and supported
+  behavior, with 0 illustrative values or false protection/health claims.
+- **SC-029**: At 360 px-wide viewports and at 200% zoom on a 1280 px-wide viewport, administrators
+  can reach 100% of essential navigation/actions and read protection/error notices without main-page
+  horizontal scrolling. Keyboard-only review completes setup, sign-in, and existing management
+  flows with visible focus; required contrast and touch-target thresholds are met.
+- **SC-030**: With internet access disconnected, setup, sign-in, navigation, and implemented
+  management screens retain readable typography, icons, and functional controls. The existing
+  live-update and Core-unavailable acceptance criteria continue to pass after the visual revision.
+- **SC-031**: In a review with five first-time administrators, at least four can identify a failed
+  service, locate administrator management, and find sign-out within two minutes without assistance.
+
 ## Assumptions
+
+- **UI reference precedence**: The user-supplied image is the visual authority; this specification
+  remains the functional authority. Its sample information and decorative documentation panels
+  are not dashboard data or new product requirements. The light theme is the default; a separate
+  dark theme is not required by this revision.
+- **UI delivery during ongoing implementation**: The new design applies to existing screens and
+  to later screens as they become available. Completed Phase 1–5 tasks retain their implementation
+  history, but their previous acceptance does not certify FR-124–FR-135. The plan and UI task
+  coverage need updating before the redesign is implemented. Backend features remain in their
+  existing stories/phases; the image does not pull later-feature functionality into the P1 delivery.
 
 - **Target users**: Home-lab users, small offices, and technical administrators who manage one
   appliance. Every administrator has full rights. Role-based access, single sign-on, directory

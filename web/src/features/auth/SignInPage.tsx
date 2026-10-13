@@ -1,11 +1,16 @@
+import { Field } from '../../components/Field.tsx';
+import { Button } from '../../components/Button.tsx';
 import { useState, type FormEvent } from 'react';
 import { ApiError, api } from '../../api/client.ts';
 
 export function SignInPage({ onSignedIn }: { onSignedIn: () => void }) {
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setError('');
     const form = new FormData(event.currentTarget);
     try {
@@ -21,29 +26,31 @@ export function SignInPage({ onSignedIn }: { onSignedIn: () => void }) {
       } else {
         setError(err instanceof ApiError ? err.message : 'Sign-in failed.');
       }
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <form className="panel stack" onSubmit={submit}>
       <p className="eyebrow">Session</p>
-      <h2>Sign in</h2>
-      <label>
-        Username
-        <input name="username" autoComplete="username" required />
-      </label>
-      <label>
-        Password
-        <input name="password" type="password" autoComplete="current-password" required />
-      </label>
+      <h1>Sign in</h1>
+      <Field label="Username" name="username" autoComplete="username" required />
+      <Field
+        label="Password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        required
+      />
       {error ? (
         <p className="error" role="alert">
           {error}
         </p>
       ) : null}
-      <button className="primary" type="submit">
+      <Button variant="primary" type="submit" busy={busy}>
         Sign in
-      </button>
+      </Button>
     </form>
   );
 }

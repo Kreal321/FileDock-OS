@@ -519,3 +519,45 @@ Events are kept in a ring of the last 7 days. They are disposable.
 
 Sessions are deliberately excluded from snapshots, so administrators sign in again after a
 restore, with their existing passwords.
+
+## UI presentation models (2026-10-13 revision)
+
+These frontend-only projections support US11 / FR-124–FR-135. They introduce no durable entities,
+SQLite migrations, or snapshot fields. API/domain resources remain authoritative. Reference
+[management-ui.md](./contracts/management-ui.md) for routes, component behavior, and source mapping.
+
+| Model | Fields | Relationships and validation |
+| --- | --- | --- |
+| NavigationDestination | id, hashRoute, label, icon, group, availability, requiredView | One registered implemented view per enabled destination. `availability` is available/unavailable; unavailable views are omitted from enabled navigation. A known API without a view does not enable a route |
+| AuthenticatedIdentity | id, username, displayInitials | From session-only `/auth/me`; initials are derived from the real username. No sample identities, passwords, or token secrets. Clear on sign-out/expiry |
+| DataView<T> | phase, data?, lastSuccessfulFetchAt?, errorMessage?, retryable | phase: loading/ready/empty/error/stale/unavailable. Empty requires a successful empty response. Failed fetch does not imply empty or zero; retained data is stale. Fetch time is a local receipt time |
+| StatusPresentation | rawState, label, semanticTone, detail, freshness, observed | Tone: success/warning/danger/neutral/info. Preserve exact raw state text; unrecognized/missing state maps to Unknown. freshness: current/cached/unavailable. No success tone on unknown/stale data. Expected missing components can have unobserved Unknown rows |
+| CoreConnectionView | browserStreamConnected, coreState, detail, coreInterfaceVersion?, canMutate | Derived from the live connection and `/system/core-health`. Effective canMutate requires both browser connectivity and Core permission; absence defaults false. Independent of sign-out availability |
+| DashboardView | applianceName?, releaseVersion?, interfaceVersion?, componentCards[], notices[], reportedHealthSummary, operationsView, administrativeActivityView | Component data from `/system/status`; counts describe received observations, not invented inventory. Notices remain individually scoped; flags do not establish recovery coverage. Operations and audit projections stay labeled separately |
+| OperationView | id, kind, state, steps[], startedBy, startedAt?, finishedAt?, error? | From current operation list/detail. A 202 response is Accepted with an ID, not Succeeded. Missing dates stay unknown. Preview/full-list pagination uses opaque continuation tokens |
+| AdministrativeActivityView | id, at, actorName, action, target, result | Projection of audit records. Actor/action filters only; no unsupported time filter or fabricated source labels. Raw detail JSON is not shown by default |
+| FormViewState | pristine/dirty/submitting/saved/error, fieldErrors, serverError?, mutationBlockedReason? | Existing authoritative form inputs and validation remain unchanged. Refetch while dirty does not replace entered fields or focus. Submission outcome/error is separate from loaded resource data |
+| DesignTokens | semantic colors, foreground/background/focus variants, type scale, spacing, radius, shadow | Static approved presentation definitions, not user settings. Actual rendered contrast pairs must meet the guide. Local font metadata records version/source/checksum/license during implementation |
+
+### Presentation state transitions
+
+- Initial view → loading → ready or confirmed empty; request failure → error with retry.
+- ready/empty → background refresh retains content; failure/connection loss → stale when content
+  exists, unavailable when none exists. Restore current status only after a successful live
+  connection and supported data refresh. A new HTTP receipt of cached Core values is still stale.
+- Signed-out/setup → public layout; only verified session access mounts the authenticated shell
+  and event subscription. 423 opens setup, expected 401 opens sign-in, connectivity/502/503 opens
+  an unavailable/retry state. Protected 401 clears authenticated view state and one-time secrets.
+- pristine → dirty → submitting → saved or error. Dirty state survives event invalidation. Disabled
+  mutation controls do not disable read-only filters, navigation, retry, operation inspection,
+  pagination, or sign-out.
+- Disclosure closed → open with focus on the disclosure control; Escape or selecting a destination
+  closes it. If an overlay is used, preserve/restore focus and remove hidden controls from tab order.
+
+### Data classification for the revision
+
+Presentation models, route selection, and live connectivity are disposable/rebuildable. Do not
+persist them in `app.db`, `core.db`, configuration snapshots, or browser storage. Current one-time
+recovery/token values remain memory-only and follow the established display/download lifecycle;
+never put them in routes, telemetry, visual fixtures, or screenshots. Test-only synthetic values
+exist solely under the test harness and cannot become production fallbacks.

@@ -7,6 +7,14 @@
 The machine-readable OpenAPI 3.1 document is generated from the implementation at
 `/api/v1/openapi.json` and must stay consistent with this contract.
 
+## UI design revision
+
+The 2026-10-13 redesign reuses this API. Its navigation, component, available-source, and outage
+contract is [management-ui.md](./management-ui.md). That document explicitly distinguishes current
+implemented routes/data from future routes in this full feature contract. In particular, the
+current audit implementation supports actor/action filters, not the planned `since` filter.
+No new backend endpoint or persistence contract is introduced by the visual redesign.
+
 ## Conventions
 
 - **Authentication**: either a session cookie `fd_http_session` with the header `X-CSRF-Token` on

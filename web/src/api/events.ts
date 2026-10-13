@@ -63,9 +63,11 @@ export function connectEvents(cache: QueryClient) {
   });
   connection.onreconnecting(unavailable);
   connection.onreconnected(() => {
+    if (disposed) return;
     cache.setQueryData(['events-connected'], true);
     delay = 1000;
     refresh();
+    void cache.invalidateQueries({ queryKey: ['core-health'] });
   });
   connection.onclose(() => {
     if (!disposed) {

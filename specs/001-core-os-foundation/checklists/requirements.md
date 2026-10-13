@@ -2,6 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-10-11
+**Revalidated**: 2026-10-13 (Management UI design revision)
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -182,3 +183,26 @@
   (Principle V). Research R23 and the extension protocol were updated to match.
 - Out of scope: role-based access, single sign-on, multi-factor authentication, ISO images, appliance
   updates, and an extension marketplace. These are candidates for `/speckit-clarify` if wanted.
+
+- Revision 2026-10-13 (Management UI design, re-validated; all 16 items pass):
+  - Preserved feature directory 001 and existing story/requirement identifiers; added US11,
+    FR-124–FR-135, and SC-027–SC-031 for the shared UI design.
+  - The retained image and `ui-design-guide.md` describe visible design requirements rather than
+    framework, component-library, transport, or implementation choices. Colors, type sizes, and
+    spacing are product presentation constraints approved in the supplied reference.
+  - "Only actual supported functionality and observed data may be presented as available" bounds
+    the revision: sample figures, paths, sync/balance activities, apps, and charts do not add features.
+  - US11 scenarios 1–7 cover visual consistency, feature availability, truthful data, failures,
+    responsive/keyboard use, offline rendering, and existing authentication/recovery controls.
+  - FR-128/FR-129 and the new edge cases preserve Unknown/stale/failed states and protection warnings;
+    the design cannot make an unsupported protection or high-availability claim.
+  - SC-027–SC-031 provide verifiable visual, data accuracy, accessibility, offline, and novice task
+    outcomes. No clarification markers remain; light theme and feature-dependent navigation are
+    recorded assumptions.
+  - Requirement readiness passes. Implementation readiness requires updating the existing plan and
+    UI tasks to account for this revision; Phase 1–5 completion does not certify the new design.
+
+- Planning follow-up 2026-10-13: the UI revision is covered in plan.md, research R24–R27,
+  frontend presentation models, contracts/management-ui.md, and ui-validation.md/quickstart.md.
+  Pre-research and post-design constitution gates pass. New US11 task generation remains next;
+  existing implementation completion and manual acceptance records are preserved.
