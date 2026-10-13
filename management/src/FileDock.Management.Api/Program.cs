@@ -1,4 +1,5 @@
 using FileDock.Management.Api.AdminSocket;
+using FileDock.Management.Api.Hubs;
 using FileDock.Management.Api.Auth;
 using FileDock.Management.Api.Endpoints;
 using FileDock.Management.Api.Infrastructure;
@@ -35,13 +36,26 @@ builder.Services.AddScoped<ApiTokenService>();
 builder.Services.AddHostedService<AuditRetention>();
 if (builder.Configuration.GetValue("Core:Optional", false))
 {
-    builder.Services.AddSingleton<ICoreGateway, LocalCoreGateway>();
+    builder.Services.AddSingleton<LocalCoreGateway>();
+    builder.Services.AddSingleton<ICoreGateway>(sp => sp.GetRequiredService<LocalCoreGateway>());
+    builder.Services.AddSingleton<ICoreEventSource>(sp => sp.GetRequiredService<LocalCoreGateway>());
+    builder.Services.AddSingleton<IOperationGateway>(sp => sp.GetRequiredService<LocalCoreGateway>());
 }
 else
 {
     builder.Services.AddSingleton<CoreClient>();
     builder.Services.AddSingleton<ICoreGateway>(sp => sp.GetRequiredService<CoreClient>());
+    builder.Services.AddSingleton<ICoreEventSource>(sp => sp.GetRequiredService<CoreClient>());
+    builder.Services.AddSingleton<IOperationGateway>(sp => sp.GetRequiredService<CoreClient>());
 }
+
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<EventConnections>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EventConnections>());
+builder.Services.AddSingleton<IManagementEventSink, ManagementEventSink>();
+builder.Services.AddSingleton<CoreHealthMonitor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CoreHealthMonitor>());
+builder.Services.AddHostedService<EventRelay>();
 
 builder.Services.AddAuthentication("fd-auth")
     .AddPolicyScheme("fd-auth", "Session or API token", options =>
@@ -80,6 +94,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<SetupLockMiddleware>();
 app.UseMiddleware<ScopePolicies>();
+app.UseMiddleware<CoreAvailabilityMiddleware>();
+// WebSocket credentials are cookies; reject foreign browser origins before upgrading.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/hubs/events") && context.Request.Headers.TryGetValue("Origin", out var origin)
+        && (!Uri.TryCreate(origin.ToString(), UriKind.Absolute, out var uri) || !string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase) || uri.Scheme != context.Request.Scheme))
+    {
+        await Results.Problem(statusCode: 403, title: "Foreign event-stream origin refused").ExecuteAsync(context); return;
+    }
+    await next(context);
+});
 
 using (var scope = app.Services.CreateScope())
 {
@@ -98,6 +123,9 @@ api.MapAdmins();
 api.MapTokens();
 api.MapNetwork();
 api.MapAudit();
+api.MapOperations();
+api.MapGet("/system/core-health", (CoreHealthMonitor monitor) => Results.Ok(monitor.Current)).WithMetadata(new AccessScope("R"));
+app.MapHub<EventsHub>("/hubs/events");
 AdminSocketEndpoints.Map(app);
 
 app.UseDefaultFiles();

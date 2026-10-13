@@ -64,4 +64,5 @@ public sealed class Settings
 {
     public int Id { get; set; } = 1;
     public string? ListenAddresses { get; set; }
+    public long LastEventSeq { get; set; }
 }

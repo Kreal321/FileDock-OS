@@ -139,11 +139,41 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let req = request.into_inner();
+        if req.kind != "ReconcileAll" {
+            return Err(Status::invalid_argument("unsupported operation kind"));
+        }
         let op = self
             .app
             .journal
-            .start(&req.kind, serde_json::json!({}), None, &actor, &[])
+            .start(
+                &req.kind,
+                req.params
+                    .as_ref()
+                    .map(proto_conv::struct_to_value)
+                    .unwrap_or(serde_json::json!({})),
+                None,
+                &actor,
+                &["reconcile"],
+            )
             .map_err(|e| Status::internal(e.to_string()))?;
+        self.app
+            .events
+            .emit(
+                "operation.started",
+                None,
+                serde_json::json!({"id":op.id,"kind":op.kind}),
+            )
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let app = self.app.clone();
+        let id = op.id.clone();
+        tokio::spawn(async move {
+            if let Err(error) =
+                crate::startup::reconcile_operation(&app.journal, &app.reconciler, &app.events, &id)
+                    .await
+            {
+                tracing::error!(%error,"operation reconciliation failed");
+            }
+        });
         Ok(Response::new(operation_to_proto(&op)))
     }
 
@@ -176,14 +206,20 @@ impl CoreControl for CoreControlSvc {
             .map(|p| p.page_size as usize)
             .filter(|n| *n > 0)
             .unwrap_or(100);
-        let ops = self
+        let mut ops = self
             .app
             .journal
-            .list(inner.active_only, after, limit)
+            .list(inner.active_only, after, limit + 1)
             .map_err(|e| Status::internal(e.to_string()))?;
+        let next = if ops.len() > limit {
+            ops.pop();
+            ops.last().map(|o| o.id.clone()).unwrap_or_default()
+        } else {
+            String::new()
+        };
         Ok(Response::new(ListOperationsResponse {
             operations: ops.iter().map(operation_to_proto).collect(),
-            next_page_token: ops.last().map(|o| o.id.clone()).unwrap_or_default(),
+            next_page_token: next,
         }))
     }
 
@@ -194,51 +230,10 @@ impl CoreControl for CoreControlSvc {
         request: Request<StreamEventsRequest>,
     ) -> Result<Response<Self::StreamEventsStream>, Status> {
         check_metadata(request.metadata(), self.app.config.interface_version, false)?;
-        let after = request.into_inner().after_seq;
-        let backlog = self
-            .app
-            .events
-            .after(after, 1000)
-            .map_err(|e| Status::internal(e.to_string()))?;
-        let rx = self.app.events.subscribe();
-        let stream = async_stream(backlog, rx);
+        let stream =
+            super::events::stream(self.app.events.clone(), request.into_inner().after_seq)?;
         Ok(Response::new(Box::pin(stream)))
     }
-}
-
-fn async_stream(
-    backlog: Vec<fd_observe::Event>,
-    rx: tokio::sync::broadcast::Receiver<fd_observe::Event>,
-) -> impl Stream<Item = Result<pb::Event, Status>> {
-    async_stream_impl(backlog, rx)
-}
-
-fn async_stream_impl(
-    backlog: Vec<fd_observe::Event>,
-    mut rx: tokio::sync::broadcast::Receiver<fd_observe::Event>,
-) -> impl Stream<Item = Result<pb::Event, Status>> {
-    tokio_stream::wrappers::ReceiverStream::new({
-        let (tx, rx_out) = tokio::sync::mpsc::channel(64);
-        tokio::spawn(async move {
-            for event in backlog {
-                if tx.send(Ok(event_to_proto(&event))).await.is_err() {
-                    return;
-                }
-            }
-            loop {
-                match rx.recv().await {
-                    Ok(event) => {
-                        if tx.send(Ok(event_to_proto(&event))).await.is_err() {
-                            return;
-                        }
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(_) => return,
-                }
-            }
-        });
-        rx_out
-    })
 }
 
 fn proto_changes(request: ApplyChangeRequest) -> Result<Vec<Change>, Status> {
@@ -278,7 +273,7 @@ fn proto_changes(request: ApplyChangeRequest) -> Result<Vec<Change>, Status> {
         .collect()
 }
 
-fn operation_to_proto(op: &fd_journal::Operation) -> pb::Operation {
+pub fn operation_to_proto(op: &fd_journal::Operation) -> pb::Operation {
     pb::Operation {
         id: op.id.clone(),
         kind: op.kind.clone(),
@@ -303,18 +298,8 @@ fn operation_to_proto(op: &fd_journal::Operation) -> pb::Operation {
             .collect(),
         resource: op.resource.as_ref().map(proto_conv::ref_to_proto),
         started_by: op.started_by.clone(),
-        started_at: None,
-        finished_at: None,
+        started_at: super::events::timestamp(&op.started_at),
+        finished_at: op.finished_at.as_deref().and_then(super::events::timestamp),
         error: op.error.clone().unwrap_or_default(),
-    }
-}
-
-fn event_to_proto(event: &fd_observe::Event) -> pb::Event {
-    pb::Event {
-        seq: event.seq,
-        at: None,
-        r#type: event.r#type.clone(),
-        subject: event.subject.as_ref().map(proto_conv::ref_to_proto),
-        payload: Some(proto_conv::value_to_struct(&event.payload)),
     }
 }

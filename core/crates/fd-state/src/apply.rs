@@ -253,7 +253,7 @@ impl StateStore {
         changes: &[Change],
     ) -> Result<ApplyOutcome, ApplyError> {
         let validators = &self.validators;
-        let outcome = self.db.with(|conn| {
+        let (outcome, resources) = self.db.with(|conn| {
             let tx = conn.transaction()?;
             let prepared = prepare_changes(changes)?;
             let mut view = StateView::from_connection(&tx)?;
@@ -282,18 +282,24 @@ impl StateStore {
                 }
             }
             tx.commit()?;
-            Ok(ApplyOutcome {
-                committed,
-                warnings: issues
-                    .into_iter()
-                    .filter(|i| i.severity == Severity::Warning)
-                    .collect(),
-                change_seq: next_seq,
-            })
+            Ok((
+                ApplyOutcome {
+                    committed,
+                    warnings: issues
+                        .into_iter()
+                        .filter(|i| i.severity == Severity::Warning)
+                        .collect(),
+                    change_seq: next_seq,
+                },
+                prepared
+                    .iter()
+                    .map(|change| change.resource().clone())
+                    .collect::<Vec<_>>(),
+            ))
         })?;
         let _ = self.commits.send(CommitNotice {
             change_seq: outcome.change_seq,
-            resources: changes.iter().map(|c| c.resource().clone()).collect(),
+            resources,
             origin,
         });
         Ok(outcome)
@@ -845,5 +851,27 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(row.generation, 1);
+    }
+    #[test]
+    fn commit_notifies_the_resolved_resource_identity() {
+        let store = store();
+        let mut commits = store.subscribe();
+        let result = store
+            .apply(
+                ChangeOrigin::System {
+                    reason: "test".into(),
+                },
+                &[Change::Upsert {
+                    resource: ResourceRef::new(ResourceKind::Settings, ""),
+                    expected_generation: 0,
+                    spec: json!({"applianceName":"resolved"}),
+                }],
+            )
+            .unwrap();
+        assert_eq!(
+            commits.try_recv().unwrap().resources,
+            vec![result.committed[0].resource.clone()]
+        );
+        assert_eq!(result.committed[0].resource.id, "default");
     }
 }

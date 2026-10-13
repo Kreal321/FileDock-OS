@@ -1,6 +1,7 @@
 pub mod bridge;
 pub mod connectors;
 pub mod control;
+pub mod events;
 pub mod interceptors;
 pub mod observability;
 pub mod recovery;
@@ -45,6 +46,13 @@ pub struct App {
     pub secrets: Arc<Mutex<SecretStore>>,
     pub recovery: Arc<Mutex<RecoveryKeyStore>>,
     pub subsystems: SubsystemRegistry,
+    pub reconciler: Arc<fd_reconcile::Reconciler>,
+    pub supervisor: Arc<fd_subsystems::supervisor::Supervisor>,
+}
+
+pub struct RuntimeServices {
+    pub registry: SubsystemRegistry,
+    pub reconciler: Arc<fd_reconcile::Reconciler>,
 }
 
 pub async fn serve(
@@ -55,7 +63,7 @@ pub async fn serve(
     alerts: Arc<AlertStore>,
     secrets: SecretStore,
     recovery: RecoveryKeyStore,
-    subsystems: SubsystemRegistry,
+    runtime: RuntimeServices,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = bind_socket(&config.socket)?;
     let appliance_id = store.db().with(|conn| {
@@ -66,7 +74,18 @@ pub async fn serve(
         fd_state::db::put_setting(conn, "appliance_id", &serde_json::json!(id))?;
         Ok(id)
     })?;
-    let extension_token = uuid::Uuid::new_v4().to_string();
+    let extension_token =
+        std::fs::read_to_string(config.socket.parent().unwrap().join("fd-s3.env"))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|line| line.strip_prefix("FD_EXTENSION_TOKEN=").map(str::to_owned))
+            })
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let supervisor = Arc::new(fd_subsystems::supervisor::Supervisor::new(
+        store.db().clone(),
+        events.clone(),
+    ));
     let app = Arc::new(App {
         config: config.clone(),
         appliance_id,
@@ -77,7 +96,9 @@ pub async fn serve(
         alerts,
         secrets: Arc::new(Mutex::new(secrets)),
         recovery: Arc::new(Mutex::new(recovery)),
-        subsystems,
+        subsystems: runtime.registry,
+        reconciler: runtime.reconciler,
+        supervisor,
     });
     let bridge_path = config.socket.parent().unwrap().join("extensions.sock");
     let _ = std::fs::remove_file(&bridge_path);
@@ -112,6 +133,22 @@ pub async fn serve(
         )?;
         tokio::spawn(crate::runtime::run(app.clone()));
     }
+    let startup_app = app.clone();
+    tokio::spawn(async move {
+        if let Err(error) = crate::startup::run(
+            startup_app.store.db().clone(),
+            startup_app.journal.clone(),
+            startup_app.reconciler.clone(),
+            startup_app.events.clone(),
+            cfg!(target_os = "linux") && std::env::var("FD_RUNTIME_ENABLED").as_deref() != Ok("0"),
+            &startup_app.subsystems,
+            &startup_app.supervisor,
+        )
+        .await
+        {
+            tracing::error!(%error,"startup reconciliation failed");
+        }
+    });
     let interceptor = InterfaceInterceptor {
         mgmt_uid: config.mgmt_uid,
     };

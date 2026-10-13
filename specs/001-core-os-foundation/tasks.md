@@ -273,16 +273,16 @@ subsystem, reboot, and confirm the Core restores desired state and the UI update
 (quickstart "Data-plane independence"). The share and container used in the full test come from
 US9. Until then, a sample subsystem stands in.
 
-- [ ] T078 [US3] Implement the StreamEvents server-streaming RPC with `after_seq` resume in `core/crates/filedock-core/src/api/events.rs` (FR-018)
-- [ ] T079 [US3] Implement subsystem supervision in `core/crates/fd-subsystems/src/supervisor.rs`: restarts with backoff from 1 s to 5 min, Failed after 5 failures within 15 minutes, failure and recovery events, and diagnostics (FR-054, US3 scenario 3)
-- [ ] T080 [US3] Implement re-adoption of data-plane units by name after a Core restart in `core/crates/fd-reconcile/src/adopt.rs`. It asserts that WebDAV, extensions, mounts, and containers are systemd units or Docker containers, never Core child processes (FR-017, research R7)
-- [ ] T081 [US3] Implement the startup sequence in `core/crates/filedock-core/src/startup.rs`: resume the journal, load desired state, inspect the machine, reconcile differences, and report healthy (FR-015, FR-016, US3 scenario 2)
-- [ ] T082 [US3] Implement the Management event relay and the SignalR hub `/hubs/events` in `management/src/FileDock.Management.Core/EventRelay.cs` and `management/src/FileDock.Management.Api/Hubs/EventsHub.cs`. The relay subscribes to StreamEvents, persists the last `seq`, and resumes after reconnecting (FR-019)
-- [ ] T083 [US3] Implement the core-health monitor in `management/src/FileDock.Management.Core/CoreHealthMonitor.cs`: report when the Core is unreachable or the interface version mismatches, block mutations with a problem response, and recover automatically (FR-011, US3 scenario 5)
-- [ ] T084 [P] [US3] Implement `GET /operations` and `GET /operations/{id}` in `management/src/FileDock.Management.Api/Endpoints/OperationEndpoints.cs` (FR-015)
-- [ ] T085 [P] [US3] Implement live UI updates over SignalR (query invalidation on events) and a core-unreachable banner that disables change controls, in `web/src/api/events.ts` and `web/src/components/CoreStatusBanner.tsx`
-- [ ] T086 [US3] Write crash-atomicity tests in `core/crates/fd-state/tests/atomicity.rs` and `core/crates/fd-journal/tests/resume.rs`: kill the Core mid-ApplyChange and mid-step, then assert all-or-nothing results and correct resume (SC-010)
-- [ ] T087 [US3] Write the acceptance test `tests/e2e/test_independence.py` (SC-002 to SC-004, SC-010):
+- [X] T078 [US3] Implement the StreamEvents server-streaming RPC with `after_seq` resume in `core/crates/filedock-core/src/api/events.rs` (FR-018)
+- [X] T079 [US3] Implement subsystem supervision in `core/crates/fd-subsystems/src/supervisor.rs`: restarts with backoff from 1 s to 5 min, Failed after 5 failures within 15 minutes, failure and recovery events, and diagnostics (FR-054, US3 scenario 3)
+- [X] T080 [US3] Implement re-adoption of data-plane units by name after a Core restart in `core/crates/fd-reconcile/src/adopt.rs`. It asserts that WebDAV, extensions, mounts, and containers are systemd units or Docker containers, never Core child processes (FR-017, research R7)
+- [X] T081 [US3] Implement the startup sequence in `core/crates/filedock-core/src/startup.rs`: resume the journal, load desired state, inspect the machine, reconcile differences, and report healthy (FR-015, FR-016, US3 scenario 2)
+- [X] T082 [US3] Implement the Management event relay and the SignalR hub `/hubs/events` in `management/src/FileDock.Management.Core/EventRelay.cs` and `management/src/FileDock.Management.Api/Hubs/EventsHub.cs`. The relay subscribes to StreamEvents, persists the last `seq`, and resumes after reconnecting (FR-019)
+- [X] T083 [US3] Implement the core-health monitor in `management/src/FileDock.Management.Core/CoreHealthMonitor.cs`: report when the Core is unreachable or the interface version mismatches, block mutations with a problem response, and recover automatically (FR-011, US3 scenario 5)
+- [X] T084 [P] [US3] Implement `GET /operations` and `GET /operations/{id}` in `management/src/FileDock.Management.Api/Endpoints/OperationEndpoints.cs` (FR-015)
+- [X] T085 [P] [US3] Implement live UI updates over SignalR (query invalidation on events) and a core-unreachable banner that disables change controls, in `web/src/api/events.ts` and `web/src/components/CoreStatusBanner.tsx`
+- [X] T086 [US3] Write crash-atomicity tests in `core/crates/fd-state/tests/atomicity.rs` and `core/crates/fd-journal/tests/resume.rs`: kill the Core mid-ApplyChange and mid-step, then assert all-or-nothing results and correct resume (SC-010)
+- [X] T087 [US3] Write the acceptance test `tests/e2e/test_independence.py` (SC-002 to SC-004, SC-010):
   - the data plane keeps serving while the Management Service is stopped;
   - a killed subsystem gets backoff, then Failed;
   - after a reboot, everything is healthy within 3 minutes;
@@ -291,6 +291,10 @@ US9. Until then, a sample subsystem stands in.
 
 **Checkpoint**: The P1 stories are complete. The appliance installs, is secure, and keeps itself
 running.
+
+Implementation T078–T087 is complete. Combined Incremental Delivery 1 / Phases 4–5 manual VM
+acceptance is pending; follow [phase5-testing.md](./phase5-testing.md). The US3 data-plane checks
+use the disposable sample subsystem until US9 provides real share and app provisioning.
 
 ---
 

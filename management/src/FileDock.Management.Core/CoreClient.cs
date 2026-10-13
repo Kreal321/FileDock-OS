@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace FileDock.Management.Core;
 
-public sealed class CoreClient : ICoreGateway, IAsyncDisposable
+public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGateway, IAsyncDisposable
 {
     public const string InterfaceVersion = "1.0";
 
@@ -26,8 +26,12 @@ public sealed class CoreClient : ICoreGateway, IAsyncDisposable
             ConnectCallback = async (_, cancellationToken) =>
             {
                 var unix = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                await unix.ConnectAsync(new UnixDomainSocketEndPoint(socket), cancellationToken);
-                return new NetworkStream(unix, ownsSocket: true);
+                try
+                {
+                    await unix.ConnectAsync(new UnixDomainSocketEndPoint(socket), cancellationToken);
+                    return new NetworkStream(unix, ownsSocket: true);
+                }
+                catch { unix.Dispose(); throw; }
             },
         };
         _channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = sockets });
@@ -107,6 +111,28 @@ public sealed class CoreClient : ICoreGateway, IAsyncDisposable
             status.NotificationChannelMissing);
     }
 
+    public async IAsyncEnumerable<CoreEventDto> StreamEventsAsync(ulong afterSeq, Action connected, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var call = Control.StreamEvents(new StreamEventsRequest { AfterSeq = afterSeq }, headers: Metadata("management", "events", false), cancellationToken: cancellationToken);
+        await call.ResponseHeadersAsync;
+        connected();
+        await foreach (var change in call.ResponseStream.ReadAllAsync(cancellationToken))
+        {
+            using var payload = System.Text.Json.JsonDocument.Parse(change.Payload?.ToString() ?? "{}");
+            yield return new(change.Seq, change.At?.ToDateTimeOffset(), change.Type, change.Subject?.Kind.ToString(), change.Subject?.Id, payload.RootElement.Clone());
+        }
+    }
+    public async Task<OperationPageDto> ListOperationsAsync(bool activeOnly, uint pageSize, string? pageToken, CancellationToken cancellationToken)
+    {
+        var response = await Control.ListOperationsAsync(new ListOperationsRequest { ActiveOnly = activeOnly, Page = new PageRequest { PageSize = pageSize, PageToken = pageToken ?? "" } }, headers: Metadata("management", "operations", false), cancellationToken: cancellationToken);
+        return new(response.Operations.Select(ToOperation).ToArray(), string.IsNullOrEmpty(response.NextPageToken) ? null : response.NextPageToken);
+    }
+    public async Task<OperationDto> GetOperationAsync(string id, CancellationToken cancellationToken)
+        => ToOperation(await Control.GetOperationAsync(new OperationRef { Id = id }, headers: Metadata("management", "operations", false), cancellationToken: cancellationToken));
+    public async Task<OperationDto> ReconcileAllAsync(string actor, string requestId, CancellationToken cancellationToken)
+        => ToOperation(await Control.StartOperationAsync(new StartOperationRequest { Kind = "ReconcileAll" }, headers: Metadata(actor, requestId, true), cancellationToken: cancellationToken));
+    private static OperationDto ToOperation(Operation operation) => new(operation.Id, operation.Kind, operation.State.ToString(), operation.Steps.Select(s => new OperationStepDto(s.Name, s.State, s.Attempts, s.Detail)).ToArray(), operation.StartedBy, operation.StartedAt?.ToDateTimeOffset(), operation.FinishedAt?.ToDateTimeOffset(), string.IsNullOrEmpty(operation.Error) ? null : operation.Error);
+
     public static Metadata Metadata(string actor, string requestId, bool mutating)
     {
         var meta = new Metadata { { "fd-interface-version", InterfaceVersion } };
@@ -131,6 +157,7 @@ public sealed class CoreClient : ICoreGateway, IAsyncDisposable
             StatusCode.PermissionDenied => 403,
             StatusCode.Unauthenticated => 401,
             StatusCode.ResourceExhausted => 507,
+            StatusCode.Unavailable or StatusCode.DeadlineExceeded => 503,
             _ => 502,
         };
         return (status, error.Status.Detail);

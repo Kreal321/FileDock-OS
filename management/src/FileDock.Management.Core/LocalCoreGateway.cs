@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 namespace FileDock.Management.Core;
 
 /// <summary>In-process Core stand-in for tests and hosts without core.sock.</summary>
-public sealed class LocalCoreGateway : ICoreGateway
+public sealed class LocalCoreGateway : ICoreGateway, ICoreEventSource, IOperationGateway
 {
     private const string _alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     private readonly ConcurrentDictionary<string, bool> _recoveryKeys = new();
@@ -58,5 +58,14 @@ public sealed class LocalCoreGateway : ICoreGateway
         };
         return Task.FromResult(new SystemStatusDto("1.0", "0.1.0", _applianceName, components, false, true));
     }
+    public async IAsyncEnumerable<CoreEventDto> StreamEventsAsync(ulong afterSeq, Action connected, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        connected();
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        yield break;
+    }
+    public Task<OperationPageDto> ListOperationsAsync(bool activeOnly, uint pageSize, string? pageToken, CancellationToken cancellationToken) => Task.FromResult(new OperationPageDto([], null));
+    public Task<OperationDto> GetOperationAsync(string id, CancellationToken cancellationToken) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.NotFound, "Operation not found"));
+    public Task<OperationDto> ReconcileAllAsync(string actor, string requestId, CancellationToken cancellationToken) => Task.FromResult(new OperationDto(Guid.NewGuid().ToString(), "ReconcileAll", "Succeeded", [], actor, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null));
 
 }

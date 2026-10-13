@@ -4,6 +4,7 @@ mod api;
 mod config;
 mod proto_conv;
 mod runtime;
+mod startup;
 
 use std::sync::Arc;
 
@@ -42,33 +43,86 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     store.seed_defaults()?;
 
     let journal = Arc::new(Journal::new(db.clone()));
-    journal.resume_all(&[])?;
 
     let events = Arc::new(EventBus::new(db.clone()));
     let alerts = Arc::new(AlertStore::new(db.clone()));
     let secrets = SecretStore::open(&config.secrets, &config.dek)?;
     let recovery = RecoveryKeyStore::open(&config.recovery_keys, &secrets.dek_bytes())?;
     let subsystems = SubsystemRegistry::new(db.clone());
-    if let Ok(manifests) = load_dir(&config.manifests) {
-        for (_, manifest) in manifests {
-            if let Err(error) = subsystems.upsert_from_manifest(&manifest) {
-                tracing::warn!(id = %manifest.id, %error, "failed to register subsystem");
-            }
-        }
+    for (_, manifest) in load_dir(&config.manifests)? {
+        subsystems.upsert_from_manifest(&manifest)?;
     }
 
-    let reconciler = Arc::new(Reconciler::new(store.clone(), Vec::new()));
+    let controllers: Vec<Arc<dyn fd_reconcile::Controller>> = [
+        fd_state::ResourceKind::Pool,
+        fd_state::ResourceKind::ManagedFolder,
+        fd_state::ResourceKind::Export,
+        fd_state::ResourceKind::ContainerApp,
+        fd_state::ResourceKind::Extension,
+    ]
+    .into_iter()
+    .map(|kind| {
+        Arc::new(fd_reconcile::adopt::AdoptionController {
+            kind,
+            store: store.clone(),
+            events: events.clone(),
+        }) as Arc<dyn fd_reconcile::Controller>
+    })
+    .collect();
+    let reconciler = Arc::new(Reconciler::new(store.clone(), controllers));
     let mut commits = store.subscribe();
     let rec = reconciler.clone();
+    let commit_events = events.clone();
     tokio::spawn(async move {
-        while let Ok(notice) = commits.recv().await {
-            rec.enqueue_commit(notice).await;
+        loop {
+            match commits.recv().await {
+                Ok(notice) => {
+                    for resource in &notice.resources {
+                        let _ = commit_events.emit(
+                            "resource.changed",
+                            Some(resource.clone()),
+                            serde_json::json!({"changeSeq":notice.change_seq}),
+                        );
+                    }
+                    rec.enqueue_commit(notice).await;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    rec.enqueue_all_kinds().await
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let mut observed = events.subscribe();
+    let event_reconciler = reconciler.clone();
+    tokio::spawn(async move {
+        loop {
+            match observed.recv().await {
+                Ok(event) if event.r#type.starts_with("subsystem.") => {
+                    event_reconciler.enqueue_all_kinds().await
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    event_reconciler.enqueue_all_kinds().await
+                }
+                Err(_) => break,
+            }
         }
     });
     tokio::spawn(reconciler.clone().run());
 
     api::serve(
-        config, store, journal, events, alerts, secrets, recovery, subsystems,
+        config,
+        store,
+        journal,
+        events,
+        alerts,
+        secrets,
+        recovery,
+        api::RuntimeServices {
+            registry: subsystems,
+            reconciler,
+        },
     )
     .await
 }

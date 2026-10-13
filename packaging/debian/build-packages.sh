@@ -105,7 +105,11 @@ Description: FileDock built-in subsystems
  fd-s3 plus built-in manifests.
 EOF
 mkdir -p "$pkg_bin/lib/systemd/system"
-install -m 0644 "$ROOT/packaging/systemd/filedock-s3.service" "$pkg_bin/lib/systemd/system/"
+install -m 0644 "$ROOT/packaging/systemd/filedock-s3.service" "$ROOT/packaging/systemd/filedock-rclone.service" "$pkg_bin/lib/systemd/system/"
+for unit in smbd.service nfs-server.service docker.service; do
+  mkdir -p "$pkg_bin/lib/systemd/system/$unit.d"
+  printf '[Service]\nRestart=no\n' > "$pkg_bin/lib/systemd/system/$unit.d/50-filedock-supervision.conf"
+done
 install_bin "$pkg_bin/usr/lib/filedock/fd-s3" "$ROOT/target/release/fd-s3"
 if compgen -G "$ROOT/packaging/subsystems/*.yaml" >/dev/null; then
   install -m 0644 "$ROOT/packaging/subsystems/"*.yaml "$pkg_bin/usr/share/filedock/subsystems/"
@@ -123,5 +127,7 @@ fi
 install -m 0755 "$ROOT/packaging/installer/install.sh" "$DIST/install.sh"
 install -m 0755 "$ROOT/packaging/installer/bootstrap.sh" "$DIST/bootstrap.sh"
 install -m 0644 "$ROOT/packaging/versions.lock" "$DIST/versions.lock"
+mkdir -p "$DIST/test-fixtures/phase5"
+cp "$ROOT/tests/fixtures/phase5/"* "$DIST/test-fixtures/phase5/"
 printf '%s\n' "$VERSION" > "$DIST/RELEASE_VERSION"
 (cd "$DIST" && sha256sum filedock-*.deb > SHA256SUMS)

@@ -148,17 +148,20 @@ pub async fn configure(app: &App) -> Result<(), Status> {
     }
     #[cfg(target_os = "linux")]
     {
-        let daemon = fd_connectors::rclone::rcd::RcloneDaemon::new(
-            fd_subsystems::systemd::Systemd::default(),
-            &path,
-        );
-        daemon.ensure_running().await.map_err(internal)?;
-        if changed {
+        if changed && app.supervisor.status("rclone").map_err(internal)?.state == "Running" {
             fd_subsystems::systemd::Systemd::default()
                 .restart("filedock-rclone.service")
                 .await
                 .map_err(internal)?;
         }
+    }
+    if app
+        .subsystems
+        .get("fd-s3")
+        .map_err(internal)?
+        .is_some_and(|s| !s.enabled)
+    {
+        return Ok(());
     }
     let mut client = ext::subsystem_client::SubsystemClient::new(channel(s3_socket(app)).await?);
     let response = client
@@ -358,18 +361,123 @@ fn save_probe(
     })
 }
 
+struct ConnectorHealthAdapter {
+    unit: fd_subsystems::supervisor::UnitAdapter,
+    app: Arc<App>,
+}
+#[tonic::async_trait]
+impl fd_subsystems::SubsystemAdapter for ConnectorHealthAdapter {
+    fn id(&self) -> &str {
+        fd_subsystems::SubsystemAdapter::id(&self.unit)
+    }
+    async fn describe(
+        &self,
+    ) -> Result<fd_subsystems::adapter::Description, fd_subsystems::AdapterError> {
+        self.unit.describe().await
+    }
+    async fn state(&self) -> Result<serde_json::Value, fd_subsystems::AdapterError> {
+        self.unit.state().await
+    }
+    async fn configure(
+        &self,
+        desired: serde_json::Value,
+    ) -> Result<(), fd_subsystems::AdapterError> {
+        self.unit.configure(desired).await
+    }
+    async fn start(&self) -> Result<(), fd_subsystems::AdapterError> {
+        self.unit.start().await
+    }
+    async fn stop(&self) -> Result<(), fd_subsystems::AdapterError> {
+        self.unit.stop().await
+    }
+    async fn diagnostics(&self) -> Result<serde_json::Value, fd_subsystems::AdapterError> {
+        self.unit.diagnostics().await
+    }
+    async fn health(&self) -> Result<fd_subsystems::adapter::Health, fd_subsystems::AdapterError> {
+        let unit = self.unit.health().await?;
+        if !unit.healthy {
+            return Ok(unit);
+        }
+        let healthy = if self.id() == "fd-s3" {
+            match channel(s3_socket(&self.app)).await {
+                Ok(channel) => ext::subsystem_client::SubsystemClient::new(channel)
+                    .health(ext::Empty {})
+                    .await
+                    .is_ok_and(|r| {
+                        r.get_ref().status == ext::health_report::Status::Healthy as i32
+                    }),
+                Err(_) => false,
+            }
+        } else {
+            fd_connectors::rclone::adapter::RcloneAdapter::new()
+                .health()
+                .await
+                .is_ok()
+        };
+        Ok(fd_subsystems::adapter::Health {
+            healthy,
+            detail: if healthy {
+                "serving"
+            } else {
+                "connector is not responding"
+            }
+            .into(),
+        })
+    }
+}
+
 pub async fn run(app: Arc<App>) {
-    #[cfg(target_os = "linux")]
-    if let Err(error) = fd_subsystems::systemd::Systemd::default()
-        .restart("filedock-s3.service")
-        .await
-    {
-        tracing::error!(%error, "could not start fd-s3");
+    let conf = app.config.socket.parent().unwrap().join("rclone.conf");
+    if !conf.exists() {
+        let _ = write_private(&conf, b"");
+    }
+    if let Ok(records) = app.subsystems.list() {
+        for record in records {
+            let adapter: Option<Arc<dyn fd_subsystems::SubsystemAdapter>> =
+                match fd_reconcile::adopt::Runtime::from_manifest(&record.id, &record.manifest) {
+                    Ok(Some(fd_reconcile::adopt::Runtime::Unit(unit))) => {
+                        let unit = fd_subsystems::supervisor::UnitAdapter {
+                            id: record.id.clone(),
+                            unit,
+                        };
+                        if record.id == "fd-s3" || record.id == "rclone" {
+                            Some(Arc::new(ConnectorHealthAdapter {
+                                unit,
+                                app: app.clone(),
+                            }))
+                        } else {
+                            Some(Arc::new(unit))
+                        }
+                    }
+                    Ok(None) if record.id == "kopia" => Some(Arc::new(fd_subsystems::KopiaAdapter)),
+                    Ok(Some(fd_reconcile::adopt::Runtime::ComposeProject(project))) => {
+                        Some(Arc::new(fd_subsystems::supervisor::ContainerAdapter {
+                            id: record.id,
+                            project,
+                        }))
+                    }
+                    _ => None,
+                };
+            if let Some(adapter) = adapter {
+                tokio::spawn(app.supervisor.clone().run(adapter));
+            }
+        }
     }
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     let mut last_probe = std::time::Instant::now() - Duration::from_secs(86400);
     loop {
         interval.tick().await;
+        if app
+            .supervisor
+            .status("fd-s3")
+            .is_ok_and(|s| s.state == "Failed")
+            || app
+                .supervisor
+                .status("rclone")
+                .is_ok_and(|s| s.state == "Failed")
+        {
+            continue;
+        }
         if let Err(error) = configure(&app).await {
             tracing::warn!(%error, "connector configuration pending");
             continue;

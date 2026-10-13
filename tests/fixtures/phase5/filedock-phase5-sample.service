@@ -1,0 +1,11 @@
+[Unit]
+Description=FileDock Phase 5 disposable data-plane fixture
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /var/lib/filedock-phase5-test/sample_server.py /var/lib/filedock-phase5-test/data 18025
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

@@ -49,7 +49,8 @@ impl WorkQueue {
 
     async fn take(&self) -> ResourceRef {
         loop {
-            if let Some(resource) = self.pending.lock().await.pop_front() {
+            let resource = { self.pending.lock().await.pop_front() };
+            if let Some(resource) = resource {
                 self.seen
                     .lock()
                     .await
@@ -97,15 +98,45 @@ impl Reconciler {
     /// Enqueue every live resource. Called at startup and every 10 minutes.
     pub async fn enqueue_all_kinds(&self) {
         for kind in ResourceKind::ALL {
-            match self.store.list(kind, None, 10_000) {
-                Ok(rows) => {
-                    self.queue
-                        .enqueue_all(rows.into_iter().map(|r| r.resource))
-                        .await
+            let mut after = None;
+            loop {
+                match self.store.list(kind, after.as_deref(), 256) {
+                    Ok(rows) => {
+                        if rows.is_empty() {
+                            break;
+                        }
+                        after = rows.last().map(|r| r.resource.id.clone());
+                        self.queue
+                            .enqueue_all(rows.into_iter().map(|r| r.resource))
+                            .await
+                    }
+                    Err(error) => {
+                        tracing::error!(%kind, %error, "resync list failed");
+                        break;
+                    }
                 }
-                Err(error) => tracing::error!(%kind, %error, "resync list failed"),
             }
         }
+    }
+
+    pub async fn reconcile_now(&self) -> Result<(), ReconcileError> {
+        for controller in &self.controllers {
+            let mut after = None;
+            loop {
+                let rows = self
+                    .store
+                    .list(controller.kind(), after.as_deref(), 256)
+                    .map_err(|e| ReconcileError::Failed(e.to_string()))?;
+                if rows.is_empty() {
+                    break;
+                }
+                after = rows.last().map(|r| r.resource.id.clone());
+                for row in rows {
+                    controller.reconcile(&row.resource).await?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub async fn run(self: Arc<Self>) {

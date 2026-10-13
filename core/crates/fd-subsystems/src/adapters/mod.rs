@@ -71,24 +71,6 @@ pub(crate) fn systemd_health(unit: &str) -> Health {
     }
 }
 
-pub(crate) fn process_health(name: &str) -> Health {
-    if std::process::Command::new(name)
-        .arg("--version")
-        .output()
-        .is_ok_and(|o| o.status.success())
-    {
-        Health {
-            healthy: true,
-            detail: format!("{name} is ready for on-demand operations"),
-        }
-    } else {
-        Health {
-            healthy: false,
-            detail: format!("{name} could not execute --version"),
-        }
-    }
-}
-
 /// Shared no-op lifecycle for health-only adapters.
 pub trait HealthOnly: Send + Sync {
     const ID: &'static str;

@@ -177,12 +177,12 @@ public sealed class AuthTests
         Assert.Single(scope.ServiceProvider.GetRequiredService<AppDbContext>().Administrators.ToList(), a => a.Enabled);
     }
 
-    private sealed class Fixture(WebApplicationFactory<Program> factory, HttpClient client, Administrator admin, IssuedSession session) : IDisposable
+    internal sealed class Fixture(WebApplicationFactory<Program> factory, HttpClient client, Administrator admin, IssuedSession session) : IDisposable
     {
         public WebApplicationFactory<Program> Factory { get; } = factory;
         public HttpClient Client { get; } = client;
         public Administrator Admin { get; } = admin;
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(Action<Microsoft.AspNetCore.Hosting.IWebHostBuilder>? configure = null, bool waitForCore = true)
         {
             var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
@@ -190,12 +190,16 @@ public sealed class AuthTests
                 builder.UseSetting("Database:Path", Path.Combine(Path.GetTempPath(), $"fd-auth-{Guid.NewGuid():N}", "app.db"));
                 builder.UseSetting("Kestrel:HttpPort", "0");
                 builder.UseSetting("Logging:LogLevel:Default", "Warning");
+                configure?.Invoke(builder);
             });
             var client = factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
             using var scope = factory.Services.CreateScope();
             var admin = await scope.ServiceProvider.GetRequiredService<AdminService>().CreateAsync("admin", "password");
             await scope.ServiceProvider.GetRequiredService<SetupCodeService>().MarkCompleteAsync();
             var session = await scope.ServiceProvider.GetRequiredService<SessionService>().CreateAsync(admin, "127.0.0.1", "test");
+            var health = factory.Services.GetRequiredService<FileDock.Management.Core.CoreHealthMonitor>();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (waitForCore && !health.Current.CanMutate) { await Task.Delay(10, timeout.Token); }
             return new Fixture(factory, client, admin, session);
         }
         public void UseSession(bool csrf = true)

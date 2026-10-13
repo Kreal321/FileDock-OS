@@ -40,6 +40,16 @@ impl EventBus {
         }
     }
 
+    pub fn latest_seq(&self) -> Result<u64, DbError> {
+        self.db.with(|conn| {
+            Ok(
+                conn.query_row("SELECT COALESCE(MAX(seq), 0) FROM event", [], |r| {
+                    r.get::<_, i64>(0)
+                })? as u64,
+            )
+        })
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.live.subscribe()
     }

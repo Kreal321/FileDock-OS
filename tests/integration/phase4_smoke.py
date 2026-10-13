@@ -38,7 +38,8 @@ def console(path,body=None):
 def ready():
     for _ in range(100):
         try:
-            if call('GET','/health',auth=False)[0]==200 and pathlib.Path(sockpath).exists(): return
+            if call('GET','/health',auth=False)[0]==200 and pathlib.Path(sockpath).exists():
+                if not cookies or call('GET','/api/v1/system/core-health')[1]['canMutate']: return
         except (OSError,urllib.error.URLError): pass
         if proc.poll() is not None: raise RuntimeError('Server exited')
         time.sleep(.1)
@@ -54,6 +55,7 @@ try:
     status,key=call('POST','/api/v1/setup/complete',{'code':code,'applianceName':'phase4-test','adminUsername':'tester','adminPassword':'test-only','adminPasswordConfirmation':'test-only'})
     assert status==200
     assert call('POST','/api/v1/setup/recovery-key/confirm',{'keyId':key['keyId']})[0]==200
+    ready()
     assert listening_v6()
     assert call('PUT','/api/v1/system/network',{'listenAddresses':['127.0.0.1']})[0]==200
     for _ in range(100):

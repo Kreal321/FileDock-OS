@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: phase5-sample
+name: Phase 5 test subsystem
+version: 0.1.0
+class: built-in
+description: Disposable read/write data-plane fixture for P1 acceptance.
+capabilities:
+  - protocol.webdav
+runtime:
+  type: systemd-service
+  unit: filedock-phase5-sample.service
+health:
+  type: systemd
+  target: filedock-phase5-sample.service
+compatibility:
+  appliance: ">=0.1.0"

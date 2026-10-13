@@ -721,7 +721,10 @@ name = "fd-reconcile"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "fd-observe",
  "fd-state",
+ "fd-subsystems",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
@@ -794,6 +797,9 @@ name = "fd-subsystems"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "fd-observe",
+ "fd-secrets",
  "fd-state",
  "jsonschema",
  "rusqlite",
@@ -802,6 +808,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "tokio",
  "tracing",
  "zbus",
 ]

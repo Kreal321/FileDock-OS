@@ -19,10 +19,11 @@ public sealed class ScopePolicies(RequestDelegate next)
             await Results.Json(new { title = "Forbidden", status = 403, detail = "This endpoint requires the local console socket." }, contentType: "application/problem+json", statusCode: 403).ExecuteAsync(context);
             return;
         }
-        if (!path.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase)) { await next(context); return; }
+        var isHub = path.Equals("/hubs/events", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/hubs/events/", StringComparison.OrdinalIgnoreCase);
+        if (!isHub && !path.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase)) { await next(context); return; }
         var token = context.Items["fd.token"] as ApiToken;
         var admin = context.Items["fd.admin"] as Administrator;
-        var scope = context.GetEndpoint()?.Metadata.GetMetadata<AccessScope>()?.Value
+        var scope = isHub ? "R" : context.GetEndpoint()?.Metadata.GetMetadata<AccessScope>()?.Value
             ?? (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method) ? "R" : "F");
         var isPublic = path.Equals("/api/v1/health", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/v1/auth/sign-in", StringComparison.OrdinalIgnoreCase)
@@ -40,7 +41,7 @@ public sealed class ScopePolicies(RequestDelegate next)
         {
             await Deny(401, "auth.denied", "Sign in or supply a valid API token."); return;
         }
-        if (!SessionAuthHandler.CsrfValid(context))
+        if (!isHub && !SessionAuthHandler.CsrfValid(context))
         {
             await Deny(403, "auth.csrf", "CSRF token missing or invalid."); return;
         }

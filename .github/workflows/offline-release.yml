@@ -186,6 +186,7 @@ jobs:
         run: |
           mkdir -p release/bundle
           cp dist/*.deb dist/install.sh dist/versions.lock dist/RELEASE_VERSION dist/SHA256SUMS release/bundle/
+          cp -a dist/test-fixtures release/bundle/
           cp packaging/installer/bootstrap.sh release/bundle/bootstrap.sh
           cp packaging/installer/bootstrap.sh release/filedock-bootstrap.sh
           (cd release && sha256sum filedock-bootstrap.sh > filedock-bootstrap.sh.sha256)

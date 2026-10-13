@@ -136,7 +136,8 @@ impl Journal {
         let id = new_id();
         let now = db::now_text();
         self.db.with(|conn| {
-            conn.execute(
+            let tx=conn.transaction()?;
+            tx.execute(
                 "INSERT INTO operation
                     (id, kind, state, resource_kind, resource_id, started_by, params, started_at, updated_at)
                  VALUES (?1, ?2, 'Pending', ?3, ?4, ?5, ?6, ?7, ?7)",
@@ -151,12 +152,14 @@ impl Journal {
                 ],
             )?;
             for name in step_names {
-                conn.execute(
+                tx.execute(
                     "INSERT INTO operation_step (operation_id, name, state, attempts) VALUES (?1, ?2, 'pending', 0)",
                     params![id, name],
                 )?;
             }
-            load(conn, &id)
+            let operation=load(&tx,&id)?;
+            tx.commit()?;
+            Ok(operation)
         })
     }
 
@@ -186,7 +189,17 @@ impl Journal {
     }
 
     pub fn unfinished(&self) -> Result<Vec<Operation>, JournalError> {
-        self.list(true, None, 10_000)
+        let mut result = Vec::new();
+        let mut after = None;
+        loop {
+            let page = self.list(true, after.as_deref(), 256)?;
+            if page.is_empty() {
+                break;
+            }
+            after = page.last().map(|operation| operation.id.clone());
+            result.extend(page);
+        }
+        Ok(result)
     }
 
     /// Records intent, then runs the step. Safe to call again after a crash.
@@ -211,13 +224,20 @@ impl Journal {
             let intent = serde_json::json!({"step": step.name, "attempt": step.attempts + 1});
             conn.execute(
                 "UPDATE operation_step
-                 SET intent = ?1, state = 'acting', attempts = attempts + 1
+                 SET intent = COALESCE(intent, ?1), state = 'acting', attempts = attempts + 1
                  WHERE operation_id = ?2 AND name = ?3",
                 params![intent.to_string(), id, step.name],
             )?;
             Ok::<_, JournalError>(())
         })?;
-        let outcome = runner.run_step(&self.get(id)?, &step.name, &serde_json::json!({}))?;
+        let prepared = self.get(id)?;
+        let intent = prepared
+            .steps
+            .iter()
+            .find(|s| s.name == step.name)
+            .and_then(|s| s.intent.as_ref())
+            .unwrap();
+        let outcome = runner.run_step(&prepared, &step.name, intent)?;
         match outcome {
             StepOutcome::Done { result, detail } => {
                 self.db.with(|conn| {
@@ -263,12 +283,39 @@ impl Journal {
         self.get(id)
     }
 
+    pub fn begin_step(&self, id: &str, name: &str) -> Result<(), JournalError> {
+        self.db.with(|conn| {
+            set_state(conn, id, OperationState::Running, None)?;
+            conn.execute("UPDATE operation_step SET state='acting', intent=?1, attempts=attempts+1 WHERE operation_id=?2 AND name=?3", params![serde_json::json!({"step":name}).to_string(),id,name])?;
+            Ok(())
+        })
+    }
+    pub fn finish_step(
+        &self,
+        id: &str,
+        name: &str,
+        result: Result<Value, String>,
+    ) -> Result<Operation, JournalError> {
+        self.db.with(|conn| {
+            match result {
+                Ok(value) => {
+                    conn.execute("UPDATE operation_step SET state='done', result=?1 WHERE operation_id=?2 AND name=?3",params![value.to_string(),id,name])?;
+                    let remaining:i64=conn.query_row("SELECT COUNT(*) FROM operation_step WHERE operation_id=?1 AND state<>'done'",[id],|row|row.get(0))?;
+                    set_state(conn,id,if remaining==0 {OperationState::Succeeded}else{OperationState::Running},None)?;
+                }
+                Err(error) => { set_state(conn,id,OperationState::Failed,Some(&error))?; }
+            }
+            load(conn,id)
+        })
+    }
+
     pub fn resume_all(&self, runners: &[&dyn StepRunner]) -> Result<Vec<Operation>, JournalError> {
         let unfinished = self.unfinished()?;
         let mut out = Vec::new();
         for operation in unfinished {
             let Some(runner) = runners.iter().copied().find(|r| r.kind() == operation.kind) else {
-                tracing::warn!(id = %operation.id, kind = %operation.kind, "no runner for unfinished operation");
+                self.set_state(&operation.id, OperationState::Failed, Some("No installed runner for this operation; manual review required. Side effects were preserved."))?;
+                out.push(self.get(&operation.id)?);
                 continue;
             };
             match operation.state {
@@ -287,7 +334,14 @@ impl Journal {
                         {
                             break;
                         }
+                        let retry_pending = next
+                            .steps
+                            .iter()
+                            .any(|s| s.state == "pending" && s.attempts > 0);
                         current = next;
+                        if retry_pending {
+                            break;
+                        }
                     }
                     out.push(current);
                 }
@@ -388,7 +442,7 @@ fn load(conn: &Connection, id: &str) -> Result<Operation, JournalError> {
         finished_at,
     ) = found;
     let mut stmt = conn.prepare(
-        "SELECT name, state, intent, result, attempts, detail FROM operation_step WHERE operation_id = ?1",
+        "SELECT name, state, intent, result, attempts, detail FROM operation_step WHERE operation_id = ?1 ORDER BY rowid",
     )?;
     let steps = stmt
         .query_map([&id], |row| {

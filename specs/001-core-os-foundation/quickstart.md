@@ -120,6 +120,10 @@ See [phase4-testing.md](./phase4-testing.md) for the Phase 4 build, PVE and cons
 
 ## Data-plane independence (User Story 3, SC-010)
 
+For the current P1 increment, use the [combined Phases 3–5 manual guide](./phase5-testing.md).
+It includes a disposable data-plane fixture in the offline release bundle; the real share and app
+flows below must also be repeated when US9 is implemented.
+
 - Run `systemctl stop filedock-management`.
   - **Expect**: SMB, NFS, and app I/O continue.
 - Run `systemctl kill -s KILL filedock-core`.

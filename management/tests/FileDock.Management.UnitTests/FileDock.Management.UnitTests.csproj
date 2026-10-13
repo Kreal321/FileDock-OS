@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\FileDock.Management.Core\FileDock.Management.Core.csproj" />
     <ProjectReference Include="..\..\src\FileDock.Management.Domain\FileDock.Management.Domain.csproj" />
     <ProjectReference Include="..\..\src\FileDock.Management.Data\FileDock.Management.Data.csproj" />
   </ItemGroup>

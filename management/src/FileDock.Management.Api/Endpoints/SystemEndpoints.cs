@@ -12,20 +12,33 @@ public static class SystemEndpoints
         return api;
     }
 
-    private static async Task<IResult> GetStatus(HttpContext context, ICoreGateway core)
+    private static async Task<IResult> GetStatus(HttpContext context, ICoreGateway core, CoreHealthMonitor monitor)
     {
         if (context.User.Identity?.IsAuthenticated != true)
         {
             return Results.Unauthorized();
         }
 
-        var status = await core.GetSystemStatusAsync();
+        var status = monitor.LastStatus ?? new SystemStatusDto("", "", "", [], false, true);
+
+        if (monitor.Current.CanMutate)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2));
+            try { status = await core.GetSystemStatusAsync(timeout.Token); }
+            catch (Exception error) when (error is Grpc.Core.RpcException or OperationCanceledException) { monitor.ReportUnavailable(); }
+        }
         var components = status.Components.ToList();
         if (components.All(c => c.Id != "management"))
         {
-            components.Insert(1, new ComponentHealthDto("management", "Management Service", "Healthy", "serving"));
+            components.Insert(Math.Min(1, components.Count), new ComponentHealthDto("management", "Management Service", "Healthy", "serving"));
         }
 
+        if (!monitor.Current.CanMutate)
+        {
+            components.RemoveAll(c => c.Id == "core");
+            components.Insert(0, new ComponentHealthDto("core", "FileDock Core", monitor.Current.State, monitor.Current.Detail));
+        }
         return Results.Ok(new
         {
             interfaceVersion = status.InterfaceVersion,

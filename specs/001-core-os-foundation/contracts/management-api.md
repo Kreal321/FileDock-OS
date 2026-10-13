@@ -28,6 +28,18 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 - **Secrets**: request fields named `*Secret`, `password`, or `credentials` are write-only.
   Responses contain only `maskedHint`.
 
+Core-dependent changes are refused with `503` and `code: core.unreachable` or
+`core.interface_mismatch` when the Core stream is lost or its major version is incompatible.
+Authentication and the root console recovery routes remain available. `/system/status` retains
+cached subsystem information and reports the Core connection state during an outage.
+
+The SignalR hub uses session cookies or a Bearer header (no credential in the URL). Its methods
+are read scope, including POST negotiation; browser connections require the same origin. Revoked
+or expired credentials close an existing connection. Messages are `event` (with `seq`, type,
+subject and redacted payload), `core-health`, `sync`, and `session-expired`. `sync` asks a reconnected
+browser to reload its views; Core replay uses the durable Management cursor. Idle event delivery
+never renews an administrator session.
+
 ## Scope legend
 
 | Scope | Meaning |
@@ -62,6 +74,7 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 | Method and path | Scope | Purpose | FR |
 |---|---|---|---|
 | `GET /system/status` | R | Health of services and subsystems, snapshot age, notices | FR-019, FR-040, FR-097 |
+| `GET /system/core-health` | R | Core reachability, interface compatibility, and whether changes are allowed | FR-011, FR-019 |
 | `GET /system/network` / `PUT /system/network` `{listenAddresses[], confirmDisconnect?}` | R / S | Restrict which local IP addresses serve the UI; reload after response. `::` is all interfaces; missing saved interfaces never broaden access, and the console socket stays available | FR-027 |
 | SignalR hub `/hubs/events` | R | Live events, relayed from the Core stream with resume by `seq` | FR-019 |
 | `GET /alerts?state=&minSeverity=` | R | Alert list | FR-096 |
@@ -69,7 +82,8 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 | `GET /logs?source=&minSeverity=&since=&until=&q=` | R | Unified logs, newest first | FR-057 |
 | `GET /audit?actor=&action=&since=` | R | Audit history | FR-059 |
 | `POST /diagnostics/bundle` | F | Streams a redacted `tar.zst` | FR-060 |
-| `GET /operations`, `GET /operations/{id}` | R | Journaled operations | FR-015 |
+| `GET /operations`, `GET /operations/{id}` | R | Journaled operations; list accepts `activeOnly`, `pageSize`, and `pageToken` | FR-015 |
+| `POST /operations/reconcile` | F | Journaled re-adoption of existing desired runtimes; returns `202 {operationId}` | FR-013, FR-015 |
 
 ### Local storage
 

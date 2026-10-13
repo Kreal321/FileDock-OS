@@ -18,6 +18,71 @@ impl Systemd {
         }
     }
 
+    pub async fn is_active(&self, unit: &str) -> Result<bool, AdapterError> {
+        #[cfg(target_os = "linux")]
+        {
+            let conn = zbus::Connection::system()
+                .await
+                .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            let reply = conn
+                .call_method(
+                    Some("org.freedesktop.systemd1"),
+                    "/org/freedesktop/systemd1",
+                    Some("org.freedesktop.systemd1.Manager"),
+                    "GetUnit",
+                    &(unit,),
+                )
+                .await
+                .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            let path: zbus::zvariant::OwnedObjectPath = reply
+                .body()
+                .deserialize()
+                .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            let proxy = zbus::Proxy::new(
+                &conn,
+                "org.freedesktop.systemd1",
+                path,
+                "org.freedesktop.systemd1.Unit",
+            )
+            .await
+            .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            let state: String = proxy
+                .get_property("ActiveState")
+                .await
+                .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            Ok(state == "active" || state == "reloading")
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = unit;
+            Err(AdapterError::Unimplemented)
+        }
+    }
+
+    pub async fn reset_failed(&self, unit: &str) -> Result<(), AdapterError> {
+        #[cfg(target_os = "linux")]
+        {
+            let conn = zbus::Connection::system()
+                .await
+                .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            conn.call_method(
+                Some("org.freedesktop.systemd1"),
+                "/org/freedesktop/systemd1",
+                Some("org.freedesktop.systemd1.Manager"),
+                "ResetFailedUnit",
+                &(unit,),
+            )
+            .await
+            .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            Ok(())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = unit;
+            Err(AdapterError::Unimplemented)
+        }
+    }
+
     pub async fn start(&self, unit: &str) -> Result<(), AdapterError> {
         self.unit_action("StartUnit", unit).await
     }

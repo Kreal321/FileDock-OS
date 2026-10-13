@@ -1,0 +1,17 @@
+[Unit]
+Description=FileDock rclone connector
+After=filedock-core.service
+Wants=filedock-core.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/rclone rcd --rc-addr unix:///run/filedock/rclone.sock --config /run/filedock/rclone.conf --rc-no-auth
+Restart=no
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

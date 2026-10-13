@@ -169,4 +169,13 @@ mod tests {
             .join("../../../tests/fixtures/manifests/invalid/connector-without-cloud.yaml");
         assert!(parse_manifest(&fs::read_to_string(path).unwrap()).is_err());
     }
+    #[test]
+    fn phase5_fixture_manifest_is_valid() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/phase5/sample.yaml");
+        let value: serde_json::Value =
+            serde_saphyr::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        validate_manifest(&value).unwrap();
+        assert_eq!(value["runtime"]["unit"], "filedock-phase5-sample.service");
+    }
 }

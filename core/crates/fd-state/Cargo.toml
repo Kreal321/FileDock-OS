@@ -16,5 +16,6 @@ tokio = { workspace = true, features = ["sync", "rt"] }
 uuid.workspace = true
 
 [dev-dependencies]
+rusqlite = { workspace = true, features = ["functions"] }
 tempfile.workspace = true
 tokio.workspace = true

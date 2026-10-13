@@ -4,6 +4,7 @@ pub mod adapter;
 pub mod adapters;
 pub mod manifest;
 pub mod registry;
+pub mod supervisor;
 pub mod systemd;
 
 pub use adapter::{AdapterError, SubsystemAdapter};

@@ -8,6 +8,10 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 fd-state.workspace = true
+fd-observe.workspace = true
+fd-secrets.workspace = true
+tokio.workspace = true
+chrono.workspace = true
 jsonschema.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
