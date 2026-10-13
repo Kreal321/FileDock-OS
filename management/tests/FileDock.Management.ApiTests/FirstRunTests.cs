@@ -61,7 +61,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         {
             Content = JsonContent.Create(new { keyId = generated!.KeyId }),
         };
-        confirmRequest.Headers.TryAddWithoutValidation("X-CSRF-Token", ReadSetCookie(complete, "fd_csrf"));
+        confirmRequest.Headers.TryAddWithoutValidation("X-CSRF-Token", ReadSetCookie(complete, "fd_http_csrf"));
         var confirmed = await client.SendAsync(confirmRequest);
         confirmed.EnsureSuccessStatusCode();
 
@@ -97,7 +97,7 @@ public sealed class FirstRunTests : IClassFixture<WebApplicationFactory<Program>
         }
         var result = await client.PostAsJsonAsync("/api/v1/setup/complete", body);
         result.EnsureSuccessStatusCode();
-        client.DefaultRequestHeaders.Add("X-CSRF-Token", ReadSetCookie(result, "fd_csrf"));
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", ReadSetCookie(result, "fd_http_csrf"));
         (await client.PostAsJsonAsync("/api/v1/setup/complete", body)).EnsureSuccessStatusCode();
         using (var scope = factory.Services.CreateScope())
         {

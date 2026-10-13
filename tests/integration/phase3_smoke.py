@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='fd-p3-') as scratch:
         assert client.get('/').status_code==200
         assert client.get('/api/v1/system/status').status_code==423
         created=client.post('/api/v1/setup/complete',json={'code':code,'applianceName':'real-core-smoke','adminUsername':'admin','adminPassword':'Test-Password-123!','adminPasswordConfirmation':'Test-Password-123!'}).raise_for_status().json()
-        headers={'X-CSRF-Token':client.cookies.get('fd_csrf')}
+        headers={'X-CSRF-Token':client.cookies.get('fd_http_csrf')}
         client.post('/api/v1/setup/recovery-key/confirm',headers=headers,json={'keyId':created['keyId']}).raise_for_status()
         client.post('/api/v1/auth/sign-out',headers=headers).raise_for_status()
         assert client.get('/api/v1/system/status').status_code==401

@@ -31,6 +31,7 @@ public sealed class SetupLockMiddleware(RequestDelegate next)
             || path.Equals("/favicon.ico", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/setup", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/setup", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/v1/auth/sign-in", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/health", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/v1/health", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);

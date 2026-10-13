@@ -70,6 +70,10 @@ export function createApiClient(options: ApiClientOptions = {}) {
 export const api = createApiClient();
 
 function csrfFromCookie(): string {
-  const match = document.cookie.match(/(?:^|; )fd_csrf=([^;]*)/);
+  const match = document.cookie.match(/(?:^|; )fd_http_csrf=([^;]*)/);
   return match?.[1] ? decodeURIComponent(match[1]) : '';
+}
+
+export function hasCsrfCookie(): boolean {
+  return csrfFromCookie().length > 0;
 }

@@ -117,7 +117,7 @@ class ApiClient:
         return self.http.post(path, json=json, **kwargs)  # type: ignore[arg-type]
 
     def _csrf(self) -> dict[str, str]:
-        token = self.http.cookies.get("fd_csrf")
+        token = self.http.cookies.get("fd_http_csrf")
         return {"X-CSRF-Token": token} if token else {}
 
     def put(self, path: str, json: object = None, *, etag: str | None = None) -> httpx.Response:

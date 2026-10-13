@@ -4,9 +4,10 @@ type Props = {
   recoveryKey: string;
   onDownloaded: () => Promise<void>;
   error?: string;
+  canContinue?: boolean;
 };
 
-export function RecoveryKeyStep({ recoveryKey, onDownloaded, error }: Props) {
+export function RecoveryKeyStep({ recoveryKey, onDownloaded, error, canContinue = true }: Props) {
   const [busy, setBusy] = useState(false);
 
   async function downloadAndContinue() {
@@ -22,7 +23,7 @@ export function RecoveryKeyStep({ recoveryKey, onDownloaded, error }: Props) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      await onDownloaded();
+      if (canContinue) await onDownloaded();
     } finally {
       // Let the browser start reading the Blob before releasing its URL.
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -48,7 +49,11 @@ export function RecoveryKeyStep({ recoveryKey, onDownloaded, error }: Props) {
         </p>
       ) : null}
       <button className="primary" type="button" disabled={busy} onClick={downloadAndContinue}>
-        {busy ? 'Finishing setup…' : 'Download recovery key and continue'}
+        {busy
+          ? 'Finishing setup…'
+          : canContinue
+            ? 'Download recovery key and continue'
+            : 'Download recovery key'}
       </button>
     </section>
   );

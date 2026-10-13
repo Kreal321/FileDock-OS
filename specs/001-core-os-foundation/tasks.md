@@ -196,7 +196,7 @@ management, and network restrictions. US4 adds recovery-key regeneration.
 - [X] T060 [P] [US1] Implement the administrator service (create, disable, delete with last-enabled-admin protection, and password change) in `management/src/FileDock.Management.Domain/Admins/AdminService.cs` (FR-022, FR-025)
 - [X] T061 [P] [US1] Implement server-side sessions in `management/src/FileDock.Management.Api/Auth/SessionAuthHandler.cs` (FR-023):
   - stored in `app.db`, with a 30-minute idle expiry;
-  - the `fd_session` cookie with `HttpOnly` and `SameSite=Strict` for HTTP;
+  - the `fd_http_session` cookie with `HttpOnly` and `SameSite=Strict` for HTTP;
   - CSRF checks on mutations;
   - sign-out-all.
 - [X] T062 [US1] Implement `POST /auth/sign-in`, `POST /auth/sign-out`, and `POST /auth/sign-out-all`, with per-account lockout (5 failures, 15 minutes) and an audit entry for every attempt, in `management/src/FileDock.Management.Api/Endpoints/AuthEndpoints.cs` (FR-023, FR-024)

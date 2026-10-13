@@ -15,8 +15,8 @@ public sealed class SessionAuthHandler(
     IAdminStore admins) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "fd-session";
-    public const string CookieName = "fd_session";
-    public const string CsrfCookie = "fd_csrf";
+    public const string CookieName = "fd_http_session";
+    public const string CsrfCookie = "fd_http_csrf";
     public const string CsrfHeader = "X-CSRF-Token";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()

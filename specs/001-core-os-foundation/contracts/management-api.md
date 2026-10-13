@@ -9,7 +9,7 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 
 ## Conventions
 
-- **Authentication**: either a session cookie `fd_session` with the header `X-CSRF-Token` on
+- **Authentication**: either a session cookie `fd_http_session` with the header `X-CSRF-Token` on
   mutations, or `Authorization: Bearer fdt_<id>_<secret>` (FR-021). Requests without valid
   credentials get `401`. A Read-only token on any mutating route gets `403`. Both are audited.
 - **Before setup**: until setup is complete, every route except `/setup/*` and `/health` returns
@@ -45,7 +45,7 @@ The machine-readable OpenAPI 3.1 document is generated from the implementation a
 |---|---|---|---|
 | `GET /health` | public | Liveness, with no details | — |
 | `POST /setup/verify-code` `{code}` | P | Validates the one-time setup code. Throttled | FR-020 |
-| `POST /setup/complete` `{code, applianceName, adminUsername, adminPassword, adminPasswordConfirmation}` | P | Creates the first administrator, signs them in (sets `fd_session`), and generates the recovery key | FR-020, FR-033 |
+| `POST /setup/complete` `{code, applianceName, adminUsername, adminPassword, adminPasswordConfirmation}` | P | Creates the first administrator, signs them in (sets `fd_http_session`), and generates the recovery key | FR-020, FR-033 |
 | `POST /setup/recovery-key/confirm` `{keyId}` | S | Acknowledges the recovery-key download and finishes setup. The request identifies the current recovery key | FR-033 |
 | `POST /setup/restore/...` | P | Restore Appliance entry, the alternative to setup (see Recovery) | FR-041 |
 | `POST /auth/sign-in` `{username, password}` | public | Creates a session. Locks the account for 15 minutes after 5 failures | FR-024 |

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ApiError, api } from '../../api/client.ts';
+import { ApiError, api, hasCsrfCookie } from '../../api/client.ts';
 import { RecoveryKeyStep } from './RecoveryKeyStep.tsx';
 
 type Generated = {
@@ -14,6 +14,8 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
   const [code, setCode] = useState('');
   const [generated, setGenerated] = useState<Generated | null>(null);
   const [error, setError] = useState('');
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   async function verify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,6 +51,12 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       });
       setGenerated(result);
       setStep('key');
+      if (!hasCsrfCookie()) {
+        setNeedsSignIn(true);
+        setError(
+          'Your browser did not save the session cookie. Allow cookies for this appliance, then sign in below to continue.',
+        );
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Setup could not be completed.');
     }
@@ -63,7 +71,40 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
       await api.post('/setup/recovery-key/confirm', { keyId: generated.keyId });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not finish setup. Please try again.');
+      if (err instanceof ApiError && err.status === 401) {
+        setNeedsSignIn(true);
+        setError(
+          'Your setup session is missing or expired. Sign in below to continue with this recovery key.',
+        );
+      } else {
+        setError(
+          err instanceof ApiError ? err.message : 'Could not finish setup. Please try again.',
+        );
+      }
+    }
+  }
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!generated || signingIn) return;
+    const formElement = event.currentTarget;
+    const password = String(new FormData(formElement).get('password') ?? '');
+    setSigningIn(true);
+    setError('');
+    try {
+      await api.post('/auth/sign-in', { username: generated.username, password });
+      formElement.reset();
+      if (!hasCsrfCookie()) {
+        setError(
+          'Your browser did not save the session cookie. Allow cookies for this appliance and try again.',
+        );
+        return;
+      }
+      setNeedsSignIn(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not sign in. Please try again.');
+    } finally {
+      setSigningIn(false);
     }
   }
 
@@ -124,7 +165,27 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
         </form>
       ) : null}
       {step === 'key' && generated ? (
-        <RecoveryKeyStep recoveryKey={generated.recoveryKey} onDownloaded={confirm} error={error} />
+        <div className="stack">
+          <RecoveryKeyStep
+            recoveryKey={generated.recoveryKey}
+            onDownloaded={confirm}
+            error={error}
+            canContinue={!needsSignIn}
+          />
+          {needsSignIn ? (
+            <form className="panel stack" onSubmit={signIn}>
+              <h2>Sign in to continue setup</h2>
+              <p>Sign in as {generated.username}. Your recovery key stays the same.</p>
+              <label>
+                Administrator password
+                <input name="password" type="password" required autoComplete="current-password" />
+              </label>
+              <button className="primary" type="submit" disabled={signingIn}>
+                {signingIn ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
