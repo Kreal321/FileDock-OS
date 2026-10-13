@@ -284,6 +284,15 @@ install_bundle_packages() (
     )
   fi
   DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "$bundle"/*.deb || return 1
+  if [[ "$REPAIR" -eq 1 ]]; then
+    # Testing releases can share a package version. Replace the actual FileDock
+    # files rather than letting APT skip an already-installed version.
+    local filedock_packages=()
+    for name in filedock-core filedock-management filedock-builtins; do
+      filedock_packages+=("$bundle/${name}_${RELEASE}_amd64.deb")
+    done
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall "${args[@]}" "${filedock_packages[@]}" || return 1
+  fi
   local pinned
   mapfile -t pinned < <(awk '$1=="apt" || $1 ~ /^apt@/ {print $2 "=" $3}' "$LOCK")
   DEBIAN_FRONTEND=noninteractive apt-get install -y "${args[@]}" "${pinned[@]}" || return 1
@@ -311,7 +320,7 @@ EOF
   systemctl enable --now smbd.service nfs-server.service docker.service
   systemctl restart filedock-core.service filedock-management.service
   for attempt in $(seq 1 60); do
-    if curl --silent --fail http://127.0.0.1:8021/health >/dev/null; then return 0; fi
+    if curl --silent --fail --unix-socket /run/filedock/management-admin.sock http://localhost/health >/dev/null; then return 0; fi
     sleep 1
   done
   echo "Management service did not become healthy; inspect journalctl -u filedock-management -u filedock-core" >&2
@@ -353,5 +362,15 @@ install_packages || exit 3
 configure_services || exit 3
 print_setup_code || exit 3
 mkdir -p /etc/filedock
+if [[ -f "$SCRIPT_DIR/bootstrap.sh" ]]; then
+  install -D -m 0755 "$SCRIPT_DIR/bootstrap.sh" /usr/local/sbin/filedock-bootstrap
+fi
 date -u +"%Y-%m-%dT%H:%M:%SZ" >"$MARKER"
+printf '%s\n' "$RELEASE" > /etc/filedock/RELEASE_VERSION
+build_file="${OFFLINE_BUNDLE:-$SCRIPT_DIR}/BUILD.txt"
+if [[ -f "$build_file" ]]; then
+  install -m 0644 "$build_file" /etc/filedock/BUILD.txt
+else
+  rm -f /etc/filedock/BUILD.txt /etc/filedock/release.json
+fi
 exit 0

@@ -121,6 +121,7 @@ else
 fi
 
 install -m 0755 "$ROOT/packaging/installer/install.sh" "$DIST/install.sh"
+install -m 0755 "$ROOT/packaging/installer/bootstrap.sh" "$DIST/bootstrap.sh"
 install -m 0644 "$ROOT/packaging/versions.lock" "$DIST/versions.lock"
 printf '%s\n' "$VERSION" > "$DIST/RELEASE_VERSION"
 (cd "$DIST" && sha256sum filedock-*.deb > SHA256SUMS)

@@ -42,6 +42,8 @@ For the Phase 3 stop point and PVE commands, see [phase3-testing.md](./phase3-te
 
 ## Install and first-run setup (User Stories 1 and 2)
 
+For online installation and future updates, use the small `filedock-bootstrap.sh` release asset. See the [bootstrap guide](../../packaging/installer/README.md). The manual offline installation remains available below.
+
 1. Copy all `dist/*.deb`, `dist/versions.lock`, `dist/SHA256SUMS`, and `dist/install.sh` to a fresh VM, then run
    `sudo bash install.sh --offline-bundle ./dist`.
    - **Expect**: preflight passes, installation finishes, and the console prints the UI address

@@ -186,6 +186,9 @@ jobs:
         run: |
           mkdir -p release/bundle
           cp dist/*.deb dist/install.sh dist/versions.lock dist/RELEASE_VERSION dist/SHA256SUMS release/bundle/
+          cp packaging/installer/bootstrap.sh release/bundle/bootstrap.sh
+          cp packaging/installer/bootstrap.sh release/filedock-bootstrap.sh
+          (cd release && sha256sum filedock-bootstrap.sh > filedock-bootstrap.sh.sha256)
           printf 'Release: %s\nPackage version: %s\nCommit: %s\nTarget: Debian 13 amd64\n' \
             "$RELEASE_TAG" "$PACKAGE_VERSION" "$GITHUB_SHA" > release/bundle/BUILD.txt
           (cd release/bundle && sha256sum -c SHA256SUMS)
@@ -198,6 +201,7 @@ jobs:
           name: offline-release-assets
           path: |
             release/*.tar.gz
+            release/filedock-bootstrap.sh
             release/*.sha256
           if-no-files-found: error
           retention-days: 14
@@ -232,7 +236,15 @@ jobs:
 
           Source commit: $SOURCE_COMMIT
 
-          Download the archive and its .sha256 file from this release. On the target VM:
+          Download the small bootstrap installer on the target VM and run it as root. It offers install, update, repair and version-check options, verifies the real bundle, and cleans up its temporary files. The default channel includes testing prereleases.
+
+          \`\`\`bash
+          curl -fL "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/filedock-bootstrap.sh" -o filedock-bootstrap.sh
+          bash filedock-bootstrap.sh
+          # Later, as root: filedock-bootstrap --update
+          \`\`\`
+
+          For a manual offline installation, download the archive and its .sha256 file from this release. On the target VM:
 
           \`\`\`bash
           sha256sum -c "$ARCHIVE.sha256"
@@ -252,5 +264,5 @@ jobs:
             args+=(--target "$SOURCE_COMMIT")
           fi
           if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256" "${args[@]}"
+          gh release create "$RELEASE_TAG" "release/$ARCHIVE" "release/$ARCHIVE.sha256" "release/filedock-bootstrap.sh" "release/filedock-bootstrap.sh.sha256" "${args[@]}"
           printf '### Download the offline bundle\n\n[Release assets](https://github.com/%s/releases/tag/%s)\n' "$GH_REPO" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
