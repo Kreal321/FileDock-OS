@@ -13,7 +13,8 @@ OFFLINE_BUNDLE=""
 RELEASE="$VERSION"
 RELEASE_EXPLICIT=0
 ONLINE_BUNDLE=""
-trap '[[ -z "$ONLINE_BUNDLE" ]] || rm -rf "$ONLINE_BUNDLE"' EXIT
+UPDATER_TMP=""
+trap '[[ -z "$ONLINE_BUNDLE" ]] || rm -rf "$ONLINE_BUNDLE"; [[ -z "$UPDATER_TMP" ]] || rm -f "$UPDATER_TMP"' EXIT
 
 usage() {
   cat <<'EOF'
@@ -363,7 +364,12 @@ configure_services || exit 3
 print_setup_code || exit 3
 mkdir -p /etc/filedock
 if [[ -f "$SCRIPT_DIR/bootstrap.sh" ]]; then
-  install -D -m 0755 "$SCRIPT_DIR/bootstrap.sh" /usr/local/sbin/filedock-bootstrap
+  # Rename a completed copy so a running updater keeps reading its old inode.
+  mkdir -p /usr/local/sbin
+  UPDATER_TMP="$(mktemp /usr/local/sbin/.filedock-bootstrap.XXXXXXXX)"
+  install -m 0755 "$SCRIPT_DIR/bootstrap.sh" "$UPDATER_TMP"
+  mv -f "$UPDATER_TMP" /usr/local/sbin/filedock-bootstrap
+  UPDATER_TMP=""
 fi
 date -u +"%Y-%m-%dT%H:%M:%SZ" >"$MARKER"
 printf '%s\n' "$RELEASE" > /etc/filedock/RELEASE_VERSION

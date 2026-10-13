@@ -50,6 +50,6 @@ The existing **Offline bundle release** workflow publishes:
 - the offline `.tar.gz` and its `.sha256`;
 - `filedock-bootstrap.sh` and its `.sha256`.
 
-The archive includes `bootstrap.sh`, so the installed updater is refreshed with each new bundle. Both scripts ship together; updates require the bundled installer changes that force FileDock package replacement when testing releases reuse a package version.
+The archive includes `bootstrap.sh`, so the installed updater is refreshed with each new bundle. Its executable is replaced atomically, allowing an already-running updater to finish safely. Both scripts ship together; updates require the bundled installer changes that force FileDock package replacement when testing releases reuse a package version.
 
 Bash and embedded Python syntax were checked locally. No installation or update was run against the PVE VM as part of this change.

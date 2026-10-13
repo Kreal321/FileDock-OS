@@ -49,16 +49,25 @@ if [[ ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
 fi
 WORK="$(mktemp -d /var/tmp/filedock-bootstrap.XXXXXXXX)"
 RECORD_TMP=''
+UPDATER_TMP=''
 cleanup() {
   local result=$?
   trap - EXIT
   rm -rf -- "$WORK"
   [[ -z "$RECORD_TMP" ]] || rm -f -- "$RECORD_TMP"
+  [[ -z "$UPDATER_TMP" ]] || rm -f -- "$UPDATER_TMP"
   exit "$result"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+persist_updater() {
+  mkdir -p /usr/local/sbin
+  UPDATER_TMP="$(mktemp /usr/local/sbin/.filedock-bootstrap.XXXXXXXX)"
+  install -m 0755 "$1" "$UPDATER_TMP"
+  mv -f "$UPDATER_TMP" /usr/local/sbin/filedock-bootstrap
+  UPDATER_TMP=''
+}
 fetch() {
   curl --fail --show-error --location --proto '=https' --proto-redir '=https' \
     --connect-timeout 15 --max-time 3600 --retry 3 \
@@ -171,7 +180,7 @@ if [[ "$ACTION" != install && "$INSTALLED" -eq 0 ]]; then echo 'No FileDock inst
 [[ "$OLDER_TARGET" -eq 0 ]] || { echo 'Refusing to downgrade the installed release.' >&2; exit 4; }
 if [[ "$ACTION" == update && "$CURRENT_TAG" == "$TAG" && "$ALL_CURRENT" -eq 1 ]]; then
   if [[ ! -x /usr/local/sbin/filedock-bootstrap ]]; then
-    install -D -m 0755 "${BASH_SOURCE[0]}" /usr/local/sbin/filedock-bootstrap
+    persist_updater "${BASH_SOURCE[0]}"
   fi
   echo 'Next time, run: filedock-bootstrap --update'
   exit 0
@@ -236,6 +245,6 @@ mv -f "$RECORD_TMP" /etc/filedock/release.json
 RECORD_TMP=''
 source_script="$WORK/bundle/bootstrap.sh"
 [[ -f "$source_script" ]] || source_script="${BASH_SOURCE[0]}"
-install -D -m 0755 "$source_script" /usr/local/sbin/filedock-bootstrap
+persist_updater "$source_script"
 printf '\nFileDock %s installed. Temporary downloads will be removed.\n' "$TAG"
 echo 'Next time, run: filedock-bootstrap --update'
