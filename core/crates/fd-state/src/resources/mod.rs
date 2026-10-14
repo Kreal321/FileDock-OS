@@ -30,7 +30,7 @@ pub use folder::{
     Access, DataImportance, ManagedFolderSpec, ReferencePath, StorageMode, paths_overlap,
 };
 pub use pool::{DiskIdentity, PoolKind, PoolSpec, SystemLimits};
-pub use settings::SettingsSpec;
+pub use settings::{NotificationChannel, SettingsSpec};
 pub use share_user::ShareUserSpec;
 
 use serde::Serialize;

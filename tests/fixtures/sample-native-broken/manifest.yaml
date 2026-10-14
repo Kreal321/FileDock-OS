@@ -9,5 +9,5 @@ runtime:
   executable: ./sample
   args: [--broken]
 health: {type: grpc, intervalSeconds: 5, startupGraceSeconds: 5}
-permissions: [core.events.read]
+permissions: [core.events.read, core.alerts.write]
 compatibility: {appliance: ">=0.1.0 <0.2.0", extensionProtocol: "1"}

@@ -132,5 +132,7 @@ install -m 0755 "$ROOT/packaging/installer/bootstrap.sh" "$DIST/bootstrap.sh"
 install -m 0644 "$ROOT/packaging/versions.lock" "$DIST/versions.lock"
 mkdir -p "$DIST/test-fixtures/phase5"
 cp "$ROOT/tests/fixtures/phase5/"* "$DIST/test-fixtures/phase5/"
+FD_FIXTURE_BINARY="$ROOT/target/release/fd-extension-sample" FD_FIXTURE_SKIP_DOCKER=1 \
+  bash "$ROOT/tests/fixtures/build.sh" "$DIST/test-fixtures/phase8"
 printf '%s\n' "$VERSION" > "$DIST/RELEASE_VERSION"
 (cd "$DIST" && sha256sum filedock-*.deb > SHA256SUMS)

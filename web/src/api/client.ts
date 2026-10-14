@@ -65,8 +65,12 @@ export function createApiClient(options: ApiClientOptions = {}) {
         method: 'POST',
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
-    patch: <T>(path: string, body: unknown) =>
-      request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+    patch: <T>(path: string, body: unknown, etag?: string) =>
+      request<T>(path, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        headers: etag ? { 'If-Match': etag } : undefined,
+      }),
     delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
     put: <T>(path: string, body: unknown, etag?: string) =>
       request<T>(path, {

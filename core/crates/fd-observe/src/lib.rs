@@ -18,3 +18,5 @@ CREATE TABLE event (
 
 CREATE INDEX event_by_at ON event (at);
 ";
+pub mod bundle;
+pub mod logs;

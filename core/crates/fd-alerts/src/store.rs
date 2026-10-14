@@ -93,14 +93,16 @@ impl AlertStore {
         let dedup = dedup_key(source, object.as_ref(), kind);
         let message = redact_text(message);
         let now = db::now_text();
-        self.db.with(|conn| {
+        self.db.with(|connection| {
+            let tx=connection.transaction()?;
+            let outcome:Result<_,DbError>=(|conn:&rusqlite::Connection| {
             if let Some(id) = conn
-                .query_row("SELECT id, state FROM alert WHERE dedup_key = ?1", [&dedup], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                .query_row("SELECT id, state, severity FROM alert WHERE dedup_key = ?1", [&dedup], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?,row.get::<_,String>(2)?))
                 })
                 .optional()?
             {
-                let (id, state) = id;
+                let (id, state,previous_severity) = id;
                 if state == "Resolved" {
                     conn.execute(
                         "UPDATE alert SET state = 'Active', severity = ?1, message = ?2,
@@ -114,7 +116,9 @@ impl AlertStore {
                         params![now, severity.as_str(), message, id],
                     )?;
                 }
-                return load(conn, &id);
+                let alert=load(conn,&id)?;
+                if state=="Resolved" || previous_severity!=severity.as_str(){ record(conn,&alert,"raised"); }
+                return Ok(alert);
             }
             let id = new_id();
             conn.execute(
@@ -134,7 +138,11 @@ impl AlertStore {
                     now
                 ],
             )?;
-            load(conn, &id)
+            let alert=load(conn,&id)?; record(conn,&alert,"raised"); Ok(alert)
+            })(&tx);
+            let result=outcome?;
+            tx.commit()?;
+            Ok(result)
         })
     }
 
@@ -145,24 +153,34 @@ impl AlertStore {
         kind: &str,
     ) -> Result<Option<Alert>, DbError> {
         let dedup = dedup_key(source, object, kind);
-        self.db.with(|conn| {
-            let Some(id) = conn
-                .query_row(
-                    "SELECT id FROM alert WHERE dedup_key = ?1 AND state != 'Resolved'",
-                    [&dedup],
-                    |r| r.get::<_, String>(0),
-                )
-                .optional()?
-            else {
-                return Ok(None);
-            };
-            conn.execute("UPDATE alert SET state = 'Resolved' WHERE id = ?1", [&id])?;
-            Ok(Some(load(conn, &id)?))
+        self.db.with(|connection| {
+            let tx = connection.transaction()?;
+            let outcome: Result<_, DbError> = (|conn: &rusqlite::Connection| {
+                let Some(id) = conn
+                    .query_row(
+                        "SELECT id FROM alert WHERE dedup_key = ?1 AND state != 'Resolved'",
+                        [&dedup],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .optional()?
+                else {
+                    return Ok(None);
+                };
+                conn.execute("UPDATE alert SET state = 'Resolved' WHERE id = ?1", [&id])?;
+                let alert = load(conn, &id)?;
+                record(conn, &alert, "resolved");
+                Ok(Some(alert))
+            })(&tx);
+            let result = outcome?;
+            tx.commit()?;
+            Ok(result)
         })
     }
 
     pub fn acknowledge(&self, id: &str, actor: &str) -> Result<Alert, DbError> {
-        self.db.with(|conn| {
+        self.db.with(|connection| {
+            let tx=connection.transaction()?;
+            let outcome:Result<_,DbError>=(|conn:&rusqlite::Connection| {
             let n = conn.execute(
                 "UPDATE alert SET state = 'Acknowledged', acknowledged_by = ?1 WHERE id = ?2 AND state = 'Active'",
                 params![actor, id],
@@ -170,7 +188,11 @@ impl AlertStore {
             if n == 0 {
                 return load(conn, id);
             }
-            load(conn, id)
+            let alert=load(conn,id)?; record(conn,&alert,"acknowledged"); Ok(alert)
+            })(&tx);
+            let result=outcome?;
+            tx.commit()?;
+            Ok(result)
         })
     }
 
@@ -184,8 +206,18 @@ impl AlertStore {
         after_id: Option<&str>,
         limit: usize,
     ) -> Result<Vec<Alert>, DbError> {
+        self.list_minimum(states, after_id, limit, None)
+    }
+    pub fn list_minimum(
+        &self,
+        states: &[AlertState],
+        after_id: Option<&str>,
+        limit: usize,
+        min: Option<Severity>,
+    ) -> Result<Vec<Alert>, DbError> {
         self.db.with(|conn| {
-            let mut sql = String::from("SELECT id FROM alert WHERE (?1 IS NULL OR id < ?1)");
+            let mut sql = String::from("SELECT id FROM alert WHERE (?1 IS NULL OR (last_seen_at,id) < (SELECT last_seen_at,id FROM alert WHERE id=?1))");
+            match min {Some(Severity::Critical)=>sql.push_str(" AND severity='Critical'"),Some(Severity::Warning)=>sql.push_str(" AND severity IN ('Warning','Critical')"),_=>{}}
             if !states.is_empty() {
                 sql.push_str(" AND state IN (");
                 sql.push_str(&states.iter().map(|_| "?").collect::<Vec<_>>().join(","));
@@ -247,12 +279,36 @@ fn load(conn: &rusqlite::Connection, id: &str) -> Result<Alert, DbError> {
     )?)
 }
 
+fn record(c: &rusqlite::Connection, a: &Alert, t: &str) {
+    if let Err(error) = crate::notify::record(c, a, t) {
+        tracing::error!(%error,"Notification transition could not be queued");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::MIGRATION_0004_ALERTS;
     use fd_state::db::{Db, MIGRATION_0001_INIT};
 
+    #[test]
+    fn critical_filter_is_applied_before_the_page_limit() {
+        let db = Db::open_in_memory(&[MIGRATION_0001_INIT, MIGRATION_0004_ALERTS]).unwrap();
+        let store = AlertStore::new(db);
+        let critical = store
+            .raise("test", None, "critical", Severity::Critical, "critical")
+            .unwrap();
+        for n in 0..12 {
+            store
+                .raise("test", None, &format!("info-{n}"), Severity::Info, "info")
+                .unwrap();
+        }
+        let page = store
+            .list_minimum(&[AlertState::Active], None, 1, Some(Severity::Critical))
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].id, critical.id);
+    }
     #[test]
     fn dedup_refresh_resolve_and_recur() {
         let store = AlertStore::new(

@@ -10,6 +10,11 @@ import { NetworkPage } from './features/settings/NetworkPage.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { OperationsPage } from './features/operations/OperationsPage.tsx';
 import { OperationDetailPage } from './features/operations/OperationDetailPage.tsx';
+import { FoldersPage } from './features/folders/FoldersPage.tsx';
+import { LogsPage } from './features/logs/LogsPage.tsx';
+import { ActivityPage } from './features/activity/ActivityPage.tsx';
+import { AlertsPage } from './features/alerts/AlertsPage.tsx';
+import { NotificationChannelsPage } from './features/alerts/NotificationChannelsPage.tsx';
 import { AuditPage } from './features/audit/AuditPage.tsx';
 import { AuthLayout } from './layout/AuthLayout.tsx';
 import { AppShell } from './layout/AppShell.tsx';
@@ -93,6 +98,8 @@ function Shell() {
     <AppShell route={route} onSignOut={signOut}>
       {(canMutate, connected, browserConnected) => {
         switch (route.id) {
+          case 'folders':
+            return <FoldersPage canMutate={canMutate} connected={browserConnected} />;
           case 'extensions':
             return <ExtensionsPage canMutate={canMutate && browserConnected} />;
           case 'state-protection':
@@ -117,6 +124,14 @@ function Shell() {
             return <OperationsPage connected={connected} />;
           case 'operation-detail':
             return <OperationDetailPage id={route.operationId!} connected={connected} />;
+          case 'logs':
+            return <LogsPage connected={browserConnected} canMutate={canMutate} />;
+          case 'activity':
+            return <ActivityPage connected={browserConnected} />;
+          case 'alerts':
+            return <AlertsPage connected={browserConnected} canMutate={canMutate} />;
+          case 'notification-channels':
+            return <NotificationChannelsPage canMutate={canMutate && browserConnected} />;
           case 'audit':
             return <AuditPage connected={browserConnected} />;
           default:

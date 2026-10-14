@@ -288,13 +288,64 @@ impl Extensions for ExtensionsSvc {
             .map_err(err)?;
         Ok(Response::new(pb::Empty {}))
     }
+    async fn list_notification_channels(
+        &self,
+        r: Request<pb::Empty>,
+    ) -> Result<Response<pb::NotificationChannels>, Status> {
+        self.metadata(&r, false)?;
+        Ok(Response::new(pb::NotificationChannels {
+            channels: crate::notification_runtime::channels(&self.app)?
+                .into_iter()
+                .map(crate::notification_runtime::to_proto)
+                .collect(),
+        }))
+    }
+    async fn remove_notification_channel(
+        &self,
+        r: Request<pb::NotificationChannelRef>,
+    ) -> Result<Response<pb::Empty>, Status> {
+        self.metadata(&r, true)?;
+        let actor = super::interceptors::actor_of(r.metadata());
+        crate::notification_runtime::save(&self.app, None, &r.get_ref().id, actor)?;
+        Ok(Response::new(pb::Empty {}))
+    }
+    async fn test_notification_channel(
+        &self,
+        r: Request<pb::NotificationChannelRef>,
+    ) -> Result<Response<pb::Empty>, Status> {
+        self.metadata(&r, true)?;
+        crate::notification_runtime::test(&self.app, &r.get_ref().id).await?;
+        Ok(Response::new(pb::Empty {}))
+    }
     async fn configure_notification_channel(
         &self,
         r: Request<pb::NotificationChannel>,
     ) -> Result<Response<pb::NotificationChannel>, Status> {
         self.metadata(&r, true)?;
-        Err(Status::unimplemented(
-            "notification channel delivery is Phase 9",
-        ))
+        let actor = super::interceptors::actor_of(r.metadata());
+        let body = r.into_inner();
+        let config = body
+            .config
+            .map(|v| crate::proto_conv::struct_to_value(&v))
+            .unwrap_or(serde_json::json!({}));
+        let channel = fd_state::resources::NotificationChannel {
+            id: if body.id.is_empty() {
+                fd_state::new_id()
+            } else {
+                body.id
+            },
+            subsystem_id: body.subsystem_id,
+            name: body.name,
+            min_severity: body.min_severity,
+            config,
+            secret_refs: body.secret_refs,
+        };
+        let gate = crate::extension_runtime::lock(&self.app, &channel.subsystem_id);
+        let _guard = gate.lock().await;
+        crate::notification_runtime::validate(&self.app, &channel).await?;
+        crate::notification_runtime::save(&self.app, Some(channel.clone()), &channel.id, actor)?;
+        Ok(Response::new(crate::notification_runtime::to_proto(
+            channel,
+        )))
     }
 }

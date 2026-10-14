@@ -12,3 +12,4 @@ pub trait Controller: Send + Sync {
     fn kind(&self) -> ResourceKind;
     async fn reconcile(&self, resource: &ResourceRef) -> Result<(), ReconcileError>;
 }
+pub mod controllers;

@@ -5,7 +5,7 @@ namespace FileDock.Management.Cli.Commands;
 
 internal static class StateCommands
 {
-    private static HttpClient Client(string path)
+    internal static HttpClient Client(string path)
     {
         var handler = new SocketsHttpHandler
         {

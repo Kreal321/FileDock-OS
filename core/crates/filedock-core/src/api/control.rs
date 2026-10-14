@@ -36,7 +36,53 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let request_id = request_id_of(request.metadata());
-        let changes = proto_changes(request.into_inner())?;
+        let body = request.into_inner();
+        let confirmations = body.confirmations.clone();
+        let changes = proto_changes(body)?;
+        for change in &changes {
+            if change.resource().kind != fd_state::ResourceKind::ManagedFolder {
+                continue;
+            }
+            if let Some(old) = self
+                .app
+                .store
+                .get(change.resource())
+                .map_err(|_| Status::internal("folder.read_failed"))?
+            {
+                let required = match change {
+                    Change::Delete { .. } if old.spec["dataImportance"] == "Critical" => {
+                        Some(("deleteCritical", old.spec["name"].as_str().unwrap_or("")))
+                    }
+                    Change::Upsert { spec, .. }
+                        if old.spec["storageMode"] == "HybridBackup"
+                            && spec["storageMode"] != "HybridBackup" =>
+                    {
+                        Some(("leaveHybridBackup", "confirmed"))
+                    }
+                    Change::Upsert { spec, .. }
+                        if importance(&spec["dataImportance"])
+                            < importance(&old.spec["dataImportance"])
+                            || overrides_lowered(&old.spec, spec) =>
+                    {
+                        Some(("lowerImportance", "confirmed"))
+                    }
+                    _ => None,
+                };
+                if let Some((kind, value)) = required
+                    && !confirmations.iter().any(|c| {
+                        c.resource.as_ref().is_some_and(|r| {
+                            r.id == change.resource().id
+                                && r.kind == pb::ResourceKind::ManagedFolder as i32
+                        }) && c.kind == kind
+                            && c.value == value
+                    })
+                {
+                    return Err(Status::failed_precondition(format!(
+                        "folder.confirmation_required:{kind}"
+                    )));
+                }
+            }
+        }
         if changes
             .iter()
             .any(|c| c.resource().kind == fd_state::ResourceKind::Extension)
@@ -48,19 +94,26 @@ impl CoreControl for CoreControlSvc {
             .store
             .apply(ChangeOrigin::Management { actor, request_id }, &changes)
         {
-            Ok(outcome) => Ok(Response::new(ApplyChangeResponse {
-                committed: outcome
-                    .committed
-                    .iter()
-                    .map(proto_conv::stored_to_proto)
-                    .collect(),
-                warnings: Some(proto_conv::issues_to_proto(&outcome.warnings)),
-            })),
+            Ok(outcome) => {
+                for row in &outcome.committed {
+                    if row.resource.kind == fd_state::ResourceKind::ManagedFolder {
+                        let _=self.app.events.emit("folder.configuration_changed",Some(row.resource.clone()),serde_json::json!({"generation":row.generation,"dataImportance":row.spec["dataImportance"],"requestBackupNow":row.spec["storageMode"]=="HybridBackup" && row.spec["advanced"]["backupEnabled"]!=false}));
+                    }
+                }
+                Ok(Response::new(ApplyChangeResponse {
+                    committed: outcome
+                        .committed
+                        .iter()
+                        .map(proto_conv::stored_to_proto)
+                        .collect(),
+                    warnings: Some(proto_conv::issues_to_proto(&outcome.warnings)),
+                }))
+            }
             Err(ApplyError::Invalid(issues)) => {
                 let report = proto_conv::issues_to_proto(&issues);
                 let first = issues
                     .first()
-                    .map(|i| i.message.clone())
+                    .map(|i| format!("{}: {}", i.code, i.message))
                     .unwrap_or_else(|| "invalid".into());
                 let _ = report;
                 Err(Status::failed_precondition(first))
@@ -355,5 +408,40 @@ pub fn operation_to_proto(op: &fd_journal::Operation) -> pb::Operation {
         started_at: super::events::timestamp(&op.started_at),
         finished_at: op.finished_at.as_deref().and_then(super::events::timestamp),
         error: op.error.clone().unwrap_or_default(),
+    }
+}
+
+fn importance(v: &serde_json::Value) -> u8 {
+    match v.as_str() {
+        Some("Critical") => 3,
+        Some("Important") => 2,
+        Some("Rebuildable") => 1,
+        _ => 0,
+    }
+}
+fn overrides_lowered(old: &serde_json::Value, new: &serde_json::Value) -> bool {
+    old["storageMode"] == "HybridBackup"
+        && new["storageMode"] == "HybridBackup"
+        && old["advanced"]["subfolderImportance"]
+            .as_object()
+            .is_some_and(|rows| {
+                rows.iter().any(|(path, previous)| {
+                    let next = new["advanced"]["subfolderImportance"]
+                        .get(path)
+                        .unwrap_or(&new["dataImportance"]);
+                    importance(next) < importance(previous)
+                })
+            })
+}
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn reducing_or_removing_a_stricter_subfolder_override_needs_confirmation() {
+        let old = json!({"storageMode":"HybridBackup","dataImportance":"Important","advanced":{"subfolderImportance":{"app":"Critical"}}});
+        let new = json!({"storageMode":"HybridBackup","dataImportance":"Important","advanced":{"subfolderImportance":{}}});
+        assert!(overrides_lowered(&old, &new));
+        assert!(!overrides_lowered(&new, &old));
     }
 }

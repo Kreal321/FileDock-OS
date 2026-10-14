@@ -57,16 +57,21 @@ export function statusPresentation(
   rawState: string,
   freshness: 'current' | 'cached' | 'unavailable' = 'current',
 ) {
-  const tone: Tone = ['Healthy', 'Succeeded', 'Enabled', 'Active'].includes(rawState)
+  const tone: Tone = ['Healthy', 'Succeeded', 'Enabled', 'Active', 'Protected'].includes(rawState)
     ? 'success'
-    : ['Failed', 'Unreachable', 'Incompatible', 'Error'].includes(rawState)
+    : ['Failed', 'Unreachable', 'Incompatible', 'Error', 'Critical'].includes(rawState)
       ? 'danger'
-      : ['Degraded', 'Starting', 'Pending', 'Running'].includes(rawState)
+      : ['Degraded', 'Starting', 'Pending', 'Running', 'Warning', 'AtRisk'].includes(rawState)
         ? 'warning'
         : 'neutral';
   return {
     rawState,
-    label: rawState || 'Unknown',
+    label:
+      rawState === 'AtRisk'
+        ? 'At Risk'
+        : rawState === 'NotRequired'
+          ? 'Not Required'
+          : rawState || 'Unknown',
     tone: freshness === 'current' ? tone : ('neutral' as Tone),
     freshness,
   };

@@ -3,6 +3,7 @@
 pub mod apply;
 pub mod db;
 pub mod resources;
+pub mod validate;
 
 use std::fmt;
 

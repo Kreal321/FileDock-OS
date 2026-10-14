@@ -185,6 +185,7 @@ pub async fn serve(
         tokio::spawn(crate::extension_runtime::supervise(app.clone()));
     }
     tokio::spawn(crate::state_runtime::run(app.clone()));
+    tokio::spawn(crate::notification_runtime::run(app.clone()));
     let startup_app = app.clone();
     tokio::spawn(async move {
         for operation in startup_app.journal.unfinished().unwrap_or_default() {

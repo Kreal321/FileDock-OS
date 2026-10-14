@@ -7,7 +7,17 @@ vi.mock('../api/useLiveCoreStatus.ts', () => ({
 test('shell uses actual account and native current links; disclosure restores focus', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: '1', username: 'kyson' }))),
+    vi
+      .fn()
+      .mockImplementation((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url.includes('/alerts') ? { items: [] } : { id: '1', username: 'kyson' },
+            ),
+          ),
+        ),
+      ),
   );
   render(
     <QueryClientProvider client={new QueryClient()}>

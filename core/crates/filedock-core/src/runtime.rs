@@ -529,6 +529,9 @@ pub async fn run(app: Arc<App>) {
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let tmp = path.with_extension("tmp");
     let mut file = std::fs::OpenOptions::new()
         .create(true)

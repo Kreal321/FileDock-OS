@@ -2,6 +2,15 @@ import type { NavigationDestination } from '../api/view-models.ts';
 export type Route = { id: string; operationId?: string; unavailable?: boolean };
 export const destinations: NavigationDestination[] = [
   {
+    id: 'folders',
+    hashRoute: '#/folders',
+    label: 'Managed Folders',
+    icon: 'folder',
+    group: 'main',
+    availability: 'implemented',
+    requiredView: 'FoldersPage',
+  },
+  {
     id: 'dashboard',
     hashRoute: '#/dashboard',
     label: 'Dashboard',
@@ -40,6 +49,15 @@ export const destinations: NavigationDestination[] = [
       requiredView: 'StateProtectionPage',
     },
     { id: 'locations', label: 'Owned locations', icon: 'settings', requiredView: 'LocationsPage' },
+    { id: 'logs', label: 'Logs', icon: 'operations', requiredView: 'LogsPage' },
+    { id: 'activity', label: 'Activity', icon: 'operations', requiredView: 'ActivityPage' },
+    { id: 'alerts', label: 'Alerts', icon: 'warning', requiredView: 'AlertsPage' },
+    {
+      id: 'notification-channels',
+      label: 'Notifications',
+      icon: 'network',
+      requiredView: 'NotificationChannelsPage',
+    },
     { id: 'audit', label: 'Audit', icon: 'audit', requiredView: 'AuditPage' },
   ].map((d) => ({
     ...d,

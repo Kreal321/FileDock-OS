@@ -49,18 +49,19 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
         var headers = Metadata(actor, requestId, true);
         var reference = new ResourceRef { Kind = ResourceKind.Settings, Id = "default" };
         ulong generation = 0;
+        var spec = new Google.Protobuf.WellKnownTypes.Struct();
         try
         {
             var existing = await Control.GetResourceAsync(reference, headers: Metadata(actor, requestId, false), cancellationToken: cancellationToken);
             generation = existing.Generation;
+            spec = existing.Spec.Clone();
         }
         catch (RpcException)
         {
             generation = 0;
         }
 
-        var spec = Google.Protobuf.WellKnownTypes.Struct.Parser.ParseJson(
-            System.Text.Json.JsonSerializer.Serialize(new { applianceName }));
+        spec.Fields["applianceName"] = Google.Protobuf.WellKnownTypes.Value.ForString(applianceName);
         await Control.ApplyChangeAsync(
             new ApplyChangeRequest
             {

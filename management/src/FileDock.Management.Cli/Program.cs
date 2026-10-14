@@ -33,6 +33,9 @@ resetNetwork.SetAction(async parse => await NetworkCommand.RunAsync(parse.GetVal
 network.Add(resetNetwork);
 root.Add(network);
 
+var diagnosticsOutput = new Argument<string>("output");
+var diagnostics = new Command("diagnostics", "Save a redacted diagnostic tar.zst to a new file") { diagnosticsOutput };
+diagnostics.SetAction(async parse => await DiagnosticsCommand.RunAsync(parse.GetValue(socket)!, parse.GetValue(diagnosticsOutput)!)); root.Add(diagnostics);
 var state = new Command("state", "Configuration recovery and snapshots");
 var stateStatus = new Command("status", "Inspect configuration recovery coverage");
 stateStatus.SetAction(async parse => await AdminSocketClient.PostAsync(parse.GetValue(socket)!, "/admin/state-protection", null, true)); state.Add(stateStatus);

@@ -3,6 +3,7 @@
 mod api;
 mod config;
 mod extension_runtime;
+mod notification_runtime;
 mod proto_conv;
 mod restore_runtime;
 mod runtime;
@@ -103,9 +104,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         subsystems.upsert_from_manifest(&manifest)?;
     }
 
-    let controllers: Vec<Arc<dyn fd_reconcile::Controller>> = [
+    let mut controllers: Vec<Arc<dyn fd_reconcile::Controller>> = [
         fd_state::ResourceKind::Pool,
-        fd_state::ResourceKind::ManagedFolder,
         fd_state::ResourceKind::Export,
         fd_state::ResourceKind::ContainerApp,
         fd_state::ResourceKind::Extension,
@@ -119,7 +119,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }) as Arc<dyn fd_reconcile::Controller>
     })
     .collect();
+    controllers.push(Arc::new(
+        fd_reconcile::controllers::folder::FolderController {
+            store: store.clone(),
+            events: events.clone(),
+            pools_root: config.pools_root.clone(),
+            units: "/etc/systemd/system".into(),
+            metadata: config.core_db.parent().unwrap().join("folder-mounts"),
+            enabled: cfg!(target_os = "linux")
+                && std::env::var("FD_RUNTIME_ENABLED").as_deref() != Ok("0"),
+            gate: tokio::sync::Mutex::new(()),
+        },
+    ));
     let reconciler = Arc::new(Reconciler::new(store.clone(), controllers));
+    let folder_poll = reconciler.clone();
+    let folder_store = store.clone();
+    tokio::spawn(async move {
+        loop {
+            let mut cursor = None;
+            loop {
+                match folder_store.list(
+                    fd_state::ResourceKind::ManagedFolder,
+                    cursor.as_deref(),
+                    500,
+                ) {
+                    Ok(rows) if !rows.is_empty() => {
+                        cursor = rows.last().map(|r| r.resource.id.clone());
+                        folder_poll
+                            .queue()
+                            .enqueue_all(rows.into_iter().map(|r| r.resource))
+                            .await;
+                    }
+                    _ => break,
+                }
+            }
+            if let Ok(rows) = folder_store.deleted(fd_state::ResourceKind::ManagedFolder) {
+                folder_poll
+                    .queue()
+                    .enqueue_all(rows.into_iter().map(|r| r.resource))
+                    .await;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
     let mut commits = store.subscribe();
     let rec = reconciler.clone();
     let commit_events = events.clone();

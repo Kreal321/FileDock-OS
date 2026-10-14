@@ -10,9 +10,7 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::db::{self, Db, DbError};
-use crate::resources::{
-    ConnectorRoutesSpec, ExportProtocol, ResourceSpec, StorageMode, paths_overlap,
-};
+use crate::resources::{ConnectorRoutesSpec, ExportProtocol, ResourceSpec, paths_overlap};
 use crate::{ResourceKind, ResourceRef, SINGLETON_ID, Severity, ValidationIssue, new_id};
 
 /// Who requested the change. Reconcilers use this to avoid echoing their own writes.
@@ -125,6 +123,9 @@ impl ValidatorRegistry {
 /// Read view of desired state as it will look after the batch is applied.
 pub struct StateView<'a> {
     rows: BTreeMap<(ResourceKind, String), StoredResource>,
+    pub enforce_capabilities: bool,
+    pub capabilities: std::collections::BTreeSet<String>,
+    pub original_folders: BTreeMap<String, StoredResource>,
     _db: std::marker::PhantomData<&'a ()>,
 }
 
@@ -137,7 +138,48 @@ impl StateView<'_> {
         let rows = stmt
             .query_map([], row_from_sql)?
             .collect::<Result<Vec<_>, _>>()?;
+        let original_folders = rows
+            .iter()
+            .filter(|r| r.resource.kind == ResourceKind::ManagedFolder)
+            .map(|r| (r.resource.id.clone(), r.clone()))
+            .collect();
+        let mut capabilities = std::collections::BTreeSet::from(["storage.local".to_owned()]);
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='subsystem')",
+            [],
+            |r| r.get(0),
+        )?;
+        if exists {
+            let mut q = conn.prepare(
+                "SELECT id,class,manifest FROM subsystem WHERE enabled=1 AND state='Running'",
+            )?;
+            for entry in q.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })? {
+                let (id, class, manifest) = entry?;
+                let manifest: Value = serde_json::from_str(&manifest)?;
+                let caps = if class == "Extension" {
+                    db::get_setting(conn, &format!("subsystem.registered_capabilities.{id}"))?
+                        .unwrap_or(serde_json::json!([]))
+                } else {
+                    manifest["capabilities"].clone()
+                };
+                capabilities.extend(
+                    caps.as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|v| v.as_str().map(str::to_owned)),
+                );
+            }
+        }
         Ok(Self {
+            enforce_capabilities: true,
+            capabilities,
+            original_folders,
             rows: rows
                 .into_iter()
                 .map(|row| ((row.resource.kind, row.resource.id.clone()), row))
@@ -257,6 +299,7 @@ impl StateStore {
             let tx = conn.transaction()?;
             let prepared = prepare_changes(changes)?;
             let mut view = StateView::from_connection(&tx)?;
+            view.enforce_capabilities = !matches!(origin, ChangeOrigin::Restore);
             let now = db::now_text();
             let seq: i64 =
                 tx.query_row("SELECT change_seq FROM state_meta WHERE id = 1", [], |r| {
@@ -331,6 +374,15 @@ impl StateStore {
         })
     }
 
+    pub fn get_including_deleted(
+        &self,
+        resource: &ResourceRef,
+    ) -> Result<Option<StoredResource>, DbError> {
+        self.db.with(|c|Ok(c.query_row("SELECT kind,id,generation,spec,status,deleted,change_seq,created_at,updated_at FROM resource WHERE kind=?1 AND id=?2",params![resource.kind.as_str(),resource.id],row_from_sql).optional()?))
+    }
+    pub fn deleted(&self, kind: ResourceKind) -> Result<Vec<StoredResource>, DbError> {
+        self.db.with(|c|{let mut q=c.prepare("SELECT kind,id,generation,spec,status,deleted,change_seq,created_at,updated_at FROM resource WHERE kind=?1 AND deleted=1")?;Ok(q.query_map([kind.as_str()],row_from_sql)?.collect::<Result<Vec<_>,_>>()?)})
+    }
     /// Observed status is written only by reconcilers, never by ApplyChange.
     pub fn write_status(&self, resource: &ResourceRef, status: &Value) -> Result<(), DbError> {
         self.db.with(|conn| {
@@ -387,9 +439,12 @@ fn prepare_changes(changes: &[Change]) -> Result<Vec<Change>, ApplyError> {
         if let Change::Upsert {
             resource,
             expected_generation,
-            ..
+            spec,
         } = &mut change
         {
+            if resource.kind == ResourceKind::ManagedFolder {
+                *spec = crate::validate::folder::normalize(spec.clone());
+            }
             if resource.kind.is_singleton() {
                 if resource.id.is_empty() {
                     resource.id = SINGLETON_ID.to_owned();
@@ -565,6 +620,7 @@ impl Validator for BuiltinValidators {
             &mut issues,
         );
         folder_rules(view, &mut issues);
+        issues.extend(crate::validate::folder::validate(view, _changes));
         for extension in view.list(ResourceKind::Extension) {
             if let Ok(ResourceSpec::Extension(spec)) = extension.parsed_spec() {
                 for folder in spec.data_bindings.values() {
@@ -640,7 +696,10 @@ fn folder_rules(view: &StateView<'_>, issues: &mut Vec<ValidationIssue>) {
                         ValidationIssue::error(
                             "reference.overlap",
                             "spec.reference.relativePath",
-                            "local reference paths overlap",
+                            format!(
+                                "Local reference overlaps folder {} ({})",
+                                other_spec.name, other_rel
+                            ),
                         )
                         .with_conflicting(other.resource.clone()),
                     );
@@ -659,34 +718,41 @@ fn folder_rules(view: &StateView<'_>, issues: &mut Vec<ValidationIssue>) {
                     ValidationIssue::error(
                         "folder.path_overlap",
                         "spec.filedockPath",
-                        "FileDock paths overlap",
+                        format!("FileDock path overlaps folder {} ({}). Subfolders use their parent’s storage mode; Hybrid Backup permits importance overrides.",other_spec.name,other_spec.filedock_path),
                     )
                     .with_conflicting(other.resource.clone()),
                 );
             }
         }
-        if spec.storage_mode != StorageMode::LocalOnly {
-            issues.push(ValidationIssue::warning(
-                "folder.mode_unimplemented",
-                "spec.storageMode",
-                "this storage mode is accepted once its capability providers exist",
-            ));
-        }
     }
 }
 
 fn export_rules(view: &StateView<'_>, issues: &mut Vec<ValidationIssue>) {
+    let mut owners = HashMap::new();
     for row in view.list(ResourceKind::Export) {
         let Ok(ResourceSpec::Export(spec)) = row.parsed_spec() else {
             continue;
         };
+        if let Some(other) = owners.insert(
+            format!("{}:{:?}", spec.folder_id, spec.protocol),
+            row.resource.clone(),
+        ) {
+            issues.push(
+                ValidationIssue::error(
+                    "export.duplicate",
+                    "folderId",
+                    "Only one export of each protocol is allowed per folder",
+                )
+                .with_conflicting(other),
+            );
+        }
         let folder_ref = ResourceRef::new(ResourceKind::ManagedFolder, spec.folder_id.clone());
         let Some(folder) = view.get(&folder_ref) else {
             issues.push(
                 ValidationIssue::error(
                     "export.folder_missing",
                     "spec.folderId",
-                    "the folder does not exist",
+                    view.original_folders.get(&spec.folder_id).map(|f|format!("Folder {} is still used by export {}. Remove the export before deleting its folder.",f.spec["name"],row.resource.id)).unwrap_or_else(||"the folder does not exist".into()),
                 )
                 .with_conflicting(folder_ref),
             );

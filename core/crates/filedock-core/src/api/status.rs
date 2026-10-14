@@ -89,6 +89,8 @@ pub async fn get_system_status(
             .ok()
             .and_then(|v| v["warning"].as_bool())
             .unwrap_or(true),
-        notification_channel_missing: true,
+        notification_channel_missing: crate::notification_runtime::channels(app)
+            .map(|c| c.is_empty())
+            .unwrap_or(true),
     }))
 }

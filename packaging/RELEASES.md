@@ -62,3 +62,10 @@ Offline installation disables repository sources and cached package indexes for 
 The installer prints the HTTP UI address on port 8021 and one-time setup code. The UI is at `http://VM_IP:8021/` and the API is at `http://VM_IP:8021/api/v1`. Finish setup, download and save the recovery-key TXT file, sign out and sign back in, then confirm all eight health cards are Healthy. Reboot and repeat the health check. See `specs/001-core-os-foundation/phase3-testing.md` for the full independent test.
 
 A successful release build proves the build completed; it does not certify fresh-VM installation or subsystem health. The workflow has no VM acceptance stage.
+
+## Extension test fixtures
+
+Bundles include `test-fixtures/phase8/` with native, systemd, broken-upgrade and notification
+recording `.fdext` fixtures. They are not automatically installed. Docker image fixtures require
+the separate fixture build on a Docker-enabled Debian host. See the Phase 9–10 test guide under
+`specs/001-core-os-foundation/phase9-10-testing.md`.

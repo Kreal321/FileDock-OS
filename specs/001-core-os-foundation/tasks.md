@@ -605,22 +605,29 @@ the filters, download a diagnostic bundle, and confirm it holds no secrets. Rais
 condition and confirm the alert appears in the UI and at a test channel (quickstart "Alerts and
 notifications").
 
-- [ ] T130 [P] [US7] Implement log queries over journald (`journalctl --output=json`, cursor paging) filtered by source, severity, time, and text, in `core/crates/fd-observe/src/logs.rs`. Add QueryLogs to `core/crates/filedock-core/src/api/observability.rs` (FR-057)
-- [ ] T131 [P] [US7] Implement the diagnostic bundle (a `tar.zst` of service status, subsystem health, recent journal entries, and redacted configuration) and CreateDiagnosticBundle in `core/crates/fd-observe/src/bundle.rs` (FR-060)
-- [ ] T132 [US7] Implement `notify.channel` fan-out in `core/crates/fd-alerts/src/notify.rs` (FR-097):
+- [X] T130 [P] [US7] Implement log queries over journald (`journalctl --output=json`, cursor paging) filtered by source, severity, time, and text, in `core/crates/fd-observe/src/logs.rs`. Add QueryLogs to `core/crates/filedock-core/src/api/observability.rs` (FR-057)
+- [X] T131 [P] [US7] Implement the diagnostic bundle (a `tar.zst` of service status, subsystem health, recent journal entries, and redacted configuration) and CreateDiagnosticBundle in `core/crates/fd-observe/src/bundle.rs` (FR-060)
+- [X] T132 [US7] Implement `notify.channel` fan-out in `core/crates/fd-alerts/src/notify.rs` (FR-097):
   - every alert transition goes to every channel at or above its minimum severity;
   - deliveries are idempotent and retried with backoff for up to 24 hours;
   - failures are logged and never affect the alert;
   - a notice is shown when no channel exists.
 
   Add ConfigureNotificationChannel to `core/crates/filedock-core/src/api/extensions.rs`.
-- [ ] T133 [US7] Implement `/logs`, `/audit`, `/diagnostics/bundle`, `/alerts`, `/alerts/{id}/ack`, and `/notification-channels` (including test), plus `filedockctl diagnostics`, in `management/src/FileDock.Management.Api/Endpoints/ObservabilityEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/DiagnosticsCommand.cs`
-- [ ] T134 [P] [US7] Build the logs, activity timeline, audit, alerts (with a persistent critical banner), and notification-channel pages in `web/src/features/logs/`, `web/src/features/activity/`, `web/src/features/audit/`, and `web/src/features/alerts/`
-- [ ] T135 [P] [US7] Create the test notification extension `tests/fixtures/notify-test/`, which records every delivery
-- [ ] T136 [US7] Write API tests in `management/tests/FileDock.Management.ApiTests/ObservabilityTests.cs`: log and audit filters, newest first; bundle redaction with canary secrets; and audit kept when the log cap is reached (FR-058)
-- [ ] T137 [US7] Write the acceptance test `tests/e2e/test_alerts.py`: the no-channel notice, and critical conditions shown in the UI and delivered to `notify-test` within 1 minute (SC-020)
+- [X] T133 [US7] Implement `/logs`, `/audit`, `/diagnostics/bundle`, `/alerts`, `/alerts/{id}/ack`, and `/notification-channels` (including test), plus `filedockctl diagnostics`, in `management/src/FileDock.Management.Api/Endpoints/ObservabilityEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/DiagnosticsCommand.cs`
+- [X] T134 [P] [US7] Build the logs, activity timeline, audit, alerts (with a persistent critical banner), and notification-channel pages in `web/src/features/logs/`, `web/src/features/activity/`, `web/src/features/audit/`, and `web/src/features/alerts/`
+- [X] T135 [P] [US7] Create the test notification extension `tests/fixtures/notify-test/`, which records every delivery
+- [X] T136 [US7] Write API tests in `management/tests/FileDock.Management.ApiTests/ObservabilityTests.cs`: log and audit filters, newest first; bundle redaction with canary secrets; and audit kept when the log cap is reached (FR-058)
+  Coverage is shared with `fd-observe/tests/observability.rs`, the real-service
+  `tests/integration/phase9_10_smoke.py` (including journal-process fixtures on macOS), and
+  `tests/e2e/test_alerts.py` for actual Linux journal retention. VM retention is not marked passed.
+- [X] T137 [US7] Write the acceptance test `tests/e2e/test_alerts.py`: the no-channel notice, and critical conditions shown in the UI and delivered to `notify-test` within 1 minute (SC-020)
 
-**Checkpoint**: Operators can see what happened and are alerted.
+**Checkpoint**: Phase 9 implementation and local API/notification validation are complete. Journal
+queries, redacted diagnostic exports, audit filters, activity/alerts and the critical banner,
+durable per-channel notification retries, the recorder fixture and acceptance tests are present.
+Actual Linux journald retention/paging and end-to-end VM notification acceptance remain pending;
+see [Phases 9–10 testing](phase9-10-testing.md). No PVE deployment was performed in this turn.
 
 ---
 
@@ -633,7 +640,7 @@ Importance only for Hybrid Backup, and overlap and nesting rules.
 the mode, that importance is asked only for Hybrid Backup, and that the overlap and nesting rules
 refuse bad paths. Local Only end-to-end needs a pool (the System Pool from US9, or a data pool).
 
-- [ ] T138 [US8] Implement ManagedFolder validation in `core/crates/fd-state/src/validate/folder.rs` (FR-065 to FR-077, FR-102):
+- [X] T138 [US8] Implement ManagedFolder validation in `core/crates/fd-state/src/validate/folder.rs` (FR-065 to FR-077, FR-102):
   - name and path uniqueness, and the FileDock path suggestion;
   - no nested managed folders;
   - no overlapping local or cloud reference paths (Cloud Mount paths may overlap only each other);
@@ -641,18 +648,24 @@ refuse bad paths. Local Only end-to-end needs a pool (the System Pool from US9, 
   - `mode.capability_missing`;
   - importance required for Hybrid Backup and `null` otherwise, with defaults by importance and mode-specific Advanced settings;
   - the System Pool warning.
-- [ ] T139 [US8] Implement the folder controller in `core/crates/fd-reconcile/src/controllers/folder.rs`: the bind-mount unit from the pool path to `/storage/<name>`, and Unavailable when its pool fails. It also derives the protection state (FR-079):
+- [X] T139 [US8] Implement the folder controller in `core/crates/fd-reconcile/src/controllers/folder.rs`: the bind-mount unit from the pool path to `/storage/<name>`, and Unavailable when its pool fails. It also derives the protection state (FR-079):
   - **Protected**: Hybrid Backup within its backup target, or Cloud Mount with no overdue uploads;
   - **At Risk**: backups or uploads behind their target;
   - **Unprotected**: Local Only, and the local-only portion of Tiered Storage;
   - **Not Required**: Hybrid Backup data that is Rebuildable without backup, or Temporary.
 
   Backup and upload status come, through its capability, from the feature that provides the mode (features 002 to 004).
-- [ ] T140 [US8] Implement `POST /folders/validate`, `GET`, `POST`, and `PATCH /folders`, and `DELETE /folders/{id}`, in `management/src/FileDock.Management.Api/Endpoints/FolderEndpoints.cs`. Delete is refused while exports, apps, or extension bindings depend on the folder. Lowering an importance needs a confirmation and is audited
-- [ ] T141 [P] [US8] Build the six-section Create Managed Folder flow (Identity, Storage Mode, Source/Backend, Data Importance, Access, Advanced) and the folder list in `web/src/features/folders/`. The list shows name, path, storage mode, access, and protection state on every listing, plus data importance for Hybrid Backup. Unprotected and At Risk are visually distinct, and each explains what would be lost (FR-079, Principle V)
-- [ ] T142 [US8] Write validation tests in `core/crates/fd-state/tests/folder_validation.rs`: every overlap and nesting case, importance only in Hybrid Backup, and per-subfolder importance overrides only in Hybrid Backup (SC-012, SC-014)
+- [X] T140 [US8] Implement `POST /folders/validate`, `GET`, `POST`, and `PATCH /folders`, and `DELETE /folders/{id}`, in `management/src/FileDock.Management.Api/Endpoints/FolderEndpoints.cs`. Delete is refused while exports, apps, or extension bindings depend on the folder. Lowering an importance needs a confirmation and is audited
+- [X] T141 [P] [US8] Build the six-section Create Managed Folder flow (Identity, Storage Mode, Source/Backend, Data Importance, Access, Advanced) and the folder list in `web/src/features/folders/`. The list shows name, path, storage mode, access, and protection state on every listing, plus data importance for Hybrid Backup. Unprotected and At Risk are visually distinct, and each explains what would be lost (FR-079, Principle V)
+- [X] T142 [US8] Write validation tests in `core/crates/fd-state/tests/folder_validation.rs`: every overlap and nesting case, importance only in Hybrid Backup, and per-subfolder importance overrides only in Hybrid Backup (SC-012, SC-014)
 
-**Checkpoint**: Every storage feature can create folders through one flow.
+**Checkpoint**: Phase 10 implementation is complete: shared folder validation/defaults, an independent
+systemd Local Only mount controller, guarded CRUD/exports, the six-section UI and validation tests.
+Local API smoke covers create/edit, generation conflicts, immutable references, confirmation and
+typed-delete guards. Local Only I/O requires a mounted pool; pool provisioning is Phase 11. Other
+mode providers and their data-plane behavior belong to features 002–004 and remain disabled while
+required capabilities are missing. Linux mount/failure and visual VM acceptance remain pending.
+See [Phases 9–10 testing](phase9-10-testing.md).
 
 ---
 

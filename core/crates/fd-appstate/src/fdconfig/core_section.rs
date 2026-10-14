@@ -39,6 +39,7 @@ pub fn serialize(db: &Db, appliance_id: &str, management: Value) -> Result<Value
  }
  }
  for(key,field)in[("owned_locations","ownedLocations"),("notification_channels","notificationChannels"),("capability_defaults","capabilityDefaults"),("tier_metadata","tierMetadata")]{if let Some(value)=db::get_setting(&tx,key)?{core[field]=value;}}
+ core["notificationChannels"]=settings.get("notificationChannels").cloned().unwrap_or(json!([]));
  let name=settings["applianceName"].as_str().unwrap_or("filedock").to_owned();
  let doc=json!({"schema":"fdconfig/1","appliance":{"id":appliance_id,"name":name,"settings":settings},"core":core,"management":management});tx.commit().map_err(fd_state::DbError::from)?;Ok(doc)
 })

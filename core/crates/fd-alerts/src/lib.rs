@@ -22,3 +22,5 @@ CREATE TABLE alert (
 
 CREATE INDEX alert_by_state ON alert (state, last_seen_at DESC);
 ";
+
+pub mod notify;

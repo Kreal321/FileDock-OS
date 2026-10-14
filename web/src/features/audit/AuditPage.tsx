@@ -10,7 +10,14 @@ import { DataTable } from '../../components/DataTable.tsx';
 import { StateView } from '../../components/StateView.tsx';
 import { StatusBadge } from '../../components/StatusBadge.tsx';
 export function AuditPage({ connected = true }: { connected?: boolean }) {
-  const [filters, setFilters] = useState({ actor: '', action: '' });
+  const [filters, setFilters] = useState({
+    actor: '',
+    action: '',
+    target: '',
+    result: '',
+    since: '',
+    until: '',
+  });
   const [tokens, setTokens] = useState<string[]>([]);
   const pageToken = tokens.at(-1);
   const params = new URLSearchParams({
@@ -30,6 +37,10 @@ export function AuditPage({ connected = true }: { connected?: boolean }) {
     setFilters({
       actor: String(form.get('actor') ?? ''),
       action: String(form.get('action') ?? ''),
+      target: String(form.get('target') ?? ''),
+      result: String(form.get('result') ?? ''),
+      since: String(form.get('since') ?? ''),
+      until: String(form.get('until') ?? ''),
     });
     setTokens([]);
   }
@@ -43,6 +54,10 @@ export function AuditPage({ connected = true }: { connected?: boolean }) {
         <form className="form-grid" onSubmit={filter}>
           <Field label="Actor" name="actor" />
           <Field label="Action" name="action" />
+          <Field label="Target" name="target" />
+          <Field label="Result" name="result" />
+          <Field label="Since (ISO timestamp)" name="since" />
+          <Field label="Until (ISO timestamp)" name="until" />
           <Button type="submit" variant="secondary">
             Apply filters
           </Button>

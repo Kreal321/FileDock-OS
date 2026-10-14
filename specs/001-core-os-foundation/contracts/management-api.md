@@ -199,3 +199,38 @@ administrator exists. It is bound either to the setup code, for a remote source 
 file, or to a successfully verified recovery key, for a local copy (FR-106, FR-111). When a restore from a local copy
 completes, the takeovers recorded in the snapshot run automatically, with the exceptions in
 FR-108.
+
+## Phase 9–10 implementation details (2026-10-14)
+
+- `GET /logs?source=UNIT&minSeverity=Info&since=ISO&until=ISO&text=...&pageSize=100&pageToken=CURSOR`
+  returns `{items:[{at,source,severity,message}],nextPageToken}`. Sources may repeat or be comma separated;
+  journal cursors page newest first. Journal unavailability is reported rather than replaced by empty data.
+- `GET /activity?pageSize=50&pageToken=SEQ` returns newest-first Core events with sequence, timestamp,
+  type, subject and redacted payload. `GET /audit` additionally accepts `target`, `result`, `since`, `until`.
+- `GET /diagnostics/bundle` requires F scope and returns `application/zstd` as an attachment. Downloads
+  are audited. Root console `POST /admin/diagnostics` serves `filedockctl diagnostics OUTPUT`.
+- `GET /alerts` accepts `state` (repeated/comma separated), `minSeverity`, and paging. Each item includes
+  timestamps, source, kind, message, state and acknowledgedBy. `POST /alerts/{id}/ack` requires F.
+- Notification-channel writes use `{name,subsystemId,minSeverity,config,secretRefs}`. PATCH sends the
+  complete channel definition. Credentials must use granted vault references; sensitive configuration
+  fields are refused. Delete removes future deliveries, not UI alerts. Test returns `{delivered:true}`
+  only after the extension reports delivery. Configuration is authoritative Settings state and appears
+  in configuration snapshots; delivery attempts are disposable, separately retained for 24 hours.
+- `GET /folders/options` returns modes with enabled/missing-capability information, configured pools
+  and connections, and access choices. Pool provisioning itself remains the Storage story.
+- Folder responses contain `id`, `generation`, `identity`, `storageMode`, `reference`, `dataImportance`,
+  `access`, `advanced`, observed `status`, `protectionState`, and a plain-language `exposure`.
+  Status includes `observedGeneration`; stale observations are not presented as current protection.
+- Folder validation returns `{valid,issues:[{severity,code,field,message,conflicting}]}`. Pass `?id=UUID`
+  when validating an edit. The name-derived path and mode/importance defaults are normalized by Core.
+- PATCH sends the complete six-section definition and requires `If-Match: GENERATION`; missing
+  preconditions return 428, stale generations 409. Explicit loss acknowledgements are
+  `confirmImportanceReduction` (also covering stricter subfolder override removal) and
+  `confirmModeChange` when leaving Hybrid Backup. DELETE also requires If-Match and, for Critical
+  data, `?typedName=EXACT_NAME`. Core enforces these confirmations over gRPC as well.
+- Hybrid Backup Advanced fields are `backupEnabled`, `backupIntervalSeconds`, `retention:{keepLast}`,
+  and `subfolderImportance:{relativePath:importance}`. Cloud Mount uses `cache` and `consistency`;
+  Tiered Storage uses `tiering`. Provider-specific execution is delivered by features 002–004.
+- Selecting an export protocol creates its declarative Export in the same Core transaction. Existing
+  export rules and their application are managed in the Storage/sharing phase. Dependent exports,
+  applications and extension bindings prevent folder deletion; deletion never erases underlying data.

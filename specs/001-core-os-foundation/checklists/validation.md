@@ -36,3 +36,13 @@ build and 31 .NET tests passed; frontend 32 tests, lint and build passed. Contra
 22 with two buf skips; 16 VM tests collected. See [Phase 8 guide](../phase8-testing.md) for exact
 local evidence and the pending Linux runtime/isolation/20-kill/rollback acceptance gate. The PVE
 installation was not updated or changed during Phase 8 implementation.
+
+### Phases 9–10 local implementation validation (2026-10-14)
+
+Operations, notification channels and managed-folder flow are implemented. Local results are
+recorded in [phase9-10-testing.md](../phase9-10-testing.md): 66 focused Rust tests, Clippy,
+32 .NET tests, 35 frontend tests, 22 contracts (two buf checks skipped), production frontend build,
+and native Phases 9–10, 8 and 6–7 smokes passed. Eighteen VM tests collect. Actual Linux mount,
+journal/notification acceptance and browser visual checks remain pending. Pool provisioning remains
+Phase 11, and other storage-mode data planes remain features 002–004. Existing Phase 8 PVE evidence
+and its pending runtime acceptance are unchanged.

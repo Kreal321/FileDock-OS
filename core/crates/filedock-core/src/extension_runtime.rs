@@ -87,6 +87,12 @@ fn refers(value: &Value, id: &str) -> bool {
     }
 }
 pub fn removable(app: &App, id: &str) -> Result<(), Status> {
+    if crate::notification_runtime::channels(app)?
+        .iter()
+        .any(|c| c.subsystem_id == id)
+    {
+        return Err(error("extension.notification_channel_in_use"));
+    }
     let record = app.subsystems.get(id).map_err(error)?;
     if let Some(record) = &record {
         if record.class != "Extension" {

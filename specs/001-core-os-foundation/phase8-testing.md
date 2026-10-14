@@ -55,7 +55,7 @@ release cannot contain these uncommitted source changes.
 
 1. Sign in and open **Extensions**. Existing built-ins are listed and cannot be removed.
 2. Upload `sample-native.fdext`. Inspect its identity/version, unsigned state and requested
-   `core.events.read` permission. Installation must be refused without the exact permission set
+   `core.events.read` and `core.alerts.write` permissions. Installation must be refused without the exact permission set
    or without the unsigned acknowledgement. Approve and install; follow its operation link until
    **Succeeded**. Repeat for `sample-systemd.fdext`.
 3. Select a `cache.generic` default when multiple sample providers exist. Cloud capabilities must
@@ -163,3 +163,9 @@ checks skipped because buf is unavailable; 16 VM tests collected. C launcher and
 passed syntax checks. Full Linux systemd/Docker execution, 20 kills, rollback and real managed-folder
 provider integration remain pending VM validation. No Phase 8 deployment or test changed the PVE
 installation during this implementation.
+
+## PVE smoke follow-up
+
+The [2026-10-14 PVE smoke report](phase8-pve-smoke-2026-10-14.md) records a fixed Management
+upload-inbox sandbox defect and passing API/package guard checks. Runtime, kill/rollback and
+package-recovery acceptance remain pending compiled fixtures and VM execution.

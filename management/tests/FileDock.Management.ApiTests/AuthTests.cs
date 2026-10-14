@@ -85,7 +85,8 @@ public sealed class AuthTests
         var (id, token) = await fixture.CreateToken("automation", "Full");
         fixture.UseToken(token);
         Assert.Equal(HttpStatusCode.OK, (await fixture.Client.GetAsync("/api/v1/system/status")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await fixture.Client.PostAsJsonAsync("/api/v1/folders", new { })).StatusCode);
+        // The implemented folder endpoint accepts Full scope, then rejects the malformed body.
+        Assert.Equal(HttpStatusCode.BadRequest, (await fixture.Client.PostAsJsonAsync("/api/v1/folders", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await fixture.Client.PostAsJsonAsync("/api/v1/tokens", new { name = "another", scope = "Full" })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await fixture.Client.GetAsync("/api/v1/admins")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await fixture.Client.PostAsJsonAsync("/api/v1/setup/recovery-key/confirm", new { keyId = "x" })).StatusCode);

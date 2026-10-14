@@ -1,0 +1,11 @@
+schemaVersion: 1
+id: notify-test
+name: Test notification recorder
+version: 1.0.0
+class: extension
+capabilities: [notify.channel]
+runtime: {type: native-process, executable: ./sample}
+health: {type: grpc, intervalSeconds: 5, startupGraceSeconds: 10}
+permissions: []
+data: [{name: data, mountPath: /data, description: Test notification delivery log, suggestedImportance: Rebuildable}]
+compatibility: {appliance: ">=0.1.0 <0.2.0", extensionProtocol: "1"}

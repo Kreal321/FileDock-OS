@@ -26,6 +26,7 @@ public static class AdminSocketEndpoints
             return await next(invocation);
         });
         admin.MapRecoveryConsole();
+        admin.MapPost("/diagnostics", async (FileDock.Management.Core.CoreClient core, AuditWriter audit, HttpContext context) => await ObservabilityEndpoints.Run(async () => { var data = await ObservabilityEndpoints.Bundle(core, FileDock.Management.Core.CoreClient.Metadata("Console", "diagnostics", true), context.RequestAborted); await audit.WriteAsync("Console", "root", "root", "diagnostics.exported", "appliance", "Succeeded"); return Results.File(data, "application/zstd", "filedock-diagnostics.tar.zst"); }));
         admin.MapPost("/reset-password", async (ConsolePassword body, AdminService admins, IAdminStore store, SessionService sessions, AuditWriter audit) =>
             await AdminEndpoints.Run(async () =>
             {

@@ -25,14 +25,19 @@ def install(api,inspection,bindings=None,ack=False):
 def subsystem(api,id):
     return next(s for s in api.get('/subsystems').raise_for_status().json()['subsystems'] if s['subsystemId']==id)
 
-def data_fixture(vm):
-    if vm.env.existing_host:pytest.skip('Synthetic pool/folder fixture is restricted to disposable libvirt VMs.')
-    folder=str(uuid.uuid4());pool=str(uuid.uuid4());path='/storage/fd-extension-test-'+folder[:8]
-    vm.sudo(f'mkdir -p {path}; mount -t tmpfs -o size=8m,mode=0750 tmpfs {path}')
-    document=[('Pool',pool,{'name':'extension-test-pool','kind':'Adopted','layers':[],'memberDisks':[{'serial':'fixture-only-not-a-device'}]}),('ManagedFolder',folder,{'name':'extension-test-data','filedockPath':path,'storageMode':'LocalOnly','reference':{'poolId':pool,'relativePath':'data'},'access':[],'advanced':{}})]
-    # Observed provider fixture, solely for sandbox tests; no production pool creation is certified.
-    script="import sqlite3,json,datetime\nc=sqlite3.connect('/var/lib/filedock-core/core.db')\nnow=datetime.datetime.now(datetime.timezone.utc).isoformat()\nfor kind,id,spec in json.loads("+repr(json.dumps(document))+"):\n c.execute(\"INSERT INTO resource(kind,id,generation,spec,status,deleted,change_seq,created_at,updated_at) VALUES(?,?,1,?,NULL,0,1,?,?)\",(kind,id,json.dumps(spec),now,now))\nc.commit()\n"
+def data_fixture(vm,api):
+    if vm.env.existing_host:pytest.skip('Synthetic pool fixture is restricted to disposable libvirt VMs.')
+    pool=str(uuid.uuid4());path='/storage/fd-extension-test-'+pool[:8];pool_path='/mnt/filedock/pools/'+pool
+    # A real independent tmpfs pool mount exercises the folder controller without provisioning a disk.
+    unit=vm.sudo('systemd-escape --path --suffix=mount '+shlex.quote(pool_path)).stdout.strip()
+    body='[Unit]\nDescription=FileDock disposable acceptance pool\n[Mount]\nWhat=tmpfs\nWhere='+pool_path+'\nType=tmpfs\nOptions=size=16m,mode=0750\n'
+    script="from pathlib import Path\nimport subprocess,json\nroot=Path("+repr(pool_path)+");root.mkdir(parents=True,exist_ok=True)\nPath('/etc/systemd/system/'+"+repr(unit)+").write_text("+repr(body)+")\nsubprocess.run(['systemctl','daemon-reload'],check=True)\nsubprocess.run(['systemctl','start',"+repr(unit)+"],check=True)\n(root/'.filedock-pool.json').write_text(json.dumps({'poolId':"+repr(pool)+"}))\n"
     vm.sudo("python3 - <<'FD_PY'\n"+script+'FD_PY')
+    document={'name':'extension-test-pool','kind':'Adopted','layers':[],'memberDisks':[{'serial':'fixture-only-not-a-device'}]}
+    script="import sqlite3,json,datetime\nc=sqlite3.connect('/var/lib/filedock-core/core.db')\nnow=datetime.datetime.now(datetime.timezone.utc).isoformat()\nc.execute(\"INSERT INTO resource(kind,id,generation,spec,status,deleted,change_seq,created_at,updated_at) VALUES('Pool',?,1,?,NULL,0,1,?,?)\",("+repr(pool)+","+repr(json.dumps(document))+",now,now))\nc.commit()\n"
+    vm.sudo("python3 - <<'FD_PY'\n"+script+'FD_PY')
+    folder=api.post('/folders',json={'identity':{'name':'Extension test data','fileDockPath':path},'storageMode':'LocalOnly','reference':{'poolId':pool,'relativePath':'/data'},'dataImportance':None,'access':[],'advanced':{}}).raise_for_status().json()['id']
+    wait(lambda:api.get('/folders/'+folder).raise_for_status().json().get('status',{}).get('state')=='Ready')
     return folder,pool,path
 
 def test_three_runtimes_bindings_and_package_copies(installed_vm):
@@ -44,7 +49,7 @@ def test_three_runtimes_bindings_and_package_copies(installed_vm):
         if not image.exists():pytest.skip('Build the Docker image fixture alongside the packages.')
         installed_vm.scp([str(image)],'/tmp/filedock-extension-test-image.tar')
         installed_vm.sudo('docker load -i /tmp/filedock-extension-test-image.tar; rm /tmp/filedock-extension-test-image.tar')
-        folder,pool,path=data_fixture(installed_vm)
+        folder,pool,path=data_fixture(installed_vm,api)
         package=inspect(api,'sample-docker')
         body={'stagedPackageId':package['stagedPackageId'],'approvedPermissions':package['requestedPermissions'],'acknowledgedUnsigned':True,'dataBindings':{},'acknowledgedUnprotectedData':False}
         assert api.post('/extensions',json=body).status_code==422

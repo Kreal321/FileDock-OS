@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client.ts';
 import { identityView } from '../api/view-models.ts';
 import { useLiveCoreStatus } from '../api/useLiveCoreStatus.ts';
+import { CriticalAlertBanner } from '../features/alerts/AlertsPage.tsx';
 import { CoreStatusBanner } from '../components/CoreStatusBanner.tsx';
 import { Notice } from '../components/Notice.tsx';
 import type { Route } from '../navigation/destinations.ts';
@@ -67,6 +68,7 @@ export function AppShell({
         />
         <main id="main-content" ref={main} tabIndex={-1} className="main-content stack">
           <CoreStatusBanner health={health} />
+          <CriticalAlertBanner />
           {me.error ? (
             <Notice tone="danger" role="status">
               Account information unavailable. {me.error.message}
@@ -75,7 +77,7 @@ export function AppShell({
           {route.unavailable ? (
             <Notice tone="info">This page is unavailable. Showing Dashboard.</Notice>
           ) : null}
-          {route.id !== 'dashboard' && route.id !== 'extensions' ? (
+          {route.id !== 'dashboard' && route.id !== 'extensions' && route.id !== 'folders' ? (
             <nav className="settings-nav" aria-label="Settings navigation">
               <a href="#/settings" aria-current={route.id === 'settings' ? 'page' : undefined}>
                 Overview

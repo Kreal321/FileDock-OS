@@ -97,6 +97,11 @@ impl Reconciler {
 
     /// Enqueue every live resource. Called at startup and every 10 minutes.
     pub async fn enqueue_all_kinds(&self) {
+        if let Ok(rows) = self.store.deleted(ResourceKind::ManagedFolder) {
+            self.queue
+                .enqueue_all(rows.into_iter().map(|r| r.resource))
+                .await;
+        }
         for kind in ResourceKind::ALL {
             let mut after = None;
             loop {

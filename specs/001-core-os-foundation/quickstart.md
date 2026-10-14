@@ -348,3 +348,9 @@ Build/install and detailed checks: [Phase 8 test guide](phase8-testing.md). Samp
 ## Phase 6 and 7 combined manual testing
 
 See [phase6-7-testing.md](phase6-7-testing.md) for bundle build/install commands, protection and configuration-recovery checks, and the US6/US9 prerequisites for full pool/package recovery. Configuration recovery is available now; full disaster-recovery acceptance remains pending those providers.
+
+## Delivery #3: extensibility, operations and managed folders
+
+Use the [Phases 9–10 test guide](phase9-10-testing.md), together with the
+[Phase 8 guide](phase8-testing.md). Native/systemd/notification fixtures are included in the
+offline bundle. Actual Local Only I/O requires a mounted pool; pool provisioning is Phase 11.

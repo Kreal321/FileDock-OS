@@ -3,20 +3,25 @@
 set -euo pipefail
 FD_FIXTURE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FD_FIXTURE_OUTPUT=${1:-"$FD_FIXTURE_ROOT/dist/fixtures"}
-cargo build --release -p fd-extension-sample --manifest-path "$FD_FIXTURE_ROOT/Cargo.toml"
+if [[ -z ${FD_FIXTURE_BINARY:-} ]]; then
+  cargo build --release -p fd-extension-sample --manifest-path "$FD_FIXTURE_ROOT/Cargo.toml"
+  FD_FIXTURE_BINARY="$FD_FIXTURE_ROOT/target/release/fd-extension-sample"
+fi
+[[ -x "$FD_FIXTURE_BINARY" ]] || { echo "Missing executable sample fixture: $FD_FIXTURE_BINARY" >&2; exit 1; }
 mkdir -p "$FD_FIXTURE_OUTPUT"
 FD_FIXTURE_OUTPUT=$(cd "$FD_FIXTURE_OUTPUT" && pwd)
 FD_FIXTURE_STAGE=$(mktemp -d)
 trap 'rm -rf "$FD_FIXTURE_STAGE"' EXIT
-for name in sample-native sample-systemd sample-docker sample-native-broken; do
+for name in sample-native sample-systemd sample-docker sample-native-broken notify-test; do
+  if [[ "$name" == sample-docker && ${FD_FIXTURE_SKIP_DOCKER:-0} == 1 ]]; then continue; fi
   mkdir -p "$FD_FIXTURE_STAGE/$name"
   cp "$FD_FIXTURE_ROOT/tests/fixtures/$name/manifest.yaml" "$FD_FIXTURE_STAGE/$name/manifest.yaml"
-  cp "$FD_FIXTURE_ROOT/target/release/fd-extension-sample" "$FD_FIXTURE_STAGE/$name/sample"
+  cp "$FD_FIXTURE_BINARY" "$FD_FIXTURE_STAGE/$name/sample"
   chmod 755 "$FD_FIXTURE_STAGE/$name/sample"
   if [[ $name == sample-systemd ]]; then cp "$FD_FIXTURE_ROOT/tests/fixtures/$name/sample.service" "$FD_FIXTURE_STAGE/$name/"; fi
   if [[ $name == sample-docker ]]; then
     mkdir -p "$FD_FIXTURE_STAGE/image"
-    cp "$FD_FIXTURE_ROOT/target/release/fd-extension-sample" "$FD_FIXTURE_STAGE/image/sample"
+    cp "$FD_FIXTURE_BINARY" "$FD_FIXTURE_STAGE/image/sample"
     # Copy the actual binary's shared-library closure; no mutable external base image.
     ldd "$FD_FIXTURE_STAGE/image/sample" | awk '/=> \// {print $3} /^\s*\// {print $1}' | while read -r lib; do
       mkdir -p "$FD_FIXTURE_STAGE/image$(dirname "$lib")"; cp -L "$lib" "$FD_FIXTURE_STAGE/image$lib"

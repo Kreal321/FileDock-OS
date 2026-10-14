@@ -330,7 +330,10 @@ pub async fn targets(app: &App) -> Result<Vec<CopyTarget>, Status> {
         .map_err(error)?
     {
         let root = app.config.pools_root.join(&row.resource.id);
-        if row.status.as_ref().is_some_and(|s| s["state"] == "Healthy")
+        if row
+            .status
+            .as_ref()
+            .is_some_and(|s| matches!(s["state"].as_str(), Some("Healthy" | "Ready" | "Available")))
             && root.join(".filedock-pool.json").is_file()
         {
             targets.push(CopyTarget {

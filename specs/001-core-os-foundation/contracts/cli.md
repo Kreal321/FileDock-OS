@@ -71,3 +71,8 @@ The tool talks to the Management Service over `/run/filedock/management-admin.so
 
 Exit code `0` means success, and any non-zero value means the error was printed to stderr. Output
 can be human-readable or `--json`.
+
+## Diagnostic export
+
+`filedockctl diagnostics OUTPUT` writes a redacted `.tar.zst` to a new private file through the
+root-only Management admin socket. Existing files are refused. The export is audited.

@@ -71,7 +71,7 @@ fn is_clean_absolute(path: &str) -> bool {
         && path[1..]
             .split('/')
             .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
-        && !path.contains('\0')
+        && !path.chars().any(|c| c.is_control() || c == '\\')
 }
 
 impl ManagedFolderSpec {
@@ -111,12 +111,17 @@ impl ManagedFolderSpec {
                     "reference.relativePath",
                     "a folder can't be the pool root",
                 )),
-                Some(path) if path == "/.filedock" || path.starts_with("/.filedock/") => issues
-                    .push(ValidationIssue::error(
+                Some(path)
+                    if path == "/.filedock"
+                        || path.starts_with("/.filedock/")
+                        || path.starts_with("/.filedock-pool.json/") =>
+                {
+                    issues.push(ValidationIssue::error(
                         "reference.pool_root_reserved",
                         "reference.relativePath",
                         "/.filedock is reserved for FileDock",
-                    )),
+                    ))
+                }
                 Some("/.filedock-pool.json") => issues.push(ValidationIssue::error(
                     "reference.pool_root_reserved",
                     "reference.relativePath",
@@ -166,6 +171,25 @@ impl ManagedFolderSpec {
             ));
         }
 
+        if let Some(destination) = &r.backup_destination {
+            let local = destination["poolId"].as_str().is_some_and(is_uuid)
+                && destination["relativePath"].as_str().is_some_and(|p| {
+                    is_clean_absolute(p) && p != "/" && !p.starts_with("/.filedock")
+                });
+            let cloud = destination["connectionId"].as_str().is_some_and(is_uuid)
+                && destination["remotePath"].as_str().is_some_and(|p| {
+                    !p.is_empty()
+                        && !p.chars().any(char::is_control)
+                        && !p.split('/').any(|s| s == "." || s == "..")
+                });
+            if !destination.is_object() || local == cloud {
+                issues.push(ValidationIssue::error(
+                    "reference.backup_destination_invalid",
+                    "reference.backupDestination",
+                    "Choose one valid pool path or cloud connection path for backups",
+                ));
+            }
+        }
         match (self.storage_mode, self.data_importance) {
             (StorageMode::HybridBackup, None) => issues.push(ValidationIssue::error(
                 "folder.importance_required",
@@ -180,6 +204,110 @@ impl ManagedFolderSpec {
             )),
         }
 
+        if needs_cloud
+            && r.remote_path.as_deref().is_some_and(|p| {
+                p.contains('\\')
+                    || p.chars().any(char::is_control)
+                    || p.split('/').any(|s| s == ".." || s == ".")
+            })
+        {
+            issues.push(ValidationIssue::error(
+                "reference.remote_path_invalid",
+                "reference.remotePath",
+                "Remote paths cannot contain traversal or control characters",
+            ));
+        }
+        let allowed: &[&str] = match self.storage_mode {
+            StorageMode::LocalOnly => &[],
+            StorageMode::HybridBackup => &[
+                "backupEnabled",
+                "backupIntervalSeconds",
+                "retention",
+                "subfolderImportance",
+            ],
+            StorageMode::CloudMount => &["cache", "consistency"],
+            StorageMode::TieredStorage => &["tiering"],
+        };
+        if self
+            .advanced
+            .as_object()
+            .is_none_or(|a| a.keys().any(|k| !allowed.contains(&k.as_str())))
+        {
+            issues.push(ValidationIssue::error(
+                "folder.advanced_not_allowed",
+                "advanced",
+                "Advanced settings must match the storage mode",
+            ));
+        }
+        if self.storage_mode == StorageMode::HybridBackup {
+            if self
+                .advanced
+                .get("backupIntervalSeconds")
+                .is_some_and(|v| v.as_u64().is_none_or(|n| n == 0 || n > 86400))
+            {
+                issues.push(ValidationIssue::error(
+                    "folder.backup_interval_invalid",
+                    "advanced.backupIntervalSeconds",
+                    "Backup interval must be 1 to 86400 seconds",
+                ));
+            }
+            if self.data_importance == Some(DataImportance::Critical)
+                && (self.advanced["backupIntervalSeconds"]
+                    .as_u64()
+                    .is_some_and(|n| n > 900)
+                    || self.advanced["backupEnabled"] == false)
+            {
+                issues.push(ValidationIssue::error(
+                    "folder.critical_interval",
+                    "advanced.backupIntervalSeconds",
+                    "Critical data requires backup at least every 15 minutes",
+                ));
+            }
+            if self.data_importance == Some(DataImportance::Important)
+                && self.advanced["backupEnabled"] == false
+            {
+                issues.push(ValidationIssue::error(
+                    "folder.backup_required",
+                    "advanced.backupEnabled",
+                    "Important data requires backup",
+                ));
+            }
+            if let Some(overrides) = self.advanced.get("subfolderImportance") {
+                if let Some(map) = overrides.as_object() {
+                    for (path, importance) in map {
+                        if path.is_empty()
+                            || path.starts_with('/')
+                            || path
+                                .split('/')
+                                .any(|s| s.is_empty() || s == "." || s == "..")
+                            || path.chars().any(char::is_control)
+                        {
+                            issues.push(ValidationIssue::error(
+                                "folder.override_path_invalid",
+                                "advanced.subfolderImportance",
+                                "Override paths must be clean relative subfolder paths",
+                            ));
+                        }
+                        if !matches!(
+                            importance.as_str(),
+                            Some("Critical" | "Important" | "Rebuildable" | "Temporary")
+                        ) {
+                            issues.push(ValidationIssue::error(
+                                "folder.override_importance_invalid",
+                                "advanced.subfolderImportance",
+                                "Unknown subfolder importance",
+                            ));
+                        }
+                    }
+                } else {
+                    issues.push(ValidationIssue::error(
+                        "folder.override_invalid",
+                        "advanced.subfolderImportance",
+                        "Overrides must be an object mapping paths to importance",
+                    ));
+                }
+            }
+        }
         if self.storage_mode == StorageMode::LocalOnly
             && self.advanced.as_object().is_none_or(|map| !map.is_empty())
         {

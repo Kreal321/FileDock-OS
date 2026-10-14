@@ -7,6 +7,12 @@ const descriptions: Record<string, string> = {
   network: 'Choose local HTTP listener addresses.',
   operations: 'Inspect Core work and operation steps.',
   audit: 'Review administrative changes.',
+  logs: 'Filter service and subsystem logs.',
+  activity: 'Follow recent appliance events.',
+  alerts: 'Review and acknowledge active conditions.',
+  'notification-channels': 'Choose where extensions deliver alerts.',
+  'state-protection': 'Check configuration recovery copies.',
+  locations: 'Review owned recovery locations.',
 };
 export function SettingsPage() {
   return (

@@ -214,6 +214,13 @@ impl CoreBridge for Bridge {
                 .raise(&source, None, &body.kind, severity, &message)
                 .map_err(|_| Status::internal("extension.alert_failed"))?;
         }
+        self.events
+            .emit(
+                "alert.changed",
+                None,
+                serde_json::json!({"source":source,"kind":body.kind,"resolved":body.resolved}),
+            )
+            .map_err(|_| Status::internal("extension.alert_event_failed"))?;
         Ok(Response::new(pb::Empty {}))
     }
     async fn report_health(

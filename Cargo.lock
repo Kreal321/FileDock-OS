@@ -650,6 +650,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -731,6 +732,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "prost-types",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -761,11 +763,13 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tar",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-journald",
  "tracing-subscriber",
+ "zstd",
 ]
 
 [[package]]
@@ -773,6 +777,7 @@ name = "fd-reconcile"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "fd-observe",
  "fd-state",
  "fd-subsystems",
@@ -834,6 +839,7 @@ dependencies = [
  "rusqlite",
  "rusqlite_migration",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "tempfile",
  "thiserror",

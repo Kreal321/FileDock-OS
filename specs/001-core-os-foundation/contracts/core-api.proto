@@ -101,6 +101,9 @@ service Extensions {
   rpc RemoveExtension(SubsystemRef) returns (Operation);                       // FR-056
   rpc ListSubsystems(Empty) returns (ListSubsystemsResponse);
   rpc SetDefaultProvider(SetDefaultProviderRequest) returns (Empty);           // FR-051
+  rpc ListNotificationChannels(Empty) returns (NotificationChannels);
+  rpc RemoveNotificationChannel(NotificationChannelRef) returns (Empty);
+  rpc TestNotificationChannel(NotificationChannelRef) returns (Empty);
   rpc ConfigureNotificationChannel(NotificationChannel) returns (NotificationChannel); // FR-097
 }
 
@@ -121,6 +124,7 @@ service Connectors {
 }
 
 service Observability {
+  rpc QueryActivity(PageRequest) returns (ActivityPage);
   rpc QueryLogs(QueryLogsRequest) returns (QueryLogsResponse);                 // FR-057
   rpc CreateDiagnosticBundle(Empty) returns (stream BundleChunk);              // FR-060
   rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);              // FR-096
@@ -196,6 +200,7 @@ message ComponentHealth {
 
 message ApplyChangeRequest {
   repeated ResourceChange changes = 1;
+  repeated ChangeConfirmation confirmations = 2;
 }
 
 message ResourceChange {
@@ -849,3 +854,10 @@ message ConnectionCheck {
   bool ok = 2;
   string detail = 3;
 }
+
+message NotificationChannels { repeated NotificationChannel channels = 1; }
+message NotificationChannelRef { string id = 1; }
+
+message ActivityPage { repeated Event events = 1; string next_page_token = 2; }
+
+message ChangeConfirmation { ResourceRef resource = 1; string kind = 2; string value = 3; }
