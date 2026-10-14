@@ -155,6 +155,9 @@ pub async fn configure(app: &App) -> Result<(), Status> {
                 .map_err(internal)?;
         }
     }
+    if let Err(error) = crate::extension_runtime::configure_connectors(app).await {
+        tracing::warn!(code=%error.message(),"extension connector configuration failed");
+    }
     if app
         .subsystems
         .get("fd-s3")
@@ -227,18 +230,23 @@ pub async fn test_connection(
         RouteUse::OwnedObjectStorage,
     )
     .map_err(internal)?;
-    if connector != "fd-s3" {
+    if connector == "rclone" {
         return test_rclone(app, &reference, &connection).await;
     }
+    let connector_socket = if connector == "fd-s3" {
+        s3_socket(app)
+    } else {
+        crate::extension_runtime::socket(app, &connector)
+    };
     let mut client =
-        ext::cloud_remote_client::CloudRemoteClient::new(channel(s3_socket(app)).await?);
+        ext::cloud_remote_client::CloudRemoteClient::new(channel(&connector_socket).await?);
     let locations = crate::state_runtime::locations(app)?;
     let registered = locations.iter().find(|l| l.connection_id == id);
     let root_prefix = registered
         .map(|l| l.prefix.trim_end_matches('/'))
         .unwrap_or("");
     let discovery = fd_connectors::object_io::S3Objects {
-        channel: channel(s3_socket(app)).await?,
+        channel: channel(&connector_socket).await?,
         connection_id: id.into(),
         prefix: if root_prefix.is_empty() {
             String::new()

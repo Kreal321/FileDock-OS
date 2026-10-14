@@ -12,7 +12,7 @@ if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 || "$ARCH" != amd64 ]]; 
   exit 1
 fi
 command -v dpkg-deb >/dev/null || { echo "Install dpkg-dev first." >&2; exit 1; }
-for binary in "$ROOT/target/release/filedock-core" "$ROOT/target/release/fd-s3" \
+for binary in "$ROOT/target/release/filedock-core" "$ROOT/target/release/fd-s3" "$ROOT/target/release/fd-extension-launcher" \
   "$DIST/management/api/FileDock.Management.Api" "$DIST/management/cli/filedockctl"; do
   [[ -s "$binary" && -x "$binary" ]] || { echo "Missing executable: $binary" >&2; exit 1; }
   file "$binary" | grep -q 'ELF.*x86-64' || { echo "Not a Linux amd64 executable: $binary" >&2; exit 1; }
@@ -51,11 +51,12 @@ Section: admin
 Priority: optional
 Architecture: $ARCH
 Maintainer: FileDock <ops@filedock.dev>
-Depends: systemd, libc6, libgcc-s1
+Depends: systemd, libc6, libgcc-s1, acl (= 2.3.2-2)
 Description: FileDock Core Service
  Privileged reconciler, journal, secrets, and subsystem orchestrator.
 EOF
 install_bin "$pkg_core/usr/lib/filedock/filedock-core" "$ROOT/target/release/filedock-core"
+install_bin "$pkg_core/usr/lib/filedock/fd-extension-launcher" "$ROOT/target/release/fd-extension-launcher"
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.service" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.socket" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-extensions.socket" "$pkg_core/lib/systemd/system/"

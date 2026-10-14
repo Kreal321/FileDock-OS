@@ -134,7 +134,7 @@ class ApiClient:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             body = self.get(f"/operations/{operation_id}").raise_for_status().json()
-            if body.get("state") in ("Succeeded", "Failed", "Cancelled"):
+            if body.get("state") in ("Succeeded", "Failed", "RolledBack", "Cancelled"):
                 return body
             time.sleep(2)
         raise TimeoutError(f"operation {operation_id} did not finish in {timeout}s")

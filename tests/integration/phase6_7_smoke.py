@@ -31,9 +31,9 @@ class Appliance:
         self.root=root;root.mkdir();self.cookies={};self.children=[];self.logs=(root/'logs').open('w')
         with socket.socket() as s:s.bind(('127.0.0.1',0));self.port=s.getsockname()[1]
         self.admin=str(root/'admin.sock');self.core=str(root/'core.sock')
-        env=dict(os.environ,FD_CORE_SOCKET=self.core,FD_CORE_DB=str(root/'core.db'),FD_SECRETS=str(root/'secrets.enc'),FD_DEK=str(root/'local.key'),FD_RECOVERY_KEYS=str(root/'recovery.enc'),FD_MANIFESTS=str(REPO/'packaging/subsystems'),FD_SECRETS_RUN=str(root/'secrets'),FD_MGMT_UID=str(os.getuid()),FD_RUNTIME_ENABLED='0',FD_RECOVERY_ARGON_KIB='4096',FD_STATE_ROOT=str(state_root),FD_STATE_SPOOL=str(root/'spool'),FD_POOLS_ROOT=str(root/'pools'))
+        env=dict(os.environ,FD_CORE_SOCKET=self.core,FD_CORE_DB=str(root/'core.db'),FD_SECRETS=str(root/'secrets.enc'),FD_DEK=str(root/'local.key'),FD_RECOVERY_KEYS=str(root/'recovery.enc'),FD_MANIFESTS=str(REPO/'packaging/subsystems'),FD_SECRETS_RUN=str(root/'secrets'),FD_MGMT_UID=str(os.getuid()),FD_RUNTIME_ENABLED='0',FD_RECOVERY_ARGON_KIB='4096',FD_STATE_ROOT=str(state_root),FD_STATE_SPOOL=str(root/'spool'),FD_POOLS_ROOT=str(root/'pools'),FD_EXTENSION_ROOT=str(root/'extensions'),FD_EXTENSION_INBOX=str(root/'inbox'),FD_EXTENSION_RUN=str(root/'extension-run'),FD_EXTENSION_KEYS=str(root/'trusted-keys'))
         self.children.append(subprocess.Popen([str(REPO/'target/debug/filedock-core')],env=env,stdout=self.logs,stderr=self.logs,cwd=REPO))
-        env=dict(os.environ,Core__Socket=self.core,Core__Optional='false',Database__Path=str(root/'app.db'),Kestrel__HttpPort=str(self.port),AdminSocket__Path=self.admin,Logging__LogLevel__Default='Warning')
+        env=dict(os.environ,Core__Socket=self.core,Core__Optional='false',Database__Path=str(root/'app.db'),Kestrel__HttpPort=str(self.port),AdminSocket__Path=self.admin,Logging__LogLevel__Default='Warning',Extensions__Inbox=str(root/'inbox'))
         self.children.append(subprocess.Popen(['dotnet',str(REPO/'management/src/FileDock.Management.Api/bin/Debug/net10.0/FileDock.Management.Api.dll')],env=env,stdout=self.logs,stderr=self.logs,cwd=REPO))
         wait(lambda:self.call('GET','/health')[0]==200 and Path(self.admin).exists())
     def call(self,method,path,body=None,raw=False):

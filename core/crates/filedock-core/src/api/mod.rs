@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod connectors;
 pub mod control;
 pub mod events;
+pub mod extensions;
 pub mod interceptors;
 pub mod observability;
 pub mod recovery;
@@ -50,6 +51,9 @@ pub struct App {
     pub temporary_s3: Mutex<TemporaryS3Connections>,
     pub appliance_id: String,
     pub extension_token: String,
+    pub extension_instances: Arc<fd_subsystems::bridge::Instances>,
+    pub extension_locks:
+        std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Weak<Mutex<()>>>>,
     pub store: Arc<StateStore>,
     pub journal: Arc<Journal>,
     pub events: Arc<EventBus>,
@@ -109,6 +113,8 @@ pub async fn serve(
         config: config.clone(),
         appliance_id,
         extension_token,
+        extension_instances: Arc::new(fd_subsystems::bridge::Instances::default()),
+        extension_locks: std::sync::Mutex::new(std::collections::BTreeMap::new()),
         store,
         journal,
         events,
@@ -123,13 +129,38 @@ pub async fn serve(
     let _ = std::fs::remove_file(&bridge_path);
     let bridge_listener = UnixListener::bind(&bridge_path)?;
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&bridge_path, std::fs::Permissions::from_mode(0o600))?;
+    std::fs::set_permissions(&bridge_path, std::fs::Permissions::from_mode(0o666))?;
+    if let Some(record) = app.subsystems.get("fd-s3")? {
+        app.extension_instances.issue(
+            &app.extension_token,
+            fd_subsystems::bridge::Instance {
+                id: record.id,
+                version: record.version,
+                socket: crate::runtime::s3_socket(&app).display().to_string(),
+                capabilities: record.manifest["capabilities"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect(),
+                permissions: ["network.outbound".into(), "cloud.credentials".into()]
+                    .into_iter()
+                    .collect(),
+                registered: false,
+            },
+        );
+    }
     let bridge_app = app.clone();
     tokio::spawn(async move {
         if let Err(error) = Server::builder()
             .add_service(
                 fd_api::extension::v1::core_bridge_server::CoreBridgeServer::new(bridge::Bridge {
-                    app: bridge_app,
+                    instances: bridge_app.extension_instances.clone(),
+                    events: bridge_app.events.clone(),
+                    alerts: bridge_app.alerts.clone(),
+                    interface_version: bridge_app.config.interface_version.into(),
+                    secrets: bridge_app.secrets.clone(),
+                    registry: fd_subsystems::SubsystemRegistry::new(bridge_app.store.db().clone()),
                 }),
             )
             .serve_with_incoming(UnixListenerStream::new(bridge_listener))
@@ -151,11 +182,18 @@ pub async fn serve(
             .as_bytes(),
         )?;
         tokio::spawn(crate::runtime::run(app.clone()));
+        tokio::spawn(crate::extension_runtime::supervise(app.clone()));
     }
     tokio::spawn(crate::state_runtime::run(app.clone()));
     let startup_app = app.clone();
     tokio::spawn(async move {
         for operation in startup_app.journal.unfinished().unwrap_or_default() {
+            if matches!(
+                operation.kind.as_str(),
+                "InstallExtension" | "UpgradeExtension" | "RemoveExtension" | "RestartExtension"
+            ) {
+                let _ = crate::extension_runtime::resume(&startup_app, &operation.id).await;
+            }
             if operation.kind == "Restore" {
                 let _ = crate::restore_runtime::resume(&startup_app, &operation.id).await;
             }
@@ -181,6 +219,12 @@ pub async fn serve(
         mgmt_uid: config.mgmt_uid,
     };
     Server::builder()
+        .add_service(
+            fd_api::core::v1::extensions_server::ExtensionsServer::with_interceptor(
+                extensions::ExtensionsSvc { app: app.clone() },
+                interceptor.clone(),
+            ),
+        )
         .add_service(CoreControlServer::with_interceptor(
             CoreControlSvc { app: app.clone() },
             interceptor.clone(),

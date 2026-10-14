@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: sample-systemd
+name: Sample systemd extension
+version: 1.0.0
+class: extension
+capabilities: [cache.generic]
+runtime: {type: systemd-service, unit: sample.service}
+health: {type: grpc, intervalSeconds: 5, startupGraceSeconds: 5}
+permissions: []
+compatibility: {appliance: ">=0.1.0 <0.2.0", extensionProtocol: "1"}

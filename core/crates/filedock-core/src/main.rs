@@ -2,6 +2,7 @@
 
 mod api;
 mod config;
+mod extension_runtime;
 mod proto_conv;
 mod restore_runtime;
 mod runtime;

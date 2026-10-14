@@ -28,6 +28,9 @@ pub struct Health {
 #[async_trait::async_trait]
 pub trait SubsystemAdapter: Send + Sync {
     fn id(&self) -> &str;
+    fn startup_grace(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(5)
+    }
     async fn describe(&self) -> Result<Description, AdapterError>;
     async fn state(&self) -> Result<Value, AdapterError>;
     async fn configure(&self, desired: Value) -> Result<(), AdapterError>;

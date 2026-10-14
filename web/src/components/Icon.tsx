@@ -1,5 +1,6 @@
 import type { SVGProps } from 'react';
 const paths: Record<string, string> = {
+  extension: 'M8 3h5v4a3 3 0 1 1 0 6v4H8a3 3 0 1 0-6 0H2V3h6z',
   folder: 'M3 7h7l2 2h9v11H3z M3 7V5h7l2 2',
   dashboard: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
   settings:

@@ -11,6 +11,15 @@ export const destinations: NavigationDestination[] = [
     requiredView: 'DashboardPage',
   },
   {
+    id: 'extensions',
+    hashRoute: '#/extensions',
+    label: 'Extensions',
+    icon: 'extension',
+    group: 'main',
+    availability: 'implemented',
+    requiredView: 'ExtensionsPage',
+  },
+  {
     id: 'settings',
     hashRoute: '#/settings',
     label: 'Settings',

@@ -35,6 +35,16 @@ pub fn materialize(
         keep.insert(name.clone());
         let path = dir.join(&name);
         let plaintext = store.get(reference)?;
+        // Preserve the inode and its consumer ACL when the credential has not changed.
+        // Atomic replacement is still required when rotating a secret.
+        if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_file())
+            && fs::read(&path)
+                .map(zeroize::Zeroizing::new)
+                .is_ok_and(|current| current.as_slice() == plaintext.as_slice())
+        {
+            files.push(path);
+            continue;
+        }
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -98,7 +108,17 @@ mod tests {
             std::fs::read(root.join("fd-s3/connection__1__access-key")).unwrap(),
             b"AK"
         );
+        use std::os::unix::fs::MetadataExt;
+        let key_path = root.join("fd-s3/connection__1__access-key");
+        let inode = fs::metadata(&key_path).unwrap().ino();
         materialize(&store, &root, "fd-s3", &["connection/1/access-key".into()]).unwrap();
+        assert_eq!(fs::metadata(&key_path).unwrap().ino(), inode);
+        store
+            .put("connection/1/access-key", b"ROTATED", vec!["fd-s3".into()])
+            .unwrap();
+        materialize(&store, &root, "fd-s3", &["connection/1/access-key".into()]).unwrap();
+        assert_eq!(fs::read(&key_path).unwrap(), b"ROTATED");
+        assert_ne!(fs::metadata(&key_path).unwrap().ino(), inode);
         assert!(!root.join("fd-s3/connection__1__secret-key").exists());
         assert!(root.join("fd-s3/connection__1__access-key").exists());
     }

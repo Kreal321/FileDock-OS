@@ -75,7 +75,7 @@ export function AppShell({
           {route.unavailable ? (
             <Notice tone="info">This page is unavailable. Showing Dashboard.</Notice>
           ) : null}
-          {route.id !== 'dashboard' ? (
+          {route.id !== 'dashboard' && route.id !== 'extensions' ? (
             <nav className="settings-nav" aria-label="Settings navigation">
               <a href="#/settings" aria-current={route.id === 'settings' ? 'page' : undefined}>
                 Overview

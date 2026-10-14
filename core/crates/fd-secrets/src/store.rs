@@ -198,6 +198,37 @@ impl SecretStore {
             .collect()
     }
 
+    /// Remove known vault values from observed third-party messages before public persistence.
+    pub fn redact_observed(&self, value: serde_json::Value) -> serde_json::Value {
+        let known = self
+            .list()
+            .into_iter()
+            .filter_map(|info| self.get(&info.r#ref).ok())
+            .collect::<Vec<_>>();
+        fn visit(value: serde_json::Value, known: &[Zeroizing<Vec<u8>>]) -> serde_json::Value {
+            match value {
+                serde_json::Value::String(mut text) => {
+                    for bytes in known {
+                        if let Ok(secret) = std::str::from_utf8(bytes)
+                            && !secret.is_empty()
+                        {
+                            text = text.replace(secret, "••••");
+                        }
+                    }
+                    serde_json::Value::String(crate::redact::redact_text(&text))
+                }
+                serde_json::Value::Array(a) => {
+                    serde_json::Value::Array(a.into_iter().map(|v| visit(v, known)).collect())
+                }
+                serde_json::Value::Object(o) => serde_json::Value::Object(
+                    o.into_iter().map(|(k, v)| (k, visit(v, known))).collect(),
+                ),
+                other => other,
+            }
+        }
+        visit(crate::redact::redact_value(value), &known)
+    }
+
     pub fn consumers_of(&self, subsystem: &str) -> Vec<(String, Zeroizing<Vec<u8>>)> {
         self.body
             .records
@@ -301,5 +332,28 @@ mod tests {
         );
         store.delete("connection/1/secret-key").unwrap();
         assert!(store.get("connection/1/secret-key").is_err());
+    }
+}
+
+#[cfg(test)]
+mod observed_redaction_tests {
+    use super::*;
+    #[test]
+    fn arbitrary_observed_strings_do_not_reveal_known_vault_values() {
+        let d = tempfile::tempdir().unwrap();
+        let mut vault = SecretStore::open(d.path().join("vault"), d.path().join("dek")).unwrap();
+        vault
+            .put(
+                "extension/sample/api-key",
+                b"UNIQUE-CANARY-VALUE",
+                vec!["sample".into()],
+            )
+            .unwrap();
+        let value=vault.redact_observed(serde_json::json!({"detail":"hello UNIQUE-CANARY-VALUE","other":["UNIQUE-CANARY-VALUE"]}));
+        assert!(!value.to_string().contains("UNIQUE-CANARY-VALUE"));
+        assert!(
+            !crate::redact::redact_text("password=UNIQUE-CANARY-VALUE")
+                .contains("UNIQUE-CANARY-VALUE")
+        );
     }
 }

@@ -724,6 +724,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fd-extension-sample"
+version = "0.1.0"
+dependencies = [
+ "fd-api",
+ "hyper-util",
+ "libc",
+ "prost-types",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower",
+]
+
+[[package]]
 name = "fd-journal"
 version = "0.1.0"
 dependencies = [
@@ -837,25 +851,42 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "fd-alerts",
+ "fd-api",
  "fd-observe",
  "fd-secrets",
  "fd-state",
+ "futures",
+ "hex",
+ "hyper-util",
  "jsonschema",
+ "minisign-verify",
+ "prost-types",
+ "reqwest",
  "rusqlite",
+ "semver",
  "serde",
  "serde-saphyr",
  "serde_json",
+ "sha2",
+ "tar",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower",
  "tracing",
+ "uuid",
  "zbus",
+ "zstd",
 ]
 
 [[package]]
 name = "filedock-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "chrono",
  "fd-alerts",
@@ -870,6 +901,7 @@ dependencies = [
  "fd-subsystems",
  "hex",
  "hyper-util",
+ "jsonschema",
  "libc",
  "prost-types",
  "rusqlite",
@@ -1744,6 +1776,12 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "mio"

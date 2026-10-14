@@ -126,9 +126,9 @@ pub async fn input(app: &App) -> Result<SnapshotInput, Status> {
             if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return Err(error("state.package_invalid"));
             }
-            let file = PathBuf::from("/var/lib/filedock/extensions/packages")
-                .join(format!("{hash}.fdext"));
-            if let Ok(bytes) = std::fs::read(file) {
+            if let Some(bytes) = fd_appstate::packages::load(&app.config.extension_root, hash, &dek)
+                .map_err(error)?
+            {
                 packages.insert(hash.into(), bytes);
             }
         }
@@ -301,11 +301,7 @@ pub async fn object_io(
     let socket = if target == "fd-s3" {
         crate::runtime::s3_socket(app)
     } else {
-        app.config
-            .socket
-            .parent()
-            .unwrap()
-            .join(format!("{target}.sock"))
+        crate::extension_runtime::socket(app, &target)
     };
     let channel = crate::runtime::channel(socket).await?;
     Ok((

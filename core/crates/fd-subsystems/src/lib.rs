@@ -2,8 +2,15 @@
 
 pub mod adapter;
 pub mod adapters;
+pub mod bridge;
+pub mod capabilities;
+pub mod lifecycle;
 pub mod manifest;
+pub mod package;
 pub mod registry;
+pub mod remote;
+pub mod runtime;
+pub mod sandbox;
 pub mod supervisor;
 pub mod systemd;
 

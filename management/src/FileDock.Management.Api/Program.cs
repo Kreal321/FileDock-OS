@@ -133,6 +133,7 @@ api.MapNetwork();
 api.MapAudit();
 api.MapOperations();
 api.MapRecovery();
+api.MapExtensions();
 api.MapGet("/system/core-health", (CoreHealthMonitor monitor) => Results.Ok(monitor.Current)).WithMetadata(new AccessScope("R"));
 app.MapHub<EventsHub>("/hubs/events");
 AdminSocketEndpoints.Map(app);

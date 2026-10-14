@@ -68,9 +68,17 @@ pub fn redact_value(value: Value) -> Value {
 pub fn redact_text(text: &str) -> String {
     match serde_json::from_str::<Value>(text) {
         Ok(value) => redact_value(value).to_string(),
-        Err(_) => SECRET_KEYS.iter().fold(text.to_owned(), |acc, key| {
-            acc.replace(&format!("{key}="), &format!("{key}=••••"))
-        }),
+        Err(_) => {
+            let lower = text.to_ascii_lowercase();
+            if SECRET_KEYS
+                .iter()
+                .any(|key| lower.contains(&format!("{key}=")) || lower.contains(&format!("{key}:")))
+            {
+                "[redacted sensitive detail]".into()
+            } else {
+                text.into()
+            }
+        }
     }
 }
 

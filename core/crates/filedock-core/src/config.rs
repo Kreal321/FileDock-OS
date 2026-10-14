@@ -4,6 +4,9 @@ use std::path::PathBuf;
 pub struct Config {
     pub socket: PathBuf,
     pub state_root: PathBuf,
+    pub extension_root: PathBuf,
+    pub extension_inbox: PathBuf,
+    pub extension_keys: PathBuf,
     pub state_spool: PathBuf,
     pub pools_root: PathBuf,
     pub core_db: PathBuf,
@@ -20,6 +23,9 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         Self {
+            extension_root: env_path("FD_EXTENSION_ROOT", "/var/lib/filedock/extensions"),
+            extension_inbox: env_path("FD_EXTENSION_INBOX", "/var/lib/filedock/extensions/inbox"),
+            extension_keys: env_path("FD_EXTENSION_KEYS", "/etc/filedock/extensions/trusted-keys"),
             state_root: env_path("FD_STATE_ROOT", "/var/backups/filedock/appliance-state"),
             state_spool: env_path("FD_STATE_SPOOL", "/var/lib/filedock-core/appstate"),
             pools_root: env_path("FD_POOLS_ROOT", "/mnt/filedock/pools"),

@@ -54,7 +54,17 @@ pub async fn run(
             reconcile_operation(&journal, &reconciler, &events, &operation.id).await?;
         }
     }
-    journal.resume_all_except(&[], &["Restore", "StateSnapshot"])?;
+    journal.resume_all_except(
+        &[],
+        &[
+            "Restore",
+            "StateSnapshot",
+            "InstallExtension",
+            "UpgradeExtension",
+            "RemoveExtension",
+            "RestartExtension",
+        ],
+    )?;
     if runtime_enabled {
         loop {
             match reconciler.reconcile_now().await {
@@ -71,7 +81,7 @@ pub async fn run(
             let settled = subsystems
                 .list()?
                 .into_iter()
-                .filter(|s| s.enabled)
+                .filter(|s| s.enabled && s.class != "Extension")
                 .all(|s| {
                     supervisor
                         .status(&s.id)

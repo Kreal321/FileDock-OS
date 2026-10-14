@@ -565,6 +565,18 @@ impl Validator for BuiltinValidators {
             &mut issues,
         );
         folder_rules(view, &mut issues);
+        for extension in view.list(ResourceKind::Extension) {
+            if let Ok(ResourceSpec::Extension(spec)) = extension.parsed_spec() {
+                for folder in spec.data_bindings.values() {
+                    if view
+                        .get(&ResourceRef::new(ResourceKind::ManagedFolder, folder))
+                        .is_none()
+                    {
+                        issues.push(ValidationIssue::error("folder.bound_to_extension", "dataBindings", "A bound folder must exist and cannot be deleted while its extension binding exists").with_conflicting(extension.resource.clone()));
+                    }
+                }
+            }
+        }
         export_rules(view, &mut issues);
         disk_membership(view, &mut issues);
         system_pool_count(view, &mut issues);

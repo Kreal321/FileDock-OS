@@ -557,31 +557,31 @@ and are stored with every appliance-state copy.
 extension 20 times, and break an upgrade. Confirm isolation, rollback, and data-binding
 enforcement (quickstart "Extensions").
 
-- [ ] T118 [P] [US6] Implement the `.fdext` package reader (tar.zst, `manifest.yaml`, `SHA256SUMS` verification, optional minisign Ed25519 signature) in `core/crates/fd-subsystems/src/package.rs` (FR-052)
-- [ ] T119 [US6] Implement the mapping from the permission vocabulary to sandboxing in `core/crates/fd-subsystems/src/sandbox.rs` (FR-053, FR-109, research R14):
+- [X] T118 [P] [US6] Implement the `.fdext` package reader (tar.zst, `manifest.yaml`, `SHA256SUMS` verification, optional minisign Ed25519 signature) in `core/crates/fd-subsystems/src/package.rs` (FR-052)
+- [X] T119 [US6] Implement the mapping from the permission vocabulary to sandboxing in `core/crates/fd-subsystems/src/sandbox.rs` (FR-053, FR-109, research R14):
   - native-process and systemd-service: transient-unit properties and drop-ins;
   - docker-service: Engine API capabilities, mounts, network, and a read-only root filesystem;
   - data bindings: `BindPaths`, `ReadWritePaths`, `ProtectSystem=strict`, and named volumes refused.
-- [ ] T120 [US6] Implement the CoreBridge server on `/run/filedock/extensions.sock` in `core/crates/fd-subsystems/src/bridge.rs`: Register (capabilities must be a subset of the manifest), the per-instance `FD_EXTENSION_TOKEN`, and permission checks on StreamEvents, RaiseAlert, and ReportHealth (FR-053)
-- [ ] T121 [US6] Implement the gRPC Subsystem client that wraps a registered extension in the adapter trait, in `core/crates/fd-subsystems/src/remote.rs` (FR-049)
-- [ ] T122 [US6] Implement journaled install, upgrade, and remove in `core/crates/fd-subsystems/src/lifecycle.rs` (FR-052, FR-055, FR-056, FR-109):
+- [X] T120 [US6] Implement the CoreBridge server on `/run/filedock/extensions.sock` in `core/crates/fd-subsystems/src/bridge.rs`: Register (capabilities must be a subset of the manifest), the per-instance `FD_EXTENSION_TOKEN`, and permission checks on StreamEvents, RaiseAlert, and ReportHealth (FR-053)
+- [X] T121 [US6] Implement the gRPC Subsystem client that wraps a registered extension in the adapter trait, in `core/crates/fd-subsystems/src/remote.rs` (FR-049)
+- [X] T122 [US6] Implement journaled install, upgrade, and remove in `core/crates/fd-subsystems/src/lifecycle.rs` (FR-052, FR-055, FR-056, FR-109):
   - install: inspect, approval of the exact requested permissions, acknowledgement of unsigned packages, and every data path bound, with an acknowledgement for unprotected folders;
   - upgrade: a health check, with automatic rollback on failure;
   - remove: guarded by dependent folders, bindings, and routes.
-- [ ] T123 [US6] Implement package retention in `core/crates/fd-appstate/src/packages.rs` (FR-110):
+- [X] T123 [US6] Implement package retention in `core/crates/fd-appstate/src/packages.rs` (FR-110):
   - encrypt the `.fdext` as a `.fdpkg`, and write it to every appliance-state copy before any snapshot refers to it;
   - prune packages no retained snapshot refers to;
   - accept an upload for PackageNeeded only at the recorded version.
-- [ ] T124 [US6] Implement the capability registry and resolution in `core/crates/fd-subsystems/src/capabilities.rs`: an administrator-chosen default provider, and cloud capabilities resolved through routes instead (FR-050, FR-051)
-- [ ] T125 [US6] Implement the Extensions gRPC service (InspectPackage, InstallExtension, UpgradeExtension, RemoveExtension, ListSubsystems, SetDefaultProvider) in `core/crates/filedock-core/src/api/extensions.rs`
-- [ ] T126 [US6] Implement `/subsystems`, `/capabilities/{capability}/default`, `/extensions/inspect` (staged upload), `/extensions`, `/extensions/{id}/upgrade`, `DELETE /extensions/{id}`, and `/extensions/{id}/package` in `management/src/FileDock.Management.Api/Endpoints/ExtensionEndpoints.cs`
-- [ ] T127 [P] [US6] Build the extensions page in `web/src/features/extensions/`:
+- [X] T124 [US6] Implement the capability registry and resolution in `core/crates/fd-subsystems/src/capabilities.rs`: an administrator-chosen default provider, and cloud capabilities resolved through routes instead (FR-050, FR-051)
+- [X] T125 [US6] Implement the Extensions gRPC service (InspectPackage, InstallExtension, UpgradeExtension, RemoveExtension, ListSubsystems, SetDefaultProvider) in `core/crates/filedock-core/src/api/extensions.rs`
+- [X] T126 [US6] Implement `/subsystems`, `/capabilities/{capability}/default`, `/extensions/inspect` (staged upload), `/extensions`, `/extensions/{id}/upgrade`, `DELETE /extensions/{id}`, and `/extensions/{id}/package` in `management/src/FileDock.Management.Api/Endpoints/ExtensionEndpoints.cs`
+- [X] T127 [P] [US6] Build the extensions page in `web/src/features/extensions/`:
   - inspect, with signature state and permission approval;
   - data-path binding, with the suggested Hybrid Backup folder and the unprotected warning;
   - upgrade and remove;
   - default providers.
-- [ ] T128 [P] [US6] Create the sample packages `tests/fixtures/sample-native/`, `tests/fixtures/sample-systemd/`, `tests/fixtures/sample-docker/` (which declares a `data` path), and `tests/fixtures/sample-native-broken/`, built into `.fdext` files by `tests/fixtures/build.sh`
-- [ ] T129 [US6] Write the acceptance test `tests/e2e/test_extensions.py` (SC-008):
+- [X] T128 [P] [US6] Create the sample packages `tests/fixtures/sample-native/`, `tests/fixtures/sample-systemd/`, `tests/fixtures/sample-docker/` (which declares a `data` path), and `tests/fixtures/sample-native-broken/`, built into `.fdext` files by `tests/fixtures/build.sh`
+- [X] T129 [US6] Write the acceptance test `tests/e2e/test_extensions.py` (SC-008):
   - all three runtimes install;
   - 20 kills cause 0 Core restarts;
   - a broken upgrade rolls back;
@@ -589,7 +589,9 @@ enforcement (quickstart "Extensions").
   - deleting a bound folder is refused;
   - every copy has one `.fdpkg` per installed version.
 
-**Checkpoint**: Third-party subsystems plug in safely through the generic contract.
+**Implementation status (2026-10-14)**: T118–T129 are implemented/written. Lifecycle application and journal resumption live in `filedock-core/src/extension_runtime.rs`, with package/approval/sandbox/runtime/bridge/remote helpers in `fd-subsystems`. T123 uses an encrypted local cache and the existing copy engine's package-before-index ordering, deduplication and retained-snapshot pruning. The sample builder and two Linux VM acceptance scenarios are present; local checks and native API/recovery smokes passed. Actual systemd/Docker isolation, kill/rollback acceptance and real folder/pool provider integration are **pending Linux VM execution**, not marked as passed. See [Phase 8 test guide](phase8-testing.md). The disposable VM data fixture supplies a synthetic tmpfs-backed managed-folder record for sandbox tests only; production folder/pool creation remains in Phases 10/11.
+
+**Checkpoint**: Third-party subsystems plug in safely through the generic contract. This is a manual Linux acceptance gate.
 
 ---
 

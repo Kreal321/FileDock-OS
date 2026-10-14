@@ -165,5 +165,5 @@ TLS MinIO/S3), `FD_E2E_STATE_ACCESS_KEY`, and `FD_E2E_STATE_SECRET_KEY`.
 - Web unit tests, production build, and lint: passed locally.
 - Native configuration-recovery smoke: passed locally against the final Core and Management builds.
 - Contract suite: passed; the two buf checks are skipped when buf is unavailable.
-- Real PVE, unmounted Linux/LVM discovery, remote provider, and full data-plane acceptance:
-  **pending manual/dependency validation**, not claimed as passed.
+- Installed PVE configuration protection and isolated recovery: **passed**; see [PVE smoke record](phase6-7-pve-smoke-2026-10-13.md).
+- Unmounted Linux/LVM discovery, remote provider, real system-disk reinstall, and full data-plane acceptance: **pending manual/dependency validation**, not claimed as passed.

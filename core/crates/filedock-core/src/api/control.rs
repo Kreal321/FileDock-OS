@@ -37,6 +37,12 @@ impl CoreControl for CoreControlSvc {
         let actor = actor_of(request.metadata());
         let request_id = request_id_of(request.metadata());
         let changes = proto_changes(request.into_inner())?;
+        if changes
+            .iter()
+            .any(|c| c.resource().kind == fd_state::ResourceKind::Extension)
+        {
+            return Err(Status::failed_precondition("extension.use_lifecycle_api"));
+        }
         match self
             .app
             .store
@@ -139,6 +145,35 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let req = request.into_inner();
+        if req.kind == "RestartExtension" {
+            let params = req
+                .params
+                .as_ref()
+                .map(proto_conv::struct_to_value)
+                .unwrap_or(serde_json::json!({}));
+            let subsystem = params["subsystemId"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("extension.id_required"))?;
+            let row = crate::extension_runtime::find(&self.app, subsystem)?
+                .ok_or_else(|| Status::not_found("extension.not_found"))?;
+            let op = self
+                .app
+                .journal
+                .start(
+                    "RestartExtension",
+                    serde_json::json!({"spec":row.spec,"previous":row.spec}),
+                    Some(row.resource),
+                    &actor,
+                    &["activate"],
+                )
+                .map_err(|_| Status::internal("extension.journal_failed"))?;
+            let app = self.app.clone();
+            let id = op.id.clone();
+            tokio::spawn(async move {
+                let _ = crate::extension_runtime::resume(&app, &id).await;
+            });
+            return Ok(Response::new(operation_to_proto(&op)));
+        }
         if req.kind == "StateSnapshot" {
             let op = self
                 .app

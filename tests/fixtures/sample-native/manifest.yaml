@@ -1,0 +1,12 @@
+schemaVersion: 1
+id: sample-native
+name: Sample native extension
+version: 1.0.0
+class: extension
+capabilities: [cache.generic]
+runtime:
+  type: native-process
+  executable: ./sample
+health: {type: grpc, intervalSeconds: 5, startupGraceSeconds: 5}
+permissions: [core.events.read]
+compatibility: {appliance: ">=0.1.0 <0.2.0", extensionProtocol: "1"}

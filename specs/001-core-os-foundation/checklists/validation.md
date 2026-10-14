@@ -23,3 +23,16 @@ report/dismissal. No PVE installation was changed. See [combined guide](../phase
 Full Phase 7 pool mapping/System Pool recreation/extension installation/data reconciliation remains
 pending US9/US6, and full VM/copy-fault/diagnostic-bundle acceptance remains pending as recorded in
 tasks.md. This entry does not claim those acceptance gates have passed.
+
+Installed PVE Phase 6/7 smoke on 2026-10-13: PASS for configuration protection and isolated
+configuration recovery, including key rotation and retained epoch verification using the installed
+Linux binaries with production KDF settings. See [PVE smoke record](../phase6-7-pve-smoke-2026-10-13.md).
+Automatic snapshot latency was 33.88 seconds. All eight installed services remained healthy.
+Remote/data-pool/disaster-recovery hardware paths and later provider dependencies remain pending.
+
+Phase 8 implementation on 2026-10-14: package/permission/cache/capability/binding tests and
+native extension API guards passed; Phase 6/7 native recovery smoke still passes. Management
+build and 31 .NET tests passed; frontend 32 tests, lint and build passed. Contract checks passed
+22 with two buf skips; 16 VM tests collected. See [Phase 8 guide](../phase8-testing.md) for exact
+local evidence and the pending Linux runtime/isolation/20-kill/rollback acceptance gate. The PVE
+installation was not updated or changed during Phase 8 implementation.

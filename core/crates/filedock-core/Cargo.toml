@@ -11,6 +11,8 @@ path = "src/main.rs"
 
 [dependencies]
 fd-alerts.workspace = true
+async-trait.workspace = true
+jsonschema.workspace = true
 fd-appstate.workspace = true
 serde.workspace = true
 rusqlite.workspace = true

@@ -136,17 +136,8 @@ impl Controller for AdoptionController {
             ResourceSpec::ContainerApp(app) => {
                 Some(Runtime::ComposeProject(format!("fd-{}", app.name)))
             }
-            ResourceSpec::Extension(extension) => {
-                let registry = SubsystemRegistry::new(self.store.db().clone());
-                let record = registry
-                    .get(&extension.subsystem_id)
-                    .map_err(failed)?
-                    .ok_or_else(|| failed("extension manifest not installed"))?;
-                if !record.enabled || record.state == "Failed" {
-                    return Ok(());
-                }
-                Runtime::from_manifest(&record.id, &record.manifest)?
-            }
+            // The extension lifecycle owns sandboxed activation and supervision.
+            ResourceSpec::Extension(_) => return Ok(()),
             _ => None,
         };
         if let Some(runtime) = runtime {

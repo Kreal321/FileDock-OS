@@ -4,6 +4,7 @@ pub mod detect;
 pub mod engine;
 pub mod fdconfig;
 pub mod format;
+pub mod packages;
 pub mod restore;
 pub mod scheduler;
 use std::{

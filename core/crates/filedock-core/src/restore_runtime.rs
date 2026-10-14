@@ -291,6 +291,18 @@ pub async fn resume(app: &Arc<App>, id: &str) -> Result<(), Status> {
             }
         }
     }
+    for row in crate::extension_runtime::rows(app, fd_state::ResourceKind::Extension)? {
+        if let Some(hash) = row.spec["packageSha256"].as_str() {
+            let file = stage(app, id)?.join(format!("{hash}.fdext"));
+            if let Ok(bytes) = std::fs::read(&file)
+                && crate::extension_runtime::restore_package(app, &row, &bytes)
+                    .await
+                    .is_ok()
+            {
+                let _ = std::fs::remove_file(file);
+            }
+        }
+    }
     let mut report = build_report(
         &payload.config,
         &present_pools(app)?,
@@ -304,6 +316,17 @@ pub async fn resume(app: &Arc<App>, id: &str) -> Result<(), Status> {
                 .and_then(|a| a.iter().find(|e| e["id"] == item["id"]))
         {
             item["name"] = extension["subsystemId"].clone();
+            if let Some(subsystem) = extension["subsystemId"]
+                .as_str()
+                .and_then(|name| app.subsystems.get(name).ok().flatten())
+            {
+                item["status"] = json!(subsystem.state);
+                item["detail"] = json!(
+                    "Package verified; runtime and data-binding availability determine extension status."
+                );
+                continue;
+            }
+
             if let Some(hash) = extension["packageSha256"].as_str()
                 && stage(app, id)?.join(format!("{hash}.fdext")).is_file()
             {

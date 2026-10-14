@@ -21,5 +21,22 @@ thiserror.workspace = true
 tracing.workspace = true
 zbus.workspace = true
 
+fd-api.workspace = true
+fd-alerts.workspace = true
+tonic.workspace = true
+tower.workspace = true
+hyper-util.workspace = true
+tokio-stream.workspace = true
+futures.workspace = true
+prost-types.workspace = true
+sha2.workspace = true
+hex.workspace = true
+uuid.workspace = true
+zstd.workspace = true
+tar.workspace = true
+semver = "1"
+minisign-verify = "0.2"
+reqwest.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true

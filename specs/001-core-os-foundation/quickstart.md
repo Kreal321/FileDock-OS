@@ -322,7 +322,9 @@ Contracts: [core-api.proto](./contracts/core-api.proto) `Connectors`,
 
 ## Extensions (User Story 6, SC-008)
 
-- Install `tests/fixtures/sample-native.fdext`, `sample-systemd.fdext`, and `sample-docker.fdext`.
+Build/install and detailed checks: [Phase 8 test guide](phase8-testing.md). Sample packages are generated in `dist/fixtures/` by `tests/fixtures/build.sh` on Debian amd64.
+
+- Install `dist/fixtures/sample-native.fdext`, `sample-systemd.fdext`, and `sample-docker.fdext`.
   - **Expect**: permissions shown for approval, and capabilities listed.
 - Kill the sample native extension 20 times.
   - **Expect**: 0 Core restarts. Backoff applies, and the extension is marked Failed after the

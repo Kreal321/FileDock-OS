@@ -17,6 +17,7 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
     public Observability.ObservabilityClient Observability { get; }
     public Connectors.ConnectorsClient Connectors { get; }
     public Recovery.RecoveryClient Recovery { get; }
+    public Extensions.ExtensionsClient Extensions { get; }
 
     public CoreClient(IConfiguration configuration)
     {
@@ -40,6 +41,7 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
         Observability = new Observability.ObservabilityClient(_channel);
         Connectors = new Connectors.ConnectorsClient(_channel);
         Recovery = new Recovery.RecoveryClient(_channel);
+        Extensions = new Extensions.ExtensionsClient(_channel);
     }
 
     public async Task ApplyApplianceNameAsync(string applianceName, string actor, string requestId, CancellationToken cancellationToken = default)

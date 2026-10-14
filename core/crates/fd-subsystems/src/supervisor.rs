@@ -119,7 +119,9 @@ impl Supervisor {
                 } else if now >= current.retry_at {
                     // Record before acting so a Core crash never loses the attempt/backoff.
                     current.state = "Starting".into();
-                    current.awaiting_until = now + 5000;
+                    current.awaiting_until = now.saturating_add(
+                        adapter.startup_grace().as_millis().min(i64::MAX as u128) as i64,
+                    );
                     self.save(id, &current)?;
                     let start = tokio::time::timeout(Duration::from_secs(3), adapter.start()).await;
                     if !matches!(start, Ok(Ok(()))) {

@@ -1,5 +1,6 @@
 # FileDock OS build entry points. See specs/001-core-os-foundation/quickstart.md.
 
+CC     ?= cc
 CARGO  ?= cargo
 DOTNET ?= dotnet
 PNPM   ?= pnpm
@@ -30,6 +31,7 @@ proto:
 # Core Service and the native S3 connector.
 core:
 	$(CARGO) build --release --workspace
+	$(CC) -O2 -Wall -Wextra -Werror -static packaging/extensions/launcher.c -o target/release/fd-extension-launcher
 
 # The SPA is built into the Management Service's wwwroot, then published with it.
 web:

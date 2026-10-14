@@ -373,6 +373,16 @@ impl Engine {
             )
         };
         for hash in &prepared.entry.packages {
+            let key = format!("{root}packages/{hash}.fdpkg");
+            if let Some(existing) = target.backend.read(&key).await? {
+                let valid = input.masters.values().any(|master| {
+                    fdstate::decrypt_bytes(&existing, master, b"FDPKG\0\0\0")
+                        .is_ok_and(|bytes| hex::encode(Sha256::digest(&bytes)) == *hash)
+                });
+                if valid {
+                    continue;
+                }
+            }
             let blob = std::fs::read(self.spool.join(format!("{hash}.fdpkg")))?;
             target
                 .backend

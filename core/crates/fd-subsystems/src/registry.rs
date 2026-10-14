@@ -20,6 +20,10 @@ pub struct SubsystemRegistry {
 }
 
 impl SubsystemRegistry {
+    pub fn db(&self) -> &Db {
+        &self.db
+    }
+
     pub fn new(db: Db) -> Self {
         Self { db }
     }
@@ -66,6 +70,33 @@ impl SubsystemRegistry {
                 .filter_map(|id| load(conn, &id).transpose())
                 .collect()
         })
+    }
+
+    pub fn record_capabilities(&self, id: &str, capabilities: &[String]) -> Result<(), DbError> {
+        self.db.with(|c| {
+            db::put_setting(
+                c,
+                &format!("subsystem.registered_capabilities.{id}"),
+                &serde_json::json!(capabilities),
+            )
+        })
+    }
+    pub fn effective_capabilities(&self, row: &SubsystemRecord) -> Result<Vec<String>, DbError> {
+        if row.class == "Extension" && row.state == "Running" {
+            return self.db.with(|c| {
+                Ok(
+                    db::get_setting(c, &format!("subsystem.registered_capabilities.{}", row.id))?
+                        .and_then(|v| serde_json::from_value(v).ok())
+                        .unwrap_or_default(),
+                )
+            });
+        }
+        Ok(row.manifest["capabilities"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect())
     }
 
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<SubsystemRecord, DbError> {
