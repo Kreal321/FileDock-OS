@@ -11,6 +11,12 @@ path = "src/main.rs"
 
 [dependencies]
 fd-alerts.workspace = true
+fd-appstate.workspace = true
+serde.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+hex.workspace = true
 fd-api.workspace = true
 fd-connectors.workspace = true
 fd-journal.workspace = true

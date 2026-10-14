@@ -310,9 +310,20 @@ impl Journal {
     }
 
     pub fn resume_all(&self, runners: &[&dyn StepRunner]) -> Result<Vec<Operation>, JournalError> {
+        self.resume_all_except(runners, &[])
+    }
+    /// Application-owned async state machines resume independently of synchronous runners.
+    pub fn resume_all_except(
+        &self,
+        runners: &[&dyn StepRunner],
+        deferred_kinds: &[&str],
+    ) -> Result<Vec<Operation>, JournalError> {
         let unfinished = self.unfinished()?;
         let mut out = Vec::new();
         for operation in unfinished {
+            if deferred_kinds.contains(&operation.kind.as_str()) {
+                continue;
+            }
             let Some(runner) = runners.iter().copied().find(|r| r.kind() == operation.kind) else {
                 self.set_state(&operation.id, OperationState::Failed, Some("No installed runner for this operation; manual review required. Side effects were preserved."))?;
                 out.push(self.get(&operation.id)?);
@@ -372,7 +383,7 @@ impl Journal {
         self.get(id)
     }
 
-    fn set_state(
+    pub fn set_state(
         &self,
         id: &str,
         state: OperationState,

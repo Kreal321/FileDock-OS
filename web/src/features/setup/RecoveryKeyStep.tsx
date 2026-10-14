@@ -6,9 +6,16 @@ type Props = {
   onDownloaded: () => Promise<void>;
   error?: string;
   canContinue?: boolean;
+  busyLabel?: string;
 };
 
-export function RecoveryKeyStep({ recoveryKey, onDownloaded, error, canContinue = true }: Props) {
+export function RecoveryKeyStep({
+  recoveryKey,
+  onDownloaded,
+  error,
+  canContinue = true,
+  busyLabel = 'Finishing setup…',
+}: Props) {
   const [busy, setBusy] = useState(false);
 
   async function downloadAndContinue() {
@@ -51,7 +58,7 @@ export function RecoveryKeyStep({ recoveryKey, onDownloaded, error, canContinue 
       ) : null}
       <Button variant="primary" type="button" busy={busy} onClick={downloadAndContinue}>
         {busy
-          ? 'Finishing setup…'
+          ? busyLabel
           : canContinue
             ? 'Download recovery key and continue'
             : 'Download recovery key'}

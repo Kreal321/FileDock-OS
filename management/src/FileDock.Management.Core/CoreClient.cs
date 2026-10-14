@@ -131,7 +131,7 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
         => ToOperation(await Control.GetOperationAsync(new OperationRef { Id = id }, headers: Metadata("management", "operations", false), cancellationToken: cancellationToken));
     public async Task<OperationDto> ReconcileAllAsync(string actor, string requestId, CancellationToken cancellationToken)
         => ToOperation(await Control.StartOperationAsync(new StartOperationRequest { Kind = "ReconcileAll" }, headers: Metadata(actor, requestId, true), cancellationToken: cancellationToken));
-    private static OperationDto ToOperation(Operation operation) => new(operation.Id, operation.Kind, operation.State.ToString(), operation.Steps.Select(s => new OperationStepDto(s.Name, s.State, s.Attempts, s.Detail)).ToArray(), operation.StartedBy, operation.StartedAt?.ToDateTimeOffset(), operation.FinishedAt?.ToDateTimeOffset(), string.IsNullOrEmpty(operation.Error) ? null : operation.Error);
+    public static OperationDto ToOperation(Operation operation) => new(operation.Id, operation.Kind, operation.State.ToString(), operation.Steps.Select(s => new OperationStepDto(s.Name, s.State, s.Attempts, s.Detail)).ToArray(), operation.StartedBy, operation.StartedAt?.ToDateTimeOffset(), operation.FinishedAt?.ToDateTimeOffset(), string.IsNullOrEmpty(operation.Error) ? null : operation.Error);
 
     public static Metadata Metadata(string actor, string requestId, bool mutating)
     {

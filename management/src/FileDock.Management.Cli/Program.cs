@@ -33,6 +33,20 @@ resetNetwork.SetAction(async parse => await NetworkCommand.RunAsync(parse.GetVal
 network.Add(resetNetwork);
 root.Add(network);
 
+var state = new Command("state", "Configuration recovery and snapshots");
+var stateStatus = new Command("status", "Inspect configuration recovery coverage");
+stateStatus.SetAction(async parse => await AdminSocketClient.PostAsync(parse.GetValue(socket)!, "/admin/state-protection", null, true)); state.Add(stateStatus);
+var backupOutput = new Argument<string>("output");
+var backup = new Command("export", "Save a configuration .fdbackup to a new file") { backupOutput };
+backup.SetAction(async parse => await StateCommands.Export(parse.GetValue(socket)!, parse.GetValue(backupOutput)!)); state.Add(backup); root.Add(state);
+var recovery = new Command("recovery-key", "Manage the configuration recovery key");
+var recoveryOutput = new Argument<string>("output");
+var regenerate = new Command("regenerate", "Rotate the recovery key and save it to a new private text file") { recoveryOutput };
+regenerate.SetAction(async parse => await StateCommands.Regenerate(parse.GetValue(socket)!, parse.GetValue(recoveryOutput)!)); recovery.Add(regenerate); root.Add(recovery);
+var detect = new Command("detect-state", "Find surviving local configuration copies");
+detect.SetAction(async parse => await AdminSocketClient.PostAsync(parse.GetValue(socket)!, "/admin/detect-state", null, true)); root.Add(detect);
+var restore = new Command("restore-local", "Restore the newest verified local snapshot using only the recovery key");
+restore.SetAction(async parse => await StateCommands.Restore(parse.GetValue(socket)!, parse.GetValue(json))); root.Add(restore);
 root.SetAction(parse =>
 {
     if (parse.GetValue(json))

@@ -139,6 +139,25 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let req = request.into_inner();
+        if req.kind == "StateSnapshot" {
+            let op = self
+                .app
+                .journal
+                .start(
+                    "StateSnapshot",
+                    serde_json::json!({}),
+                    None,
+                    &actor,
+                    &["snapshot"],
+                )
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let app = self.app.clone();
+            let id = op.id.clone();
+            tokio::spawn(async move {
+                crate::restore_runtime::snapshot_operation(&app, &id).await;
+            });
+            return Ok(Response::new(operation_to_proto(&op)));
+        }
         if req.kind != "ReconcileAll" {
             return Err(Status::invalid_argument("unsupported operation kind"));
         }

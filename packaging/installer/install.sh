@@ -361,7 +361,25 @@ ensure_paths
 install_journald_cap
 install_packages || exit 3
 configure_services || exit 3
-print_setup_code || exit 3
+# Discover surviving state before issuing a new setup code. --yes leaves key entry to the UI.
+restore_discovery="$(filedockctl --json detect-state 2>/dev/null)" || restore_discovery=""
+if [[ "$restore_discovery" == *'"localSourceToken"'* ]]; then
+  echo "A previous FileDock appliance was found on this machine."
+  if [[ "$YES" -eq 0 && -t 0 && -t 1 ]]; then
+    read -r -p "Restore it with your recovery key now? [y/N] " restore_choice
+    if [[ "$restore_choice" =~ ^[Yy]$ ]]; then
+      filedockctl restore-local || exit 5
+      echo "Restore started. Open http://$(ui_address):8021/ to review progress and sign in."
+    else
+      print_setup_code || exit 3
+    fi
+  else
+    echo "Open the first-run page and choose Restore an existing appliance; only its recovery key is needed."
+    print_setup_code || exit 3
+  fi
+else
+  print_setup_code || exit 3
+fi
 mkdir -p /etc/filedock
 if [[ -f "$SCRIPT_DIR/bootstrap.sh" ]]; then
   # Rename a completed copy so a running updater keeps reading its old inode.

@@ -81,6 +81,40 @@ impl SecretStore {
         })
     }
 
+    pub fn encrypted_bytes(&self) -> Result<Vec<u8>, StoreError> {
+        Ok(serde_json::to_vec(&self.body)?)
+    }
+    /// Validate every encrypted record before replacing any live file.
+    pub fn read_snapshot(
+        bytes: &[u8],
+        dek: &[u8; 32],
+        reference: &str,
+    ) -> Result<Zeroizing<Vec<u8>>, StoreError> {
+        let body: FileBody = serde_json::from_slice(bytes)?;
+        Self {
+            path: PathBuf::new(),
+            dek_path: PathBuf::new(),
+            dek: Zeroizing::new(*dek),
+            body,
+        }
+        .get(reference)
+    }
+    pub fn validate_snapshot(bytes: &[u8], dek: &[u8; 32]) -> Result<(), StoreError> {
+        let body: FileBody = serde_json::from_slice(bytes)?;
+        let store = Self {
+            path: PathBuf::new(),
+            dek_path: PathBuf::new(),
+            dek: Zeroizing::new(*dek),
+            body,
+        };
+        for reference in store.body.records.keys() {
+            if !fd_state_ref_ok(reference) {
+                return Err(StoreError::InvalidRef(reference.clone()));
+            }
+            store.get(reference)?;
+        }
+        Ok(())
+    }
     pub fn dek_path(&self) -> &Path {
         &self.dek_path
     }
@@ -233,6 +267,9 @@ fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<(), StoreError> 
         file.sync_all()?;
     }
     fs::rename(tmp, path)?;
+    if let Some(parent) = path.parent() {
+        fs::File::open(parent)?.sync_all()?;
+    }
     Ok(())
 }
 

@@ -44,7 +44,7 @@ def main():
         admin_path = str(root/'admin.sock')
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
-        core_env=dict(os.environ,FD_CORE_SOCKET=socket_path,FD_CORE_DB=str(root/'core.db'),FD_SECRETS=str(root/'secrets.enc'),FD_DEK=str(root/'local.key'),FD_RECOVERY_KEYS=str(root/'recovery.enc'),FD_MANIFESTS=str(REPO/'packaging/subsystems'),FD_SECRETS_RUN=str(root/'secrets'),FD_MGMT_UID=str(os.getuid()),FD_RUNTIME_ENABLED='0',FD_RECOVERY_ARGON_KIB='4096')
+        core_env=dict(os.environ,FD_CORE_SOCKET=socket_path,FD_CORE_DB=str(root/'core.db'),FD_STATE_ROOT=str(root/'state-copy'),FD_STATE_SPOOL=str(root/'state-spool'),FD_POOLS_ROOT=str(root/'pools'),FD_SECRETS=str(root/'secrets.enc'),FD_DEK=str(root/'local.key'),FD_RECOVERY_KEYS=str(root/'recovery.enc'),FD_MANIFESTS=str(REPO/'packaging/subsystems'),FD_SECRETS_RUN=str(root/'secrets'),FD_MGMT_UID=str(os.getuid()),FD_RUNTIME_ENABLED='0',FD_RECOVERY_ARGON_KIB='4096')
         management_env=dict(os.environ,Logging__LogLevel__Default='Warning',Core__Socket=socket_path,Core__Optional='false',Database__Path=str(root/'app.db'),Kestrel__HttpPort=str(port),AdminSocket__Path=admin_path)
         core_command=[str(REPO/'target/debug/filedock-core')]
         management_command=['dotnet',str(REPO/'management/src/FileDock.Management.Api/bin/Debug/net10.0/FileDock.Management.Api.dll')]

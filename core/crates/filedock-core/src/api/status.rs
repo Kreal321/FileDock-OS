@@ -77,11 +77,18 @@ pub async fn get_system_status(
     Ok(Response::new(SystemStatus {
         interface_version: app.config.interface_version.into(),
         release_version: app.config.release_version.into(),
-        appliance_id: app.appliance_id.clone(),
+        appliance_id: crate::state_runtime::appliance_id(app),
         appliance_name,
         components,
-        last_state_snapshot_at: None,
-        state_protection_warning: false,
+        last_state_snapshot_at: fd_appstate::engine::Engine::records(app.store.db())
+            .ok()
+            .and_then(|r| r.into_iter().filter_map(|r| r.last_snapshot_at).max())
+            .as_deref()
+            .and_then(super::events::timestamp),
+        state_protection_warning: fd_appstate::engine::Engine::protection(app.store.db())
+            .ok()
+            .and_then(|v| v["warning"].as_bool())
+            .unwrap_or(true),
         notification_channel_missing: true,
     }))
 }

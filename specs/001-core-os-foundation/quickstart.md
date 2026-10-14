@@ -342,3 +342,7 @@ Contracts: [core-api.proto](./contracts/core-api.proto) `Connectors`,
   - **Expect**: refused while the binding exists.
 - Check every appliance-state copy.
   - **Expect**: each holds one `packages/<sha256>.fdpkg` per installed extension version (FR-110).
+
+## Phase 6 and 7 combined manual testing
+
+See [phase6-7-testing.md](phase6-7-testing.md) for bundle build/install commands, protection and configuration-recovery checks, and the US6/US9 prerequisites for full pool/package recovery. Configuration recovery is available now; full disaster-recovery acceptance remains pending those providers.

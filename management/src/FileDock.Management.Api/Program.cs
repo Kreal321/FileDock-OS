@@ -1,7 +1,7 @@
 using FileDock.Management.Api.AdminSocket;
-using FileDock.Management.Api.Hubs;
 using FileDock.Management.Api.Auth;
 using FileDock.Management.Api.Endpoints;
+using FileDock.Management.Api.Hubs;
 using FileDock.Management.Api.Infrastructure;
 using FileDock.Management.Api.Middleware;
 using FileDock.Management.Api.Network;
@@ -34,6 +34,15 @@ builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<IApiTokenStore, EfApiTokenStore>();
 builder.Services.AddScoped<ApiTokenService>();
 builder.Services.AddHostedService<AuditRetention>();
+builder.Services.AddScoped<FileDock.Management.Domain.Restore.IManagementConfigStore, ManagementConfigStore>();
+builder.Services.AddSingleton<ManagementConfigChangeInterceptor>();
+if (!builder.Configuration.GetValue("Core:Optional", false))
+{
+    builder.Services.AddHostedService<ManagementConfigPublisher>();
+}
+
+builder.Services.AddSingleton<RestoreSessions>();
+builder.Services.AddSingleton<CoreClient>();
 if (builder.Configuration.GetValue("Core:Optional", false))
 {
     builder.Services.AddSingleton<LocalCoreGateway>();
@@ -43,7 +52,6 @@ if (builder.Configuration.GetValue("Core:Optional", false))
 }
 else
 {
-    builder.Services.AddSingleton<CoreClient>();
     builder.Services.AddSingleton<ICoreGateway>(sp => sp.GetRequiredService<CoreClient>());
     builder.Services.AddSingleton<ICoreEventSource>(sp => sp.GetRequiredService<CoreClient>());
     builder.Services.AddSingleton<IOperationGateway>(sp => sp.GetRequiredService<CoreClient>());
@@ -64,11 +72,11 @@ builder.Services.AddAuthentication("fd-auth")
     .AddScheme<AuthenticationSchemeOptions, SessionAuthHandler>(SessionAuthHandler.SchemeName, _ => { })
     .AddScheme<AuthenticationSchemeOptions, TokenAuthHandler>(TokenAuthHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization();
-builder.Services.AddDbContext<AppDbContext>(options =>
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
     var path = builder.Configuration["Database:Path"] ?? "app.db";
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-    options.UseSqlite($"Data Source={path}");
+    options.UseSqlite($"Data Source={path}").AddInterceptors(sp.GetRequiredService<ManagementConfigChangeInterceptor>());
 });
 
 var listener = new ListenerConfiguration(builder.Configuration.GetValue("Kestrel:HttpPort", 8021));
@@ -124,6 +132,7 @@ api.MapTokens();
 api.MapNetwork();
 api.MapAudit();
 api.MapOperations();
+api.MapRecovery();
 api.MapGet("/system/core-health", (CoreHealthMonitor monitor) => Results.Ok(monitor.Current)).WithMetadata(new AccessScope("R"));
 app.MapHub<EventsHub>("/hubs/events");
 AdminSocketEndpoints.Map(app);

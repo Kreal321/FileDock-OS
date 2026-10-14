@@ -59,11 +59,23 @@ impl RcloneAdapter {
         Ok(value)
     }
 
+    pub async fn create_azure_recovery_remote(
+        &self,
+        name: &str,
+        parameters: Value,
+    ) -> Result<(), String> {
+        self.call("config/create",json!({"name":name,"type":"azureblob","parameters":parameters,"opt":{"nonInteractive":true,"obscure":true,"noOutput":true}})).await?;
+        Ok(())
+    }
+    pub async fn delete_recovery_remote(&self, name: &str) -> Result<(), String> {
+        self.call("config/delete", json!({"name":name})).await?;
+        Ok(())
+    }
     pub async fn list(&self, remote: &str, prefix: &str) -> Result<Vec<String>, String> {
         let body = self
             .call(
                 "operations/list",
-                json!({"fs": filesystem(remote), "remote": prefix}),
+                json!({"fs": filesystem(remote), "remote": prefix, "opt":{"recurse":true,"filesOnly":true}}),
             )
             .await?;
         Ok(body

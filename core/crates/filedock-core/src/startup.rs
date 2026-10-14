@@ -54,7 +54,7 @@ pub async fn run(
             reconcile_operation(&journal, &reconciler, &events, &operation.id).await?;
         }
     }
-    journal.resume_all(&[])?;
+    journal.resume_all_except(&[], &["Restore", "StateSnapshot"])?;
     if runtime_enabled {
         loop {
             match reconciler.reconcile_now().await {

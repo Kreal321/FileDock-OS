@@ -1,3 +1,5 @@
+import { RestoreReport } from '../restore/RestoreReport.tsx';
+import type { Protection } from '../recovery/StateProtectionPage.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import {
@@ -15,6 +17,11 @@ import { StateView } from '../../components/StateView.tsx';
 import { StatusBadge } from '../../components/StatusBadge.tsx';
 import { dashboardModel } from './dashboard-model.ts';
 export function DashboardPage({ connected = true }: { connected?: boolean }) {
+  const protection = useQuery({
+    queryKey: ['state-protection'],
+    queryFn: () => api.get<Protection>('/state-protection'),
+    refetchInterval: 10000,
+  });
   const q = useQuery({
     queryKey: ['system-status'],
     queryFn: () => api.get<SystemStatus>('/system/status'),
@@ -85,8 +92,22 @@ export function DashboardPage({ connected = true }: { connected?: boolean }) {
           </span>
           <div>
             <p className="caption muted">Recovery coverage</p>
-            <p className="metric">Unknown</p>
-            <p className="caption muted">Detailed protection not available</p>
+            <p className="metric">
+              {protection.error
+                ? 'Unknown'
+                : protection.data
+                  ? protection.data.machineLossCovered
+                    ? 'Machine loss covered'
+                    : 'At risk'
+                  : 'Unknown'}
+            </p>
+            <p className="caption muted">
+              {protection.error
+                ? 'Cached status; current coverage unavailable'
+                : protection.data
+                  ? `Reinstall ${protection.data.reinstallCovered ? 'covered' : 'not covered'}`
+                  : 'Protection status unavailable'}
+            </p>
           </div>
         </Panel>
       </div>
@@ -95,6 +116,8 @@ export function DashboardPage({ connected = true }: { connected?: boolean }) {
           {n}
         </Notice>
       ))}
+      <a href="#/settings/state-protection">Review recovery copies and last durable snapshot</a>
+      <RestoreReport />
       <div className="dashboard-grid">
         <Panel className="stack">
           <div className="panel-heading">

@@ -3,8 +3,10 @@
 mod api;
 mod config;
 mod proto_conv;
+mod restore_runtime;
 mod runtime;
 mod startup;
+mod state_runtime;
 
 use std::sync::Arc;
 
@@ -25,6 +27,49 @@ use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let command = std::env::args().nth(1);
+    if command.as_deref() == Some("detect-state") {
+        let config = Config::from_env();
+        let mut roots = vec![(config.state_root, "system disk".into())];
+        roots.extend(fd_appstate::detect::pool_roots(&config.pools_root)?);
+        let mut discovery = None;
+        if cfg!(target_os = "linux") && unsafe { libc::geteuid() } == 0 {
+            let output = std::path::PathBuf::from("/run/filedock")
+                .join(format!("detect-cli-{}", uuid::Uuid::new_v4()));
+            let child = std::process::Command::new("unshare")
+                .args(["--mount", "--propagation", "private"])
+                .arg(std::env::current_exe()?)
+                .arg("detect-state-private")
+                .env("FD_DETECT_OUTPUT", &output)
+                .output();
+            if let Ok(child) = child
+                && child.status.success()
+                && let Ok(found) =
+                    serde_json::from_slice::<Vec<(std::path::PathBuf, String)>>(&child.stdout)
+            {
+                roots.extend(found);
+            }
+            discovery = Some(output);
+        }
+        println!(
+            "{}",
+            serde_json::to_string(&fd_appstate::detect::scan(&roots)?)?
+        );
+        if let Some(root) = discovery {
+            let _ = std::fs::remove_dir_all(root);
+        }
+        return Ok(());
+    }
+    if command.as_deref() == Some("detect-state-private") {
+        let output = std::env::var_os("FD_DETECT_OUTPUT").ok_or("FD_DETECT_OUTPUT missing")?;
+        println!(
+            "{}",
+            serde_json::to_string(&fd_appstate::detect_linux::scan_unmounted(
+                std::path::Path::new(&output)
+            )?)?
+        );
+        return Ok(());
+    }
     init_logging();
     let config = Config::from_env();
     tracing::info!(socket = %config.socket.display(), "starting FileDock Core");
@@ -47,7 +92,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let events = Arc::new(EventBus::new(db.clone()));
     let alerts = Arc::new(AlertStore::new(db.clone()));
     let secrets = SecretStore::open(&config.secrets, &config.dek)?;
-    let recovery = RecoveryKeyStore::open(&config.recovery_keys, &secrets.dek_bytes())?;
+    let recovery = match RecoveryKeyStore::open(&config.recovery_keys, &secrets.dek_bytes()) {
+        Ok(store) => store,
+        Err(original) => restore_runtime::recover_key_on_start(&config, &db, &secrets.dek_bytes())?
+            .ok_or(original)?,
+    };
     let subsystems = SubsystemRegistry::new(db.clone());
     for (_, manifest) in load_dir(&config.manifests)? {
         subsystems.upsert_from_manifest(&manifest)?;

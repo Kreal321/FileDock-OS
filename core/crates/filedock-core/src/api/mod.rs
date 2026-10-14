@@ -35,8 +35,19 @@ use self::observability::ObservabilitySvc;
 use self::recovery::RecoverySvc;
 use self::secrets::SecretsSvc;
 
+type TemporaryS3Connections = std::collections::BTreeMap<
+    String,
+    (serde_json::Value, std::collections::HashMap<String, String>),
+>;
+
 pub struct App {
     pub config: Config,
+    pub state_engine: Mutex<fd_appstate::engine::Engine>,
+    pub restore_sources:
+        Mutex<std::collections::BTreeMap<String, fd_appstate::restore::sources::Source>>,
+    pub detected: Mutex<Vec<fd_appstate::detect::Detected>>,
+    pub restore_lock: Mutex<()>,
+    pub temporary_s3: Mutex<TemporaryS3Connections>,
     pub appliance_id: String,
     pub extension_token: String,
     pub store: Arc<StateStore>,
@@ -87,6 +98,14 @@ pub async fn serve(
         events.clone(),
     ));
     let app = Arc::new(App {
+        state_engine: Mutex::new(fd_appstate::engine::Engine::new(
+            store.db().clone(),
+            config.state_spool.clone(),
+        )?),
+        restore_sources: Mutex::new(std::collections::BTreeMap::new()),
+        detected: Mutex::new(Vec::new()),
+        restore_lock: Mutex::new(()),
+        temporary_s3: Mutex::new(std::collections::BTreeMap::new()),
         config: config.clone(),
         appliance_id,
         extension_token,
@@ -133,8 +152,17 @@ pub async fn serve(
         )?;
         tokio::spawn(crate::runtime::run(app.clone()));
     }
+    tokio::spawn(crate::state_runtime::run(app.clone()));
     let startup_app = app.clone();
     tokio::spawn(async move {
+        for operation in startup_app.journal.unfinished().unwrap_or_default() {
+            if operation.kind == "Restore" {
+                let _ = crate::restore_runtime::resume(&startup_app, &operation.id).await;
+            }
+            if operation.kind == "StateSnapshot" {
+                crate::restore_runtime::snapshot_operation(&startup_app, &operation.id).await;
+            }
+        }
         if let Err(error) = crate::startup::run(
             startup_app.store.db().clone(),
             startup_app.journal.clone(),

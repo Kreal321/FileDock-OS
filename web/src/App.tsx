@@ -13,6 +13,8 @@ import { OperationDetailPage } from './features/operations/OperationDetailPage.t
 import { AuditPage } from './features/audit/AuditPage.tsx';
 import { AuthLayout } from './layout/AuthLayout.tsx';
 import { AppShell } from './layout/AppShell.tsx';
+import { StateProtectionPage } from './features/recovery/StateProtectionPage.tsx';
+import { LocationsPage } from './features/recovery/LocationsPage.tsx';
 import { Panel } from './components/Panel.tsx';
 import { Button } from './components/Button.tsx';
 import { useHashRoute, resetNavigation } from './navigation/useHashRoute.ts';
@@ -90,6 +92,10 @@ function Shell() {
     <AppShell route={route} onSignOut={signOut}>
       {(canMutate, connected, browserConnected) => {
         switch (route.id) {
+          case 'state-protection':
+            return <StateProtectionPage canMutate={canMutate && browserConnected} />;
+          case 'locations':
+            return <LocationsPage canMutate={canMutate && browserConnected} />;
           case 'settings':
             return <SettingsPage />;
           case 'administrators':

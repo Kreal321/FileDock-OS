@@ -405,45 +405,45 @@ the remote destination within 5 minutes.
 1 minute, that `config.json` holds configuration and no history, and that canary secrets never
 leak (quickstart "Secrets and appliance state").
 
-- [ ] T088 [US4] Implement `POST /recovery-key/regenerate` (session only, audited) and `filedockctl recovery-key regenerate` in `management/src/FileDock.Management.Api/Endpoints/RecoveryKeyEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/RecoveryKeyCommand.cs`. A new key is confirmed the same way as at setup (FR-034)
-- [ ] T089 [P] [US4] Build the regenerate flow, which reuses the setup recovery-key step, in `web/src/features/recovery/`
-- [ ] T090 [US4] Implement the `fdconfig/1` core-section serializer in `core/crates/fd-appstate/src/fdconfig/mod.rs` and `core/crates/fd-appstate/src/fdconfig/core_section.rs` (FR-036, research R11):
+- [X] T088 [US4] Implement `POST /recovery-key/regenerate` (session only, audited) and `filedockctl recovery-key regenerate` in `management/src/FileDock.Management.Api/Endpoints/RecoveryKeyEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`. A new key is confirmed the same way as at setup (FR-034)
+- [X] T089 [P] [US4] Build the regenerate flow, which reuses the setup recovery-key step, in `web/src/features/recovery/`
+- [X] T090 [US4] Implement the `fdconfig/1` core-section serializer in `core/crates/fd-appstate/src/fdconfig/mod.rs` and `core/crates/fd-appstate/src/fdconfig/core_section.rs` (FR-036, research R11):
   - serialized inside one read transaction;
   - covers pools without disks, folders, exports, share users, connections with route overrides, enabled connectors, connector routes with acknowledgements, the destination, owned locations, apps, notification channels, subsystems with package hash, permissions, configuration, and bindings, capability defaults, and tier metadata;
-  - reads older versions by upgrading them in memory.
-- [ ] T091 [US4] Write the `fdconfig` coverage contract test in `core/crates/fd-appstate/tests/fdconfig_coverage.rs`. Every ResourceKind must be mapped, and audit entries, alerts, operations, snapshot records, sessions, setup state, and connection test results must never appear (FR-036)
-- [ ] T092 [US4] Implement the Management configuration export in `management/src/FileDock.Management.Data/ConfigChangeInterceptor.cs` and `management/src/FileDock.Management.Core/ManagementConfigPublisher.cs` (FR-036, FR-038):
+  - accepts only `fdconfig/1` and rejects unsupported versions (development has no backward compatibility, per the user request).
+- [X] T091 [US4] Write the `fdconfig` coverage contract test in `core/crates/fd-appstate/tests/fdconfig_coverage.rs`. Every ResourceKind must be mapped, and audit entries, alerts, operations, snapshot records, sessions, setup state, and connection test results must never appear (FR-036)
+- [X] T092 [US4] Implement the Management configuration export in `management/src/FileDock.Management.Data/ConfigChangeInterceptor.cs` and `management/src/FileDock.Management.Api/Endpoints/ManagementConfigPublisher.cs` (FR-036, FR-038):
   - a configuration-change counter in an EF `SaveChanges` interceptor, which ignores audit, session, and `last_used_at` writes;
   - a `management` section JSON with administrators and password hashes, token metadata and hashes, and settings;
   - pushed with PutManagementConfig.
-- [ ] T093 [US4] Implement PutManagementConfig, storing the latest `management` section and its sequence, in `core/crates/filedock-core/src/api/recovery.rs`
-- [ ] T094 [US4] Implement the `.fdstate` reader and writer in `core/crates/fd-appstate/src/format/fdstate.rs` (contracts/appliance-state-layout.md):
+- [X] T093 [US4] Implement PutManagementConfig, storing the latest `management` section and its sequence, in `core/crates/filedock-core/src/api/recovery.rs`
+- [X] T094 [US4] Implement the `.fdstate` reader and writer in `core/crates/fd-appstate/src/format/fdstate.rs` (contracts/appliance-state-layout.md):
   - the 16-byte header;
   - a tar+zstd archive of `manifest.json`, `config.json`, `secrets/secrets.enc`, and `secrets/dek.wrapped`;
   - XChaCha20-Poly1305 STREAM encryption in 64 KiB chunks, under a per-snapshot key wrapped by the snapshot key.
-- [ ] T095 [US4] Implement the copy root in `core/crates/fd-appstate/src/copy/index.rs` and `core/crates/fd-appstate/src/copy/retention.rs` (FR-039, FR-043):
+- [X] T095 [US4] Implement the copy root in `core/crates/fd-appstate/src/copy/index.rs` and `core/crates/fd-appstate/src/copy/retention.rs` (FR-039, FR-043):
   - `index.json` with an HMAC keyed from the recovery key, and `keys/<key-id>.json`;
   - write order: fsync the `.fdstate`, then atomically replace the index;
   - cleanup of unlisted files;
   - retention of the 30 most recent, 24 hourly, and 30 daily, pruned only after the next durable snapshot.
-- [ ] T096 [US4] Implement the copy backends in `core/crates/fd-appstate/src/copy/backends.rs` (FR-037, FR-104):
+- [X] T096 [US4] Implement the copy backends in `core/crates/fd-appstate/src/copy/backends.rs` (FR-037, FR-104):
   - LocalPool, at `<pool root>/.filedock/appliance-state/`;
   - LocalSystemDisk, at `/var/backups/filedock/appliance-state/`;
   - RemoteRemovableDisk;
   - RemoteObjectStorage, through the fd-connectors client on the `OwnedObjectStorage` route.
-- [ ] T097 [US4] Implement the snapshot scheduler in `core/crates/fd-appstate/src/scheduler.rs` (FR-038, FR-040, SC-005):
+- [X] T097 [US4] Implement the snapshot scheduler in `core/crates/fd-appstate/src/scheduler.rs` (FR-038, FR-040, SC-005):
   - Core and Management change counters, with a 30-second debounce capped at 60 seconds;
   - per-copy uploads with retries, and `covered_change_seq` per copy;
   - a copy is stale after 5 minutes, with a warning alert;
   - audit entries and alerts never trigger a snapshot.
-- [ ] T098 [US4] Implement owned-location claims in `core/crates/fd-connectors/src/ownership.rs` (FR-089 to FR-091, FR-123, research R12):
+- [X] T098 [US4] Implement owned-location claims in `core/crates/fd-connectors/src/ownership.rs` (FR-089 to FR-091, FR-123, research R12):
   - claiming `owner.json` on an empty prefix, the check before each write session, and the `lastWriteAt` update;
   - claim safety: conditional only when the routed connector declares conditional writes and the latest probe proved both conditions; CREATE_ONLY and REPLACE_IF_MATCH when conditional, write-then-verify when basic.
-- [ ] T099 [US4] Implement SetStateDestination and GetStateProtection in `core/crates/filedock-core/src/api/recovery.rs` (FR-037, FR-105, FR-119, FR-123):
+- [X] T099 [US4] Implement SetStateDestination and GetStateProtection in `core/crates/filedock-core/src/api/recovery.rs` (FR-037, FR-105, FR-119, FR-123):
   - SetStateDestination requires the basic-claim and third-party acknowledgements, otherwise `location.basic_claim_ack_required`;
   - GetStateProtection reports reinstall and machine-loss coverage.
-- [ ] T100 [US4] Implement `GET /state-protection`, `PUT /state-protection/destination`, `POST /state-protection/snapshot`, `GET /secrets`, and `filedockctl state status`, in `management/src/FileDock.Management.Api/Endpoints/StateProtectionEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`
-- [ ] T101 [P] [US4] Build the appliance-state page in `web/src/features/recovery/StateProtectionPage.tsx`: last snapshot time and stale flag per copy, the coverage summary and warnings, and destination registration with the basic-claim acknowledgement
+- [X] T100 [US4] Implement `GET /state-protection`, `PUT /state-protection/destination`, `POST /state-protection/snapshot`, `GET /secrets`, and `filedockctl state status`, in `management/src/FileDock.Management.Api/Endpoints/StateProtectionEndpoints.cs` and `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`
+- [X] T101 [P] [US4] Build the appliance-state page in `web/src/features/recovery/StateProtectionPage.tsx`: last snapshot time and stale flag per copy, the coverage summary and warnings, and destination registration with the basic-claim acknowledgement
 - [ ] T102 [US4] Write the canary-secret leak test `tests/e2e/test_secrets_canary.py`. It plants canaries in every secret type, then searches logs, events, audit, diagnostic bundles, API responses, and snapshot bytes at every copy (SC-007)
 - [ ] T103 [US4] Write the acceptance test `tests/e2e/test_appliance_state.py` (SC-005):
   - local copies exist with no setup;
@@ -453,7 +453,9 @@ leak (quickstart "Secrets and appliance state").
   - `config.json` holds no history, and pools have no disks;
   - a blocked copy turns stale with an alert.
 
-**Checkpoint**: Configuration is protected at every copy with a 5-minute recovery point.
+**Implementation status (2026-10-13)**: T088–T101 are implemented. T102 has native/API/log/copy canary coverage and a VM test, but diagnostic-bundle coverage awaits US7. T103 has local and conditional-remote VM tests; full VM fault/alert and all-copy acceptance is still pending. Rust tests cover independent progress when a copy is blocked, stale status at five minutes, retention, and authenticated stream tampering. See [combined test guide](phase6-7-testing.md).
+
+**Checkpoint**: Configuration is protected at every copy with a 5-minute recovery point. This remains a manual acceptance gate.
 
 ---
 
@@ -469,12 +471,12 @@ restore a destroyed appliance on a new VM from the bucket, and compare configura
 
 **Depends on**: US4, plus pools (US9) and the package store (US6) for the full flows.
 
-- [ ] T104 [US5] Implement `filedock-core detect-state` in `core/crates/fd-appstate/src/detect.rs` and `core/crates/filedock-core/src/cli.rs` (FR-106, research R22):
+- [X] T104 [US5] Implement `filedock-core detect-state` in `core/crates/fd-appstate/src/detect.rs` and `core/crates/filedock-core/src/main.rs` (FR-106, research R22):
   - activate `filedock_pool` volume groups and mount them read-only in a private directory;
   - mount adopted pools that have a marker;
   - read `/var/backups/filedock/appliance-state/`;
   - list appliances from the plaintext `index.json`.
-- [ ] T105 [US5] Implement restore sources in `core/crates/fd-appstate/src/restore/sources.rs` (FR-041 to FR-043, FR-107, FR-122):
+- [X] T105 [US5] Implement restore sources in `core/crates/fd-appstate/src/restore/sources.rs` (FR-041 to FR-043, FR-107, FR-122):
   - a local copy, opened with only the recovery key and throttled;
   - remote object storage, read as a Recovery reader through the built-in connector for its family, writing nothing;
   - a removable disk;
@@ -482,7 +484,7 @@ restore a destroyed appliance on a new VM from the bucket, and compare configura
   - MAC verification, snapshot listing with integrity flags, and the newest valid snapshot across the local copies and the recorded remote.
 - [ ] T106 [US5] Implement the journaled restore operation in `core/crates/fd-appstate/src/restore/apply.rs` (FR-044, FR-063, FR-103, FR-110, FR-122):
   1. Verify the SHA-256, decrypt, unwrap the DEK, and install the secret store.
-  2. Upgrade older `fdconfig` versions, and import into a fresh `core.db`.
+  2. Validate the supported `fdconfig/1` version and import into a fresh `core.db`; reject unsupported versions.
   3. Hand the `management` section to the Management Service.
   4. Reattach present pools, recreate the System Pool, and wait for disk assignments for missing pools.
   5. Reinstall extensions from `.fdpkg`, falling back to another copy, then to PackageNeeded.
@@ -497,23 +499,23 @@ restore a destroyed appliance on a new VM from the bucket, and compare configura
      - folders whose pool awaits a disk assignment: `PoolUnmapped`.
 
      Every other item (pools, extensions, apps, connections, owned locations) gets a status. The report also records the snapshot time, after which changes are lost. It is kept until dismissed, so a loss is never silent.
-- [ ] T107 [US5] Implement the Management restore import in `management/src/FileDock.Management.Domain/Restore/ManagementRestoreService.cs`: GetManagementConfigForRestore into a fresh `app.db`, with `appliance.restore` as the first audit entry (FR-059)
+- [X] T107 [US5] Implement the Management restore import in `management/src/FileDock.Management.Domain/Restore/ManagementRestoreService.cs`: GetManagementConfigForRestore into a fresh `app.db`, with `appliance.restore` as the first audit entry (FR-059)
 - [ ] T108 [US5] Implement DetectLocalState, OpenLocalRestoreSource, OpenRestoreSource, UploadRestoreFile, ListRestoreSnapshots, BeginRestore, MapPools, GetManagementConfigForRestore, and GetRestoreReport in `core/crates/filedock-core/src/api/recovery.rs`
-- [ ] T109 [US5] Implement takeover in `core/crates/fd-connectors/src/ownership.rs` and `core/crates/fd-appstate/src/restore/takeover.rs` (FR-045, FR-092, FR-108):
+- [X] T109 [US5] Implement takeover in `core/crates/fd-connectors/src/ownership.rs` and `core/crates/fd-appstate/src/restore/takeover.rs` (FR-045, FR-092, FR-108):
   - the Recovery reader role;
   - ConfirmTakeover with `observed_generation` and the recent-writer acknowledgement;
   - automatic takeover after a local restore (generation matches and the last write is over 15 minutes old), audited as `System` with the reason `reinstall-restore`;
   - Ownership lost on a check mismatch: writes stop, and a critical alert is raised.
-- [ ] T110 [US5] Implement ListOwnedLocations (role, generation, `served_by_connector`, `served_by_third_party`, claim safety) in `core/crates/filedock-core/src/api/recovery.rs` (FR-094)
-- [ ] T111 [US5] Implement the configuration backup file in `core/crates/fd-appstate/src/format/fdbackup.rs`, `StateProtectionEndpoints.cs`, and `StateCommand.cs` (FR-111):
+- [X] T110 [US5] Implement ListOwnedLocations (role, generation, `served_by_connector`, `served_by_third_party`, claim safety) in `core/crates/filedock-core/src/api/recovery.rs` (FR-094)
+- [X] T111 [US5] Implement the configuration backup file in `core/crates/fd-appstate/src/format/fdbackup.rs`, `StateProtectionEndpoints.cs`, and `StateCommand.cs` (FR-111):
   - ExportBackupFile, a tar one-snapshot copy root with its packages, in `core/crates/fd-appstate/src/format/fdbackup.rs`;
   - `GET /state-protection/backup-file`, session only, audited as `appliance.backup_exported`, in `management/src/FileDock.Management.Api/Endpoints/StateProtectionEndpoints.cs`;
   - `filedockctl state export`, in `management/src/FileDock.Management.Cli/Commands/StateCommand.cs`.
-- [ ] T112 [US5] Implement restore sessions (bound to the setup code for remote and file sources, to the recovery key for local ones) and their endpoints, in `management/src/FileDock.Management.Api/Endpoints/RestoreEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/LocationEndpoints.cs` (FR-041, FR-042, FR-106):
+- [X] T112 [US5] Implement restore sessions (bound to the setup code for remote and file sources, to the recovery key for local ones) and their endpoints, in `management/src/FileDock.Management.Api/Endpoints/RestoreEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/LocationEndpoints.cs` (FR-041, FR-042, FR-106):
   - `/setup/restore/local` (GET and POST), `/setup/restore/source`, `/setup/restore/file`, `/setup/restore/snapshots`, `/setup/restore`, and `/setup/restore/pool-mappings`;
   - `GET /restore/report` and `POST /restore/report/dismiss` (audited), over GetRestoreReport (FR-046, FR-081);
   - `GET /locations` and `POST /locations/takeover`.
-- [ ] T113 [US5] Implement the installer's detect-state phase in `packaging/installer/install.sh`: an interactive hidden prompt for the recovery key, the first-run page instead when run with `--yes` or without a TTY, and exit `5` on failure. Implement `filedockctl restore-local` in `management/src/FileDock.Management.Cli/Commands/RestoreLocalCommand.cs` (FR-106)
+- [X] T113 [US5] Implement the installer's detect-state phase in `packaging/installer/install.sh`: an interactive hidden prompt for the recovery key, the first-run page instead when run with `--yes` or without a TTY, and exit `5` on failure. Implement `filedockctl restore-local` in `management/src/FileDock.Management.Cli/Commands/StateCommand.cs` (FR-106)
 - [ ] T114 [P] [US5] Build the Restore Appliance flow in `web/src/features/restore/`:
   - the offer for an appliance detected on this machine;
   - the remote source form, with provider family and connection definition;
@@ -522,7 +524,7 @@ restore a destroyed appliance on a new VM from the bucket, and compare configura
   - pool mapping;
   - the restore report from `GET /restore/report`: folders in FR-081 order with their outcome, the lost and to-rebuild folders called out first, the snapshot time after which changes are lost, and other items with their status. It is also shown on the dashboard until dismissed;
   - takeover confirmation with the recent-writer warning.
-- [ ] T115 [P] [US5] Build the owned-locations view (role, generation, serving connector and whether it's third-party, claim safety) in `web/src/features/recovery/LocationsPage.tsx`
+- [X] T115 [P] [US5] Build the owned-locations view (role, generation, serving connector and whether it's third-party, claim safety) in `web/src/features/recovery/LocationsPage.tsx`
 - [ ] T116 [US5] Write the acceptance test `tests/e2e/test_reinstall.py` (US5 scenarios 8–11, SC-021):
   - a wrong key is refused;
   - only the recovery key is needed;
@@ -539,7 +541,9 @@ restore a destroyed appliance on a new VM from the bucket, and compare configura
   - the original appliance sees Ownership lost, and its next probe and sweep make no writes at the location;
   - a `.fdbackup` restore on a fresh VM, including PackageNeeded and its upload.
 
-**Checkpoint**: Reinstall and disaster-recovery restores work end to end.
+**Implementation status (2026-10-13)**: Configuration recovery is implemented and native smoke-tested. T106 includes verified/decrypted import, durable journal steps, secret replacement, Management handoff, package verification/staging, reader-first ownership, and a retained report. Pool reattachment/System Pool recreation/disk mapping and extension installation/reconciliation await US9/US6 providers; T106 and T108 remain open. `MapPools` refuses with `restore.storage_provider_unavailable` and performs no disk mutation. T112 exposes the guarded mapping endpoint; it does not imply that provisioning exists. T114 includes local/remote/file sources, snapshot selection, progress, and report; its mapping form remains pending. T116/T117 contain configuration-only VM tests; complete takeover/request-log/data-plane acceptance remains open and must be rerun after those providers exist. The combined guide lists precisely which checks can run now.
+
+**Checkpoint**: Reinstall and disaster-recovery restores work end to end. This gate is pending US6/US9 and full VM acceptance.
 
 ---
 

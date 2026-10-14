@@ -1,3 +1,4 @@
+import { RestoreWizard } from '../restore/RestoreWizard.tsx';
 import { Field } from '../../components/Field.tsx';
 import { Button } from '../../components/Button.tsx';
 import { useState, type FormEvent } from 'react';
@@ -12,6 +13,7 @@ type Generated = {
 };
 
 export function SetupWizard({ onDone }: { onDone: () => void }) {
+  const [restoring, setRestoring] = useState(false);
   const [step, setStep] = useState<'code' | 'admin' | 'key'>('code');
   const [code, setCode] = useState('');
   const [generated, setGenerated] = useState<Generated | null>(null);
@@ -119,12 +121,16 @@ export function SetupWizard({ onDone }: { onDone: () => void }) {
     }
   }
 
+  if (restoring) return <RestoreWizard onDone={onDone} onCancel={() => setRestoring(false)} />;
   return (
     <div className="stack">
       {step === 'code' ? (
         <form className="panel stack" onSubmit={verify}>
           <p className="eyebrow">First run</p>
           <h1>Enter the one-time setup code</h1>
+          <Button type="button" onClick={() => setRestoring(true)}>
+            Restore an existing appliance
+          </Button>
           <Field
             label="Setup code"
             name="code"

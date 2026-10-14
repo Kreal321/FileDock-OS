@@ -33,7 +33,7 @@ coverage, not a report that the PVE appliance passed or that a release was publi
 | Production asset inspection | Local hashed Inter asset and license present; remote font imports removed; test fixtures absent from the production entry/module graph |
 | Visual candidates | 44 macOS captures; all reviewed in contact sheets against the guide, with desktop/dashboard and phone/network inspected at full size |
 | Linux canonical baseline | PENDING: Docker client exists but its daemon is stopped; macOS captures are supplemental candidates, not the planned Linux baseline approval |
-| Real VM / release archive | PENDING: user will perform combined P1 delivery testing |
+| Real VM / release archive | Installed PVE VM smoke PASS: 17 API/supervision and five real-browser checks; fresh install, release provenance and full P1 acceptance remain pending |
 
 Visual adaptations: immediate navigation is Dashboard and Settings, with implemented Settings child
 views; unsupported reference sections/search/bell/charts/capacity/container counts are absent.
@@ -104,3 +104,12 @@ expiry, network acknowledgement, event dedup/retries and disposed reconnect call
 T202–T229 and local automated validation T231 are complete. T230 remains pending canonical baseline
 approval; T232–T235 remain pending manual/VM/novice evidence and final acceptance. The user's request
 to test P1 together authorizes this handoff; it does not turn these pending checks into passes.
+
+## Installed PVE smoke update
+
+On 2026-10-13, [the installed VM smoke](./phase5-pve-smoke-2026-10-13.md) passed live/outage,
+dirty-form/focus, automatic recovery, account sign-in/out and Operations/Audit navigation checks
+against the real deployed UI, plus supervision/API checks. The temporary fixture was removed and
+the final dashboard showed eight healthy built-ins. This adds real-VM evidence to FR-127–FR-129,
+FR-133–FR-134 and SC-030; full T233, fresh setup/offline packaging, zoom/accessibility, novice and
+Linux visual approval remain pending. No pending acceptance task is marked complete by this smoke.

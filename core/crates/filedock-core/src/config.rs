@@ -3,6 +3,9 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub socket: PathBuf,
+    pub state_root: PathBuf,
+    pub state_spool: PathBuf,
+    pub pools_root: PathBuf,
     pub core_db: PathBuf,
     pub secrets: PathBuf,
     pub recovery_keys: PathBuf,
@@ -17,6 +20,9 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         Self {
+            state_root: env_path("FD_STATE_ROOT", "/var/backups/filedock/appliance-state"),
+            state_spool: env_path("FD_STATE_SPOOL", "/var/lib/filedock-core/appstate"),
+            pools_root: env_path("FD_POOLS_ROOT", "/mnt/filedock/pools"),
             socket: env_path("FD_CORE_SOCKET", "/run/filedock/core.sock"),
             core_db: env_path("FD_CORE_DB", "/var/lib/filedock-core/core.db"),
             secrets: env_path("FD_SECRETS", "/var/lib/filedock/secrets.enc"),

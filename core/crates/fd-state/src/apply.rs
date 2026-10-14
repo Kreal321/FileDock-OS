@@ -271,6 +271,7 @@ impl StateStore {
                 return Err(ApplyError::Invalid(issues));
             }
             persist(&tx, &prepared, &now, next_seq)?;
+            db::put_setting(&tx, "config.changed_at", &serde_json::json!(now))?;
             tx.execute(
                 "UPDATE state_meta SET change_seq = ?1 WHERE id = 1",
                 [next_seq],

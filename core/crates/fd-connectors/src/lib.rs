@@ -10,3 +10,7 @@ pub use client::{CloudRemoteClient, Session, TrailerError};
 pub use connection::{ConnectionError, validate_connection};
 pub use routes::{RouteError, RouteResolver, resolve};
 pub use test::{ConnectionTester, StoredTestResult};
+
+pub mod ownership;
+
+pub mod object_io;

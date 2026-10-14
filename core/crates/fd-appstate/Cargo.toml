@@ -6,3 +6,31 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+fd-state.workspace = true
+fd-secrets.workspace = true
+fd-connectors.workspace = true
+fd-subsystems.workspace = true
+fd-alerts.workspace = true
+fd-observe.workspace = true
+fd-journal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+hex.workspace = true
+chacha20poly1305.workspace = true
+aead-stream = { version = "0.6", features = ["alloc"] }
+getrandom = "0.3"
+zeroize.workspace = true
+zstd.workspace = true
+tar.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

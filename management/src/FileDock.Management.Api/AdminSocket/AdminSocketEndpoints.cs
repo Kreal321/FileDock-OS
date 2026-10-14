@@ -25,6 +25,7 @@ public static class AdminSocketEndpoints
 
             return await next(invocation);
         });
+        admin.MapRecoveryConsole();
         admin.MapPost("/reset-password", async (ConsolePassword body, AdminService admins, IAdminStore store, SessionService sessions, AuditWriter audit) =>
             await AdminEndpoints.Run(async () =>
             {

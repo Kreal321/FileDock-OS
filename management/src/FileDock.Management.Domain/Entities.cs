@@ -65,4 +65,8 @@ public sealed class Settings
     public int Id { get; set; } = 1;
     public string? ListenAddresses { get; set; }
     public long LastEventSeq { get; set; }
+    public long ConfigChangeSeq { get; set; }
+    public DateTimeOffset? ConfigChangedAt { get; set; }
+    public string? LastRestoreOperationId { get; set; }
+    public string? DismissedRestoreOperationId { get; set; }
 }

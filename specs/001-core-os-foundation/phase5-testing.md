@@ -221,3 +221,11 @@ The browser client retries the initial connection as well as reconnecting an est
 SignalR's automatic reconnect alone does not cover initial start failures ([Microsoft documentation](https://learn.microsoft.com/en-us/aspnet/core/signalr/javascript-client?view=aspnetcore-10.0)).
 
 Record: release tag/commit, Debian version, VM ID, test date, setup/sign-in result, Phase 4 results, fixture I/O during outages, PID preservation, failure/recovery timing, boot time, operation/state integrity, and any failed check. The P1 delivery gate is accepted only after these manual checks pass.
+
+## PVE smoke evidence (2026-10-13)
+
+The installed VM at 192.168.68.26 passed 17 API/supervision checks and five real-browser checks,
+including live event timing, outages, data-plane I/O/PID preservation, persisted terminal failure,
+recovery, scope/revocation and UI continuity. The fixture was removed and eight built-ins were
+Healthy in a final browser check. See [the smoke record](./phase5-pve-smoke-2026-10-13.md).
+Reboot/power cut, fresh setup and the remaining combined P1 acceptance checks are still pending.

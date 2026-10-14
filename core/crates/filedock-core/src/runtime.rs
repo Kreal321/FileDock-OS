@@ -163,6 +163,18 @@ pub async fn configure(app: &App) -> Result<(), Status> {
     {
         return Ok(());
     }
+    {
+        let mut temporary = app.temporary_s3.lock().await;
+        temporary.retain(|_, (_, files)| {
+            files
+                .values()
+                .all(|path| std::path::Path::new(path).is_file())
+        });
+        for (row, files) in temporary.values() {
+            s3.push(row.clone());
+            secret_files.extend(files.clone());
+        }
+    }
     let mut client = ext::subsystem_client::SubsystemClient::new(channel(s3_socket(app)).await?);
     let response = client
         .configure(ext::ConfigureRequest {
@@ -185,6 +197,7 @@ pub async fn test_connection(
     id: &str,
 ) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
     configure(app).await?;
+    crate::state_runtime::inspect_locations(app).await?;
     let reference = ResourceRef::new(ResourceKind::CloudConnection, id);
     let row = app
         .store
@@ -219,39 +232,44 @@ pub async fn test_connection(
     }
     let mut client =
         ext::cloud_remote_client::CloudRemoteClient::new(channel(s3_socket(app)).await?);
-    let owner = match client
-        .get(ext::GetObjectRequest {
-            r#ref: Some(ext::ObjectRef {
-                connection_id: id.into(),
-                key: "owner.json".into(),
-            }),
-            ..Default::default()
-        })
-        .await
-    {
-        Ok(response) => {
-            let (bytes, _) =
-                fd_connectors::client::CloudRemoteClient::get_verified(response.into_inner())
-                    .await
-                    .map_err(internal)?;
-            Some(
-                serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|_| {
-                    Status::failed_precondition("invalid owner.json; writes refused")
-                })?,
-            )
-        }
-        Err(error) if error.code() == tonic::Code::NotFound => None,
-        Err(error) => return Err(error),
+    let locations = crate::state_runtime::locations(app)?;
+    let registered = locations.iter().find(|l| l.connection_id == id);
+    let root_prefix = registered
+        .map(|l| l.prefix.trim_end_matches('/'))
+        .unwrap_or("");
+    let discovery = fd_connectors::object_io::S3Objects {
+        channel: channel(s3_socket(app)).await?,
+        connection_id: id.into(),
+        prefix: if root_prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{root_prefix}/")
+        },
+        cleanup_directory: None,
     };
-    let read_only = owner.as_ref().is_some_and(|v| {
-        v.get("applianceId").and_then(|v| v.as_str()) != Some(app.appliance_id.as_str())
-    });
+    use fd_connectors::ownership::ObjectIo;
+    let owner = discovery
+        .read(fd_connectors::ownership::OWNER_KEY)
+        .await
+        .map_err(internal)?
+        .map(|object| serde_json::from_slice::<serde_json::Value>(&object.bytes))
+        .transpose()
+        .map_err(|_| Status::failed_precondition("location.owner_invalid"))?;
+    let read_only = crate::state_runtime::locations(app)?
+        .iter()
+        .any(|l| l.connection_id == id && l.role != fd_connectors::ownership::Role::Writer)
+        || owner.as_ref().is_some_and(|v| {
+            v.get("applianceId").and_then(|v| v.as_str())
+                != Some(crate::state_runtime::appliance_id(app).as_str())
+        });
     let result = client
         .probe(ext::ProbeRequest {
             connection_id: id.into(),
             prefix: format!(
-                "_filedock/probe/{}/{}",
-                app.appliance_id,
+                "{}{}_filedock/probe/{}/{}",
+                root_prefix,
+                if root_prefix.is_empty() { "" } else { "/" },
+                crate::state_runtime::appliance_id(app),
                 uuid::Uuid::now_v7()
             ),
             read_only,
@@ -277,14 +295,16 @@ async fn test_rclone(
     };
     let adapter = fd_connectors::rclone::adapter::RcloneAdapter::new();
     // Fail closed on any ownership read error other than a known missing object.
-    let owner = adapter.read(&remote, "owner.json").await;
-    let read_only = match owner {
+    let owner = adapter.read(&remote, "_filedock/owner.json").await;
+    let read_only = crate::state_runtime::locations(app)?.iter().any(|l| {
+        l.connection_id == reference.id && l.role != fd_connectors::ownership::Role::Writer
+    }) || match owner {
         Ok(bytes) => {
             serde_json::from_slice::<serde_json::Value>(&bytes)
                 .map_err(internal)?
                 .get("applianceId")
                 .and_then(|v| v.as_str())
-                != Some(app.appliance_id.as_str())
+                != Some(crate::state_runtime::appliance_id(app).as_str())
         }
         Err(error) if error.contains("404") || error.contains("object not found") => false,
         Err(error) => return Err(internal(error)),

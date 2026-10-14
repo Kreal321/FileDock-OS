@@ -1,5 +1,6 @@
 //! Recovery key generation, wrapping, and download acknowledgement (FR-032 to FR-034, R11).
 
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -54,6 +55,8 @@ pub struct RecoveryKeyInfo {
     pub nonce: String,
     pub created_at: String,
     pub superseded_at: Option<String>,
+    #[serde(default)]
+    pub previous_wrapped_snapshot_keys: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -69,11 +72,13 @@ pub struct GeneratedKey {
     pub recovery_key: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct FileBody {
     snapshot_key: String,
     keys: Vec<RecoveryKeyInfo>,
     pending_key_id: Option<String>,
+    #[serde(default)]
+    archived_snapshot_keys: BTreeMap<String, String>,
 }
 
 pub struct RecoveryKeyStore {
@@ -98,6 +103,7 @@ impl RecoveryKeyStore {
                 snapshot_key: hex::encode(random_bytes::<SNAPSHOT_KEY_LEN>()),
                 keys: Vec::new(),
                 pending_key_id: None,
+                archived_snapshot_keys: BTreeMap::new(),
             }
         };
         Ok(Self {
@@ -108,6 +114,16 @@ impl RecoveryKeyStore {
     }
 
     pub fn generate(&mut self, regenerate: bool) -> Result<GeneratedKey, RecoveryError> {
+        let mut candidate = Self {
+            path: self.path.clone(),
+            dek: self.dek,
+            body: self.body.clone(),
+        };
+        let generated = candidate.generate_candidate(regenerate)?;
+        std::mem::swap(&mut self.body, &mut candidate.body);
+        Ok(generated)
+    }
+    fn generate_candidate(&mut self, regenerate: bool) -> Result<GeneratedKey, RecoveryError> {
         if !regenerate
             && self.body.pending_key_id.is_none()
             && self.body.keys.iter().any(|k| k.superseded_at.is_none())
@@ -120,7 +136,24 @@ impl RecoveryKeyStore {
             self.body.keys.retain(|k| k.superseded_at.is_some());
             self.body.pending_key_id = None;
         }
+        if regenerate && self.body.archived_snapshot_keys.len() >= 256 {
+            return Err(RecoveryError::Failed(
+                "recovery.key_history_limit; current key remains unchanged".into(),
+            ));
+        }
         if regenerate {
+            if let Some(current) = self.current().cloned() {
+                let master: [u8; 32] = hex::decode(&self.body.snapshot_key)
+                    .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?
+                    .try_into()
+                    .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?;
+                for (id, key) in Self::unlocked_keys(&current, master)? {
+                    self.body
+                        .archived_snapshot_keys
+                        .insert(id, hex::encode(key));
+                }
+            }
+            self.body.snapshot_key = hex::encode(random_bytes::<SNAPSHOT_KEY_LEN>());
             let now = now_rfc3339();
             for key in &mut self.body.keys {
                 if key.superseded_at.is_none() {
@@ -150,6 +183,7 @@ impl RecoveryKeyStore {
             nonce: hex::encode(nonce),
             created_at: now_rfc3339(),
             superseded_at: None,
+            previous_wrapped_snapshot_keys: self.wrap_previous()?,
         };
         self.body.keys.push(info);
         self.body.pending_key_id = Some(key_id.clone());
@@ -161,6 +195,16 @@ impl RecoveryKeyStore {
     }
 
     pub fn confirm(&mut self, key_id: &str) -> Result<(), RecoveryError> {
+        let mut candidate = Self {
+            path: self.path.clone(),
+            dek: self.dek,
+            body: self.body.clone(),
+        };
+        candidate.confirm_candidate(key_id)?;
+        std::mem::swap(&mut self.body, &mut candidate.body);
+        Ok(())
+    }
+    fn confirm_candidate(&mut self, key_id: &str) -> Result<(), RecoveryError> {
         if self.body.pending_key_id.is_none() && self.current().is_some_and(|k| k.key_id == key_id)
         {
             return Ok(());
@@ -186,8 +230,145 @@ impl RecoveryKeyStore {
             .find(|k| k.superseded_at.is_none())
     }
 
+    pub fn snapshot_key(&self) -> Result<[u8; 32], RecoveryError> {
+        if self.body.pending_key_id.is_some() || self.current().is_none() {
+            return Err(RecoveryError::Failed("recovery.key_unconfirmed".into()));
+        }
+        hex::decode(&self.body.snapshot_key)
+            .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?
+            .try_into()
+            .map_err(|_| RecoveryError::Crypto("snapshot key".into()))
+    }
+    pub fn unlock(info: &RecoveryKeyInfo, key: &str) -> Result<[u8; 32], RecoveryError> {
+        if info.kdf_params.memory_kib > 256 * 1024
+            || info.kdf_params.iterations > 3
+            || info.kdf_params.parallelism > 1
+        {
+            return Err(RecoveryError::Crypto(
+                "recovery metadata exceeds limits".into(),
+            ));
+        }
+        if info.salt.len() != 32
+            || info.nonce.len() != 48
+            || info.wrapped_snapshot_key.len() != 96
+            || info.key_id.len() != 16
+            || !info.key_id.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err(RecoveryError::Crypto("recovery metadata".into()));
+        }
+        let compact: String = key
+            .trim()
+            .chars()
+            .filter(|c| *c != '-')
+            .flat_map(char::to_uppercase)
+            .collect();
+        if compact.len() != KEY_LEN || !compact.bytes().all(|b| ALPHABET.contains(&b)) {
+            return Err(RecoveryError::Crypto("recovery.key_invalid".into()));
+        }
+        let raw: [u8; KEY_LEN] = compact.as_bytes().try_into().unwrap();
+        let formatted = format_key(&raw);
+        let salt = hex::decode(&info.salt)
+            .map_err(|_| RecoveryError::Crypto("recovery metadata".into()))?;
+        let mut wrap = derive_wrap(&formatted, &salt, &info.kdf_params)?;
+        let cipher = XChaCha20Poly1305::new(&Key::from(wrap));
+        wrap.zeroize();
+        let nonce = hex::decode(&info.nonce)
+            .map_err(|_| RecoveryError::Crypto("recovery metadata".into()))?;
+        let encrypted = hex::decode(&info.wrapped_snapshot_key)
+            .map_err(|_| RecoveryError::Crypto("recovery metadata".into()))?;
+        let decoded = cipher
+            .decrypt(
+                &XNonce::try_from(nonce.as_slice())
+                    .map_err(|_| RecoveryError::Crypto("recovery metadata".into()))?,
+                encrypted.as_slice(),
+            )
+            .map_err(|_| RecoveryError::Crypto("recovery.key_invalid".into()))?;
+        decoded
+            .try_into()
+            .map_err(|_| RecoveryError::Crypto("snapshot key".into()))
+    }
+    pub fn install(
+        path: impl AsRef<Path>,
+        dek: &[u8; 32],
+        info: RecoveryKeyInfo,
+        snapshot_key: [u8; 32],
+    ) -> Result<Self, RecoveryError> {
+        let store = Self {
+            path: path.as_ref().into(),
+            dek: *dek,
+            body: FileBody {
+                snapshot_key: hex::encode(snapshot_key),
+                keys: vec![info],
+                pending_key_id: None,
+                archived_snapshot_keys: BTreeMap::new(),
+            },
+        };
+        store.persist()?;
+        Ok(store)
+    }
+    fn wrap_previous(&self) -> Result<BTreeMap<String, String>, RecoveryError> {
+        let master: [u8; 32] = hex::decode(&self.body.snapshot_key)
+            .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?
+            .try_into()
+            .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?;
+        let cipher = XChaCha20Poly1305::new(&Key::from(master));
+        let mut output = BTreeMap::new();
+        for (id, old) in &self.body.archived_snapshot_keys {
+            let nonce = random_bytes::<24>();
+            let plain =
+                hex::decode(old).map_err(|_| RecoveryError::Crypto("snapshot key".into()))?;
+            let mut data = nonce.to_vec();
+            data.extend(
+                cipher
+                    .encrypt(&XNonce::from(nonce), plain.as_slice())
+                    .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?,
+            );
+            output.insert(id.clone(), hex::encode(data));
+        }
+        Ok(output)
+    }
+    pub fn unlocked_keys(
+        info: &RecoveryKeyInfo,
+        master: [u8; 32],
+    ) -> Result<BTreeMap<String, [u8; 32]>, RecoveryError> {
+        let mut output = BTreeMap::from([(info.key_id.clone(), master)]);
+        let cipher = XChaCha20Poly1305::new(&Key::from(master));
+        if info.previous_wrapped_snapshot_keys.len() > 256 {
+            return Err(RecoveryError::Crypto(
+                "recovery metadata exceeds limits".into(),
+            ));
+        }
+        for (id, wrapped) in &info.previous_wrapped_snapshot_keys {
+            let data =
+                hex::decode(wrapped).map_err(|_| RecoveryError::Crypto("snapshot key".into()))?;
+            if data.len() != 72 {
+                return Err(RecoveryError::Crypto("snapshot key".into()));
+            }
+            let plain = cipher
+                .decrypt(
+                    &XNonce::try_from(&data[..24])
+                        .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?,
+                    &data[24..],
+                )
+                .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?;
+            output.insert(
+                id.clone(),
+                plain
+                    .try_into()
+                    .map_err(|_| RecoveryError::Crypto("snapshot key".into()))?,
+            );
+        }
+        Ok(output)
+    }
+    pub fn snapshot_keys(&self) -> Result<BTreeMap<String, [u8; 32]>, RecoveryError> {
+        Self::unlocked_keys(
+            self.current()
+                .ok_or_else(|| RecoveryError::Failed("recovery.key_unconfirmed".into()))?,
+            self.snapshot_key()?,
+        )
+    }
     fn persist(&self) -> Result<(), RecoveryError> {
-        let plaintext = serde_json::to_vec(&self.body)?;
+        let plaintext = zeroize::Zeroizing::new(serde_json::to_vec(&self.body)?);
         let nonce = random_bytes::<NONCE_LEN>();
         let cipher = XChaCha20Poly1305::new(&Key::from(self.dek));
         let ciphertext = cipher
@@ -205,6 +386,9 @@ impl RecoveryKeyStore {
         out.write_all(&file)?;
         out.sync_all()?;
         fs::rename(self.path.with_extension("tmp"), &self.path)?;
+        if let Some(parent) = self.path.parent() {
+            fs::File::open(parent)?.sync_all()?;
+        }
         Ok(())
     }
 }
@@ -215,12 +399,14 @@ fn decrypt_body(bytes: &[u8], dek: &[u8; SNAPSHOT_KEY_LEN]) -> Result<FileBody, 
     }
     let (nonce, rest) = bytes.split_at(NONCE_LEN);
     let cipher = XChaCha20Poly1305::new(&Key::from(*dek));
-    let plaintext = cipher
-        .decrypt(
-            &XNonce::try_from(nonce).map_err(|e| RecoveryError::Crypto(e.to_string()))?,
-            rest,
-        )
-        .map_err(|e| RecoveryError::Crypto(e.to_string()))?;
+    let plaintext = zeroize::Zeroizing::new(
+        cipher
+            .decrypt(
+                &XNonce::try_from(nonce).map_err(|e| RecoveryError::Crypto(e.to_string()))?,
+                rest,
+            )
+            .map_err(|e| RecoveryError::Crypto(e.to_string()))?,
+    );
     Ok(serde_json::from_slice(&plaintext)?)
 }
 
@@ -276,11 +462,7 @@ fn random_bytes<const N: usize>() -> [u8; N] {
 }
 
 fn now_rfc3339() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{secs}")
+    chrono::Utc::now().to_rfc3339()
 }
 
 #[cfg(test)]
@@ -325,5 +507,40 @@ mod tests {
         let generated = store.generate(false).unwrap();
         assert!(store.confirm("unknown-key").is_err());
         assert!(store.confirm(&generated.key_id).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod rotation_tests {
+    use super::*;
+    #[test]
+    fn regeneration_rotates_snapshot_keys_and_requires_confirmation() {
+        unsafe { std::env::set_var("FD_RECOVERY_ARGON_KIB", "8") };
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = RecoveryKeyStore::open(dir.path().join("keys"), &[1; 32]).unwrap();
+        let first = store.generate(false).unwrap();
+        store.confirm(&first.key_id).unwrap();
+        let old = store.snapshot_key().unwrap();
+        let next = store.generate(true).unwrap();
+        assert!(store.snapshot_key().is_err());
+        store.confirm(&next.key_id).unwrap();
+        let new = store.snapshot_key().unwrap();
+        assert_ne!(old, new);
+        let info = store.current().unwrap();
+        assert!(RecoveryKeyStore::unlock(info, &first.recovery_key).is_err());
+        assert_eq!(
+            RecoveryKeyStore::unlock(info, &next.recovery_key).unwrap(),
+            new
+        );
+    }
+}
+
+impl Drop for RecoveryKeyStore {
+    fn drop(&mut self) {
+        self.dek.zeroize();
+        self.body.snapshot_key.zeroize();
+        for key in self.body.archived_snapshot_keys.values_mut() {
+            key.zeroize();
+        }
     }
 }

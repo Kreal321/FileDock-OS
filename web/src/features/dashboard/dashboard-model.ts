@@ -42,9 +42,7 @@ export function dashboardModel(status: SystemStatus | undefined, browserConnecte
     notices.push(
       'Appliance state protection needs attention. Recovery coverage has not been verified.',
     );
-  notices.push(
-    'Protection information unavailable. Detailed recovery coverage is not available yet.',
-  );
+
   return {
     components,
     notices: [...new Set(notices)],

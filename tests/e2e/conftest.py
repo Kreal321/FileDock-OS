@@ -121,10 +121,14 @@ class ApiClient:
         return {"X-CSRF-Token": token} if token else {}
 
     def put(self, path: str, json: object = None, *, etag: str | None = None) -> httpx.Response:
-        return self.http.put(path, json=json, headers={"If-Match": etag} if etag else None)
+        headers=self._csrf()
+        if etag: headers["If-Match"]=etag
+        return self.http.put(path, json=json, headers=headers)
 
     def delete(self, path: str, *, etag: str | None = None) -> httpx.Response:
-        return self.http.delete(path, headers={"If-Match": etag} if etag else None)
+        headers=self._csrf()
+        if etag: headers["If-Match"]=etag
+        return self.http.delete(path, headers=headers)
 
     def wait_operation(self, operation_id: str, timeout: float = 600) -> dict[str, object]:
         deadline = time.monotonic() + timeout

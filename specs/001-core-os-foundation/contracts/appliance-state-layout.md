@@ -82,6 +82,7 @@ Rules:
   "schemaVersion": 1,
   "applianceId": "0192d3c4-…",
   "applianceName": "filedock-home",
+  "signingKeyId": "<key-id used to authenticate this index>",
   "snapshots": [
     {
       "snapshotId": "0192d3d0-…",
@@ -99,7 +100,7 @@ Rules:
 }
 ```
 
-- `mac` is an HMAC-SHA256 over the canonical JSON of `applianceId`, `applianceName`, and
+- `mac` is an HMAC-SHA256 over the canonical JSON of `applianceId`, `applianceName`, `signingKeyId`, and
   `snapshots`. Its key is derived from the recovery key. `applianceName` and the snapshot times can
   be read before the key is entered, so reinstall detection can list them (FR-106). Nothing is
   treated as valid until the MAC is verified (FR-043).
@@ -132,7 +133,7 @@ manifest.json             # schemaVersion, applianceId, applianceName, takenAt, 
                           #   recordedGenerations{location → generation},
                           #   packages[{subsystemId, version, sha256}]
 config.json               # the configuration document (FR-036), canonical JSON, see below
-secrets/secrets.enc       # secret store, still encrypted under the local DEK (incl. TLS key)
+secrets/secrets.enc       # secret store, still encrypted under the local DEK
 secrets/dek.wrapped       # local DEK wrapped by the recovery-key-derived key
 ```
 
@@ -148,8 +149,7 @@ Secrets appear only as references (`secretRef`) into `secrets.enc`.
 ```json
 {
   "schema": "fdconfig/1",
-  "appliance": { "id": "0192d3c4-…", "name": "filedock-home", "settings": { "…": "…" },
-                 "certificate": { "certPem": "…", "keySecretRef": "appliance/tls-key" } },
+  "appliance": { "id": "0192d3c4-…", "name": "filedock-home", "settings": { "…": "…" } },
   "core": {
     "pools": [
       { "id": "0192…", "name": "media", "kind": "Lvm", "layers": ["lvm"] },

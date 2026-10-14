@@ -24,6 +24,13 @@ export const destinations: NavigationDestination[] = [
     { id: 'tokens', label: 'API tokens', icon: 'token', requiredView: 'TokensPage' },
     { id: 'network', label: 'Network settings', icon: 'network', requiredView: 'NetworkPage' },
     { id: 'operations', label: 'Operations', icon: 'operations', requiredView: 'OperationsPage' },
+    {
+      id: 'state-protection',
+      label: 'State protection',
+      icon: 'settings',
+      requiredView: 'StateProtectionPage',
+    },
+    { id: 'locations', label: 'Owned locations', icon: 'settings', requiredView: 'LocationsPage' },
     { id: 'audit', label: 'Audit', icon: 'audit', requiredView: 'AuditPage' },
   ].map((d) => ({
     ...d,

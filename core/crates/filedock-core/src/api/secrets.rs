@@ -27,6 +27,22 @@ impl Secrets for SecretsSvc {
             .await
             .put(&req.r#ref, &req.value, req.consumers)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        self.app
+            .store
+            .db()
+            .with(|c| {
+                c.execute(
+                    "UPDATE state_meta SET change_seq=change_seq+1 WHERE id=1",
+                    [],
+                )?;
+                fd_state::db::put_setting(
+                    c,
+                    "config.changed_at",
+                    &serde_json::json!(fd_state::db::now_text()),
+                )?;
+                Ok::<_, fd_state::DbError>(())
+            })
+            .map_err(|_| Status::internal("secret.change_counter_failed"))?;
         Ok(Response::new(pb::SecretInfo {
             r#ref: info.r#ref,
             masked_hint: info.masked_hint,
@@ -46,6 +62,22 @@ impl Secrets for SecretsSvc {
             .await
             .delete(&request.get_ref().r#ref)
             .map_err(|e| Status::not_found(e.to_string()))?;
+        self.app
+            .store
+            .db()
+            .with(|c| {
+                c.execute(
+                    "UPDATE state_meta SET change_seq=change_seq+1 WHERE id=1",
+                    [],
+                )?;
+                fd_state::db::put_setting(
+                    c,
+                    "config.changed_at",
+                    &serde_json::json!(fd_state::db::now_text()),
+                )?;
+                Ok::<_, fd_state::DbError>(())
+            })
+            .map_err(|_| Status::internal("secret.change_counter_failed"))?;
         Ok(Response::new(pb::Empty {}))
     }
 

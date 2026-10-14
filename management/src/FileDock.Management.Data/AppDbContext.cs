@@ -6,6 +6,7 @@ namespace FileDock.Management.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public bool ImportingConfiguration { get; set; }
     public DbSet<Administrator> Administrators => Set<Administrator>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
@@ -13,6 +14,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SetupState> SetupStates => Set<SetupState>();
     public DbSet<Settings> Settings => Set<Settings>();
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        if (Database.CurrentTransaction is not null) { return base.SaveChanges(acceptAllChangesOnSuccess); }
+        using var transaction = Database.BeginTransaction(); var result = base.SaveChanges(acceptAllChangesOnSuccess); transaction.Commit(); return result;
+    }
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        if (Database.CurrentTransaction is not null) { return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+        await using var transaction = await Database.BeginTransactionAsync(cancellationToken); var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); await transaction.CommitAsync(cancellationToken); return result;
+    }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Administrator>(e =>
