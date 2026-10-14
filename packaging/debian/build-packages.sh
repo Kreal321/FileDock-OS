@@ -25,6 +25,8 @@ version_of() {
 
 RCLONE_VER="$(version_of rclone || echo 1.75.2)"
 KOPIA_VER="$(version_of kopia || echo 0.23.1)"
+ACL_VER="$(awk '$1=="apt" && $2=="acl" {print $3; exit}' "$ROOT/packaging/versions.lock")"
+[[ -n "$ACL_VER" ]] || { echo "Missing acl version in packaging/versions.lock" >&2; exit 1; }
 
 pkg_core="$STAGE/filedock-core"
 pkg_mgmt="$STAGE/filedock-management"
@@ -51,7 +53,7 @@ Section: admin
 Priority: optional
 Architecture: $ARCH
 Maintainer: FileDock <ops@filedock.dev>
-Depends: systemd, libc6, libgcc-s1, acl (= 2.3.2-2)
+Depends: systemd, libc6, libgcc-s1, acl (= $ACL_VER)
 Description: FileDock Core Service
  Privileged reconciler, journal, secrets, and subsystem orchestrator.
 EOF

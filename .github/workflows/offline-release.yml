@@ -8,6 +8,8 @@ on:
         type: boolean
         default: true
   push:
+    branches:
+      - main
     tags:
       - 'v[0-9]*'
 
@@ -55,6 +57,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REF_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
           TEST_RELEASE: ${{ inputs.prerelease }}
         run: |
           python3 - <<'PY'
@@ -66,14 +69,14 @@ jobs:
           version = tomllib.loads(Path('Cargo.toml').read_text())['workspace']['package']['version']
           if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
               raise SystemExit('Use a numeric x.y.z workspace version for Debian release packages.')
-          if os.environ['EVENT_NAME'] == 'push':
+          if os.environ['EVENT_NAME'] == 'push' and os.environ['REF_TYPE'] == 'tag':
               tag = os.environ['REF_TAG']
               if tag != f'v{version}':
                   raise SystemExit(f'Tag must be v{version}, matching Cargo.toml.')
               prerelease = 'false'
           else:
               tag = f'test-{version}-{os.environ["GITHUB_RUN_NUMBER"]}-{os.environ["GITHUB_RUN_ATTEMPT"]}'
-              prerelease = 'true' if os.environ['TEST_RELEASE'] == 'true' else 'false'
+              prerelease = 'true' if os.environ['EVENT_NAME'] == 'push' or os.environ['TEST_RELEASE'] == 'true' else 'false'
           archive = f'filedock-offline-{tag}-debian13-amd64.tar.gz'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'version={version}\ntag={tag}\narchive={archive}\nprerelease={prerelease}\n')
@@ -229,6 +232,7 @@ jobs:
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           SOURCE_COMMIT: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
         shell: bash
         run: |
           set -euo pipefail
@@ -259,7 +263,7 @@ jobs:
           The installer prints the HTTP UI address (port 8021 for both UI and API) and one-time setup code. Complete setup, download and save the recovery-key TXT file, sign out and sign in, and check all eight health cards. This build does not certify the fresh-VM acceptance test.
           EOF_NOTES
           args=(--repo "$GH_REPO" --title "FileDock $RELEASE_TAG offline bundle" --notes-file release-notes.md --latest=false)
-          if [[ "$EVENT_NAME" == push ]]; then
+          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
             args+=(--verify-tag)
           else
             args+=(--target "$SOURCE_COMMIT")

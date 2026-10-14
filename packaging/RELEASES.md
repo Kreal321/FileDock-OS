@@ -9,6 +9,8 @@ The archive contains the three FileDock Debian packages, all pinned runtime pack
 
 ## Generate a testing release
 
+Every push to `main`, including a merged pull request, automatically builds and publishes a testing prerelease with a unique `test-VERSION-RUN-ATTEMPT` tag. The release points to the pushed commit. To run a build manually:
+
 1. Push the project changes, including the Phase 1–3 packaging fixes and workflow, to GitHub. The workflow must be present on the default branch for its manual Run workflow button to appear.
 2. Open **Actions → Offline bundle release → Run workflow**.
 3. Choose the branch to build. Leave **Mark this release as a testing prerelease** enabled, then run it.
@@ -22,7 +24,7 @@ The workflow uses the built-in `GITHUB_TOKEN`; no personal token secret is requi
 
 The build job restores and saves Cargo downloads and `target/release`, NuGet packages, and the pnpm package store. Cache keys include Debian/architecture, actual compiler or SDK versions, and dependency-file hashes. Rust build keys also include source/protobuf hashes; fallback keys reuse compatible dependency outputs when source or dependency files change. Cargo still runs and determines what needs recompiling. React and .NET publish outputs are generated on every run.
 
-Caches are saved after successful compilation and before the offline dependency download, so an APT or release failure can reuse that compilation on the next run. The first run fills the caches. Run manually on the default branch first to make caches available to subsequent tag builds under GitHub's cache scope rules. APT metadata, the offline dependency set and release archives are regenerated each run.
+Caches are saved after successful compilation and before the offline dependency download, so an APT or release failure can reuse that compilation on the next run. The first run fills the caches. Automatic builds on `main` make caches available to subsequent tag builds under GitHub's cache scope rules. APT metadata, the offline dependency set and release archives are regenerated each run.
 
 To discard these caches, delete them in GitHub's Actions cache page or change the `offline-v1` prefix in the workflow.
 

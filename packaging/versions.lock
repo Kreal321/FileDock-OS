@@ -10,7 +10,7 @@
 # Target: Debian 13 "trixie", amd64. Versions resolved on 2026-10-11.
 
 # Storage, sharing, and system (Debian trixie)
-apt   acl                 2.3.2-2
+apt   acl                 2.3.2-2+b1
 apt   systemd             257.13-1~deb13u1
 apt   lvm2                2.03.31-2
 apt   e2fsprogs           1.47.2-3+b12
