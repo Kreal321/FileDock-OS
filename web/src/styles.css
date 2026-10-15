@@ -1061,3 +1061,104 @@ th[data-align='actions'] {
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
 }
+
+/* Log metadata never competes with unbounded technical messages for column width. */
+.log-table table {
+  table-layout: fixed;
+  min-width: 960px;
+}
+.log-table th {
+  white-space: nowrap;
+}
+.log-time {
+  overflow-wrap: normal;
+}
+.log-table .badge {
+  white-space: nowrap;
+  max-width: none;
+}
+.log-source {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-message-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--target-size);
+  min-width: var(--target-size);
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.log-message-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-detail-hint {
+  flex-shrink: 0;
+  color: var(--info);
+  font-size: var(--caption);
+}
+.log-message-trigger:hover .log-message-preview {
+  color: var(--info);
+}
+.log-details-dialog {
+  width: 960px;
+}
+.log-metadata {
+  grid-template-columns: 80px minmax(0, 1fr);
+  align-items: center;
+}
+.log-message-full {
+  margin: 0;
+  padding: 16px;
+  max-height: 50dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-control);
+  background: var(--control-bg);
+  font-family: ui-monospace, monospace;
+  font-size: var(--caption);
+  line-height: 1.65;
+}
+.activity-row {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-quiet);
+  overflow-wrap: anywhere;
+}
+.activity-row:first-child {
+  padding-top: 0;
+}
+.activity-row:last-child {
+  border-bottom: 0;
+}
+.activity-row p {
+  margin-top: 4px;
+}
+.log-table {
+  min-width: 0;
+  max-width: 100%;
+}
+.log-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+.log-filters > .button {
+  align-self: end;
+}
+@media (max-width: 800px) {
+  .log-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

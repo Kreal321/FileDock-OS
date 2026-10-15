@@ -76,3 +76,17 @@ readable heading and44px control; this is a reviewed refinement of the initial56
 Actual macOS desktop/mobile captures and scope are in
 `specs/001-core-os-foundation/ui-layout-acceptance.md`.46 unit and5 browser scenarios passed,
 with lint/type/build. Full Linux/VM/zoom/novice acceptance and later pages remain pending.
+
+## Logs and activity refinement — 2026-10-15
+
+Intent: administrator scans timestamps/source/severity for an incident, then opens one technical
+entry. Hierarchy: concise message preview leads, metadata has stable columns, full trace is secondary.
+Palette/depth/surfaces: existing navy/slate/blue, quiet panel, inset code field, raised dialog; no
+new accent. Typography:14px preview,12px metadata/monospace details; spacing4px base,16px panel.
+Logs: fixed-layout table with minimum readable width; Time200px, Source240px, Severity128px,
+Message flexible; one-line ellipsis preview is a native named button with44px target, opens a
+bounded scrollable details dialog with complete returned message and metadata. Table alone scrolls
+on phone. Never truncate the backing entry or squeeze metadata into vertical letter columns.
+Activity: meaningful appliance lifecycle/configuration/health/protection events, not file access or
+an audit replacement. Coalesce adjacent identical legacy events into a count/time range without
+removing data or combining distinct changes. Emit protection events only when protection changes.

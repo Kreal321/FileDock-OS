@@ -56,11 +56,34 @@ pub fn parse(raw: &str, f: &Filter) -> Result<Page, String> {
         if !source_allowed(&source) || (!f.sources.is_empty() && !f.sources.contains(&source)) {
             continue;
         }
-        let priority = v["PRIORITY"]
+        let mut priority = v["PRIORITY"]
             .as_str()
             .and_then(|s| s.parse::<u8>().ok())
             .unwrap_or(6);
         let message = v["MESSAGE"].as_str().unwrap_or("");
+        // systemd commonly assigns stdout priority Info. ASP.NET's simple console
+        // formatter includes the actual level in its prefix, even on one-line entries.
+        if source == "filedock-management.service" {
+            let console_priority = match message
+                .trim_start()
+                .split_once(": ")
+                .map(|(level, _)| level)
+            {
+                Some("crit") => Some(2),
+                Some("fail") => Some(3),
+                Some("warn") => Some(4),
+                Some("info") => Some(6),
+                Some("dbug" | "trce") => Some(7),
+                _ => None,
+            };
+            if let Some(level) = console_priority {
+                priority = if priority == 6 {
+                    level
+                } else {
+                    priority.min(level)
+                };
+            }
+        }
         if priority > minimum || !message.to_lowercase().contains(&f.text.to_lowercase()) {
             continue;
         }

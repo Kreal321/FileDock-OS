@@ -426,13 +426,8 @@ pub async fn snapshot(app: &App, force: bool) -> Result<bool, Status> {
         .tick(&input, &targets, force)
         .await
         .map_err(error)?;
-    app.events
-        .emit(
-            "state.protection.changed",
-            None,
-            Engine::protection(app.store.db()).map_err(error)?,
-        )
-        .map_err(error)?;
+    // The run loop compares the complete protection projection and emits only changes.
+    // A successful no-op tick must not become durable activity every two seconds.
     Ok(result)
 }
 pub async fn run(app: Arc<App>) {

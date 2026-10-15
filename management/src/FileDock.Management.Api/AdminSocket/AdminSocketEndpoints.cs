@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using Grpc.Core;
+using FileDock.Management.Core;
 using FileDock.Management.Api.Endpoints;
 using FileDock.Management.Api.Network;
 using FileDock.Management.Domain.Admins;
@@ -23,7 +25,18 @@ public static class AdminSocketEndpoints
                 return Results.StatusCode(403);
             }
 
-            return await next(invocation);
+            try
+            {
+                return await next(invocation);
+            }
+            catch (RpcException error) when (error.StatusCode is not StatusCode.Internal and not StatusCode.Unknown and not StatusCode.DataLoss)
+            {
+                var (status, detail) = CoreClient.ToProblem(error);
+                return Results.Problem(
+                    statusCode: status == 412 ? 409 : status,
+                    title: detail == "restore.target_not_fresh" ? "Restore requires a fresh appliance" : "Console request could not finish",
+                    detail: detail);
+            }
         });
         admin.MapRecoveryConsole();
         admin.MapPost("/diagnostics", async (FileDock.Management.Core.CoreClient core, AuditWriter audit, HttpContext context) => await ObservabilityEndpoints.Run(async () => { var data = await ObservabilityEndpoints.Bundle(core, FileDock.Management.Core.CoreClient.Metadata("Console", "diagnostics", true), context.RequestAborted); await audit.WriteAsync("Console", "root", "root", "diagnostics.exported", "appliance", "Succeeded"); return Results.File(data, "application/zstd", "filedock-diagnostics.tar.zst"); }));

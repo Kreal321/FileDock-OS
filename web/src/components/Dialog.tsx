@@ -9,6 +9,8 @@ export function Dialog({
   busy = false,
   dirty = false,
   footer,
+  className = '',
+  cancelLabel = 'Cancel',
 }: {
   open: boolean;
   title: string;
@@ -18,6 +20,8 @@ export function Dialog({
   busy?: boolean;
   dirty?: boolean;
   footer?: ReactNode;
+  className?: string;
+  cancelLabel?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -69,6 +73,7 @@ export function Dialog({
   return open ? (
     <dialog
       ref={ref}
+      className={className}
       aria-labelledby={id}
       aria-describedby={description ? `${id}-description` : undefined}
       aria-busy={busy || undefined}
@@ -122,7 +127,7 @@ export function Dialog({
       <div className="dialog-body stack">{children}</div>
       <footer className="dialog-footer">
         <Button variant="secondary" disabled={busy} onClick={close}>
-          Cancel
+          {cancelLabel}
         </Button>
         {footer}
       </footer>
