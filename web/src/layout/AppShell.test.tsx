@@ -35,3 +35,37 @@ test('shell uses actual account and native current links; disclosure restores fo
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
   expect(toggle).toHaveFocus();
 });
+
+test.each(['folders', 'extensions', 'administrators', 'operation-detail'])(
+  'only one navigation destination is current on %s',
+  async (id) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(url.includes('/alerts') ? { items: [] } : { id: '1', username: 'root' }),
+          ),
+      ),
+    );
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AppShell route={{ id }} onSignOut={() => {}}>
+          Page
+        </AppShell>
+      </QueryClientProvider>,
+    );
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(container.querySelector('.settings-nav')).toBeNull();
+    const current = container.querySelector('[aria-current="page"]');
+    expect(current).toHaveTextContent(
+      id === 'operation-detail'
+        ? 'Operations'
+        : id === 'administrators'
+          ? 'Administrators'
+          : id === 'folders'
+            ? 'Managed Folders'
+            : 'Extensions',
+    );
+  },
+);

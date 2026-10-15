@@ -7,7 +7,6 @@ import { CriticalAlertBanner } from '../features/alerts/AlertsPage.tsx';
 import { CoreStatusBanner } from '../components/CoreStatusBanner.tsx';
 import { Notice } from '../components/Notice.tsx';
 import type { Route } from '../navigation/destinations.ts';
-import { destinations } from '../navigation/destinations.ts';
 import { Sidebar } from './Sidebar.tsx';
 import { TopBar } from './TopBar.tsx';
 export function AppShell({
@@ -24,6 +23,14 @@ export function AppShell({
   const toggle = useRef<HTMLButtonElement>(null);
   const main = useRef<HTMLElement>(null);
   const health = useLiveCoreStatus();
+  const previousRoute = useRef(route.id + (route.operationId ?? ''));
+  useEffect(() => {
+    const next = route.id + (route.operationId ?? '');
+    if (previousRoute.current !== next) {
+      previousRoute.current = next;
+      main.current?.querySelector<HTMLElement>('h1')?.focus();
+    }
+  }, [route.id, route.operationId]);
   useEffect(() => {
     if (open)
       document.getElementById('main-navigation')?.querySelector<HTMLAnchorElement>('a')?.focus();
@@ -76,29 +83,6 @@ export function AppShell({
           ) : null}
           {route.unavailable ? (
             <Notice tone="info">This page is unavailable. Showing Dashboard.</Notice>
-          ) : null}
-          {route.id !== 'dashboard' && route.id !== 'extensions' && route.id !== 'folders' ? (
-            <nav className="settings-nav" aria-label="Settings navigation">
-              <a href="#/settings" aria-current={route.id === 'settings' ? 'page' : undefined}>
-                Overview
-              </a>
-              {destinations
-                .filter((d) => d.group === 'settings')
-                .map((d) => (
-                  <a
-                    key={d.id}
-                    href={d.hashRoute}
-                    aria-current={
-                      route.id === d.id ||
-                      (d.id === 'operations' && route.id === 'operation-detail')
-                        ? 'page'
-                        : undefined
-                    }
-                  >
-                    {d.label}
-                  </a>
-                ))}
-            </nav>
           ) : null}
           {typeof children === 'function'
             ? children(

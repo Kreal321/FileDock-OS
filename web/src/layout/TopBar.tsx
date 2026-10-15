@@ -24,7 +24,7 @@ export function TopBar({
         <Button
           ref={toggleRef}
           className="mobile-toggle"
-          variant="secondary"
+          variant="quiet"
           aria-label="Open navigation"
           aria-expanded={open}
           aria-controls="main-navigation"
@@ -45,7 +45,8 @@ export function TopBar({
             <span className="caption">Loading account…</span>
           )}
           <Button
-            variant="secondary"
+            variant="quiet"
+            size="compact"
             busy={busy}
             onClick={async () => {
               setBusy(true);

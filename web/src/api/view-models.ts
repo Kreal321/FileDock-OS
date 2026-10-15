@@ -6,6 +6,7 @@ export type NavigationDestination = {
   label: string;
   icon: string;
   group: 'main' | 'settings';
+  parentId?: string;
   availability: 'implemented';
   requiredView: string;
 };
@@ -102,3 +103,21 @@ export function displayTime(value: string | null | undefined) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? 'Not reported' : d.toLocaleString();
 }
+
+// Disposable presentation state; never stored in snapshots or browser storage.
+export type ActionDialogState<T> = {
+  kind: string;
+  resourceId?: string;
+  phase: 'editing' | 'submitting' | 'error';
+  draft: T;
+  errors: Record<string, string>;
+};
+export type NavigationDisclosure = { expandedGroups: string[]; mobileOpen: boolean };
+export type FolderEditorState<T> = {
+  mode: 'create' | 'edit';
+  resourceId?: string;
+  expectedGeneration?: number;
+  draft: T;
+  dirty: boolean;
+  fieldErrors: Record<string, string>;
+};

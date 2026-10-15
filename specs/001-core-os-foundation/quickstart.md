@@ -7,7 +7,9 @@ This guide proves the feature end to end on disposable VMs. Implementation detai
 
 ## UI revision validation (US11)
 
-For the new Management UI design, follow [ui-validation.md](./ui-validation.md) after implementation.
+The 2026-10-15 [layout update and prototypes](./ui-layout-revision.md) define the next UI increment:
+one nested sidebar, compact tables/action dialogs and full-page six-section folder editors.
+Implementation and acceptance for this update are pending. After implementation, follow [ui-validation.md](./ui-validation.md) after implementation.
 It covers build/package commands, deterministic visual states, keyboard/contrast/zoom checks,
 offline assets, truthful dashboard data, and the combined real-VM regression. Its behavioral
 interface is specified in [contracts/management-ui.md](./contracts/management-ui.md). The new UI

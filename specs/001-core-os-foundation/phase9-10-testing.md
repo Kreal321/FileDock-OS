@@ -80,7 +80,7 @@ are restricted to fresh libvirt VMs; do not insert them into an existing install
 
 1. Open Managed Folders → Create Managed Folder. Confirm Identity, Storage Mode, Source/Backend,
    Data Importance (Hybrid Backup only), Access, and collapsed Advanced appear in that order.
-   Name suggests an editable `/storage/<name>` path.
+   Entering the name displays a generated, read-only `/storage/<name>` path; changing the name updates it.
 2. Confirm unavailable modes are disabled with their missing capabilities. With no pools, the form
    explains the pool dependency. It must not silently use an ordinary directory on the OS disk.
 3. With a real available pool, create Local Only with no access selected. Confirm the reference is
@@ -167,3 +167,14 @@ not mark them passed.
 - The in-app browser blocked the temporary localhost preview (`ERR_BLOCKED_BY_CLIENT`), so no
   screenshot or visual-browser acceptance is claimed. The temporary preview services were stopped.
 - This implementation turn made no changes to the PVE VM.
+
+## Default service log policy
+
+Management suppresses framework HTTP request, routing, SQL and connection information logs;
+framework warnings/errors and FileDock lifecycle information remain enabled. Console entries use
+a single line. Audit records remain in the audit database without an extra information log per record.
+Core emits each journal event once, retains FileDock information and dependency warnings/errors,
+and logs operation start/completion, failure and rollback without progress ticks or payloads.
+`RUST_LOG` and .NET `Logging__LogLevel__...` environment settings can enable targeted debugging.
+This policy applies after installing the updated services and restarting them; it does not remove
+existing journal records.

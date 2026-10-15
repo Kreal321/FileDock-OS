@@ -989,3 +989,54 @@ Each entry gives the decision, the rationale, and the alternatives considered.
 route integration, real-data scope, state handling, and acceptance approach. No technical
 clarification remains. Independent read-only research reviewed visual tooling and the local
 API/auth/live contracts; no code changes, package installs, or tests were performed.
+
+
+## R28. Single nested navigation and current route ownership
+
+**Revision**: 2026-10-15; FR-125/126/131/134. Supersedes R25's separate Settings navigation.
+
+- **Decision**: One sidebar, nested Settings children, one exact current leaf. The Settings
+  disclosure communicates expansion, not selection. Folder create/edit belongs to Folders;
+  operation detail belongs to Operations. Register explicit create/edit hashes in existing routing.
+- **Rationale**: Local inspection of Sidebar.tsx found every non-Dashboard item tests
+  `route.id !== 'dashboard'`; AppShell.tsx adds a settings-nav in content. Both directly explain
+  the reported selection and duplicate-rail issues. Current destinations already enumerate
+  implemented links, so no backend navigation service or router package is needed.
+- **Alternatives considered**: Two rails/long horizontal tabs repeat navigation; broad URL-prefix
+  selection recreates ambiguity; changing to a new router expands scope without addressing the cause.
+
+## R29. Data-first lists, focused actions, shared density
+
+**Revision**: 2026-10-15; FR-124/130/132/134/135.
+
+- **Decision**: Compact semantic table columns and row actions; summaries replace permanently open
+  creation forms. Extend existing Button/DataTable/Dialog with size/alignment/footer contracts.
+  Keep 44px effective targets even for 36px visible controls. Preserve local Inter with a refined
+  28/20/16/14/12 scale and4px micro grid. Short actions use dialogs; long reviews use pages.
+- **Rationale**: Local DataTable has string-only headers and global minimum-width/wrapping rules;
+  Button has one generous size and `.actions` wraps long controls. Admins/Tokens render permanent
+  create/password forms, whereas Notifications already provides a reusable dialog pattern. Existing
+  native dialog supports modal focus behavior but needs a coherent form footer/initial-focus contract.
+- **Alternatives considered**: Shrinking all hit areas violates FR-132; hiding all actions on hover
+  harms discoverability/accessibility; page-specific CSS creates drift; a new UI kit is unnecessary.
+  Audit/security/recovery semantics are not changed by moving their controls.
+
+## R30. Full-page folder editor and prototype authority
+
+**Revision**: 2026-10-15; FR-065/066/129/131/134/135.
+
+- **Decision**: Routed create/edit pages, six expanded numbered sections on one scroll, no tabs or
+  wizard. Generated path is a read-only preview. Keep mode-dependent inputs and explicit inapplicable
+  notes. Save three generated boards under assets; annotate earlier second-rail/wizard treatments
+  as superseded. Save reusable measurements in `.interface-design/system.md`.
+- **Rationale**: The user approved the visual direction and explicitly chose one-page sections
+  and one nested sidebar. All required settings need space. Existing FolderForm holds six sections
+  but Advanced is collapsed and FoldersPage switches view with local state. Written contracts resolve
+  the raster's double Settings highlight, omitted Operations link and missing Hybrid importance.
+- **Alternatives considered**: Modal wizard obscures complex validation; step gating hides settings;
+  taking generated artwork literally contradicts functional requirements; prototypes are not visual
+  acceptance evidence. No new image is needed because all remaining ambiguity is specified in writing.
+
+**Phase 0 result (2026-10-15)**: R28–R30 resolve this update. Read-only delegated research inspected
+actual components, styles, routes and form guards. No production code, package installs or tests
+were changed/run. Constitution gates pass before research and after design.

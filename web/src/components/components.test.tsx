@@ -63,3 +63,67 @@ test('dialog Escape restores focus and table has a named region', () => {
   expect(screen.getByRole('region', { name: 'History' })).toBeInTheDocument();
   trigger.remove();
 });
+
+test('column metadata aligns headers and cells and compact actions are named', async () => {
+  const { RowActions } = await import('./RowActions.tsx');
+  render(
+    <DataTable
+      label="Inventory"
+      headers={[
+        { id: 'name', label: 'Name' },
+        { id: 'size', label: 'Size', align: 'end' },
+        { id: 'actions', label: 'Actions', align: 'actions' },
+      ]}
+    >
+      <tr>
+        <td>Long name /storage/example</td>
+        <td>123</td>
+        <td>
+          <RowActions
+            label="Actions for example"
+            actions={[{ label: 'Edit example', onClick: vi.fn() }]}
+          />
+        </td>
+      </tr>
+    </DataTable>,
+  );
+  expect(screen.getByRole('columnheader', { name: 'Size' })).toHaveAttribute('data-align', 'end');
+  expect(screen.getByRole('cell', { name: '123' })).toHaveAttribute('data-align', 'end');
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for example' }));
+  expect(screen.getByRole('button', { name: 'Edit example' })).toBeVisible();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Edit example' }), { key: 'Escape' });
+  expect(screen.queryByRole('button', { name: 'Edit example' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Actions for example' })).toHaveFocus();
+});
+test('dialog provides one form footer, focuses first field and confirms dirty cancel', () => {
+  const close = vi.fn();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(
+    <Dialog
+      open
+      title="Edit account"
+      description="Account details"
+      dirty
+      onClose={close}
+      footer={
+        <Button form="account-form" type="submit">
+          Save
+        </Button>
+      }
+    >
+      <form id="account-form">
+        <Field label="Account name" />
+      </form>
+    </Dialog>,
+  );
+  expect(screen.getByLabelText('Account name')).toHaveFocus();
+  expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+  expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Account details');
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  expect(close).not.toHaveBeenCalled();
+  expect(confirm).toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(close).toHaveBeenCalledOnce();
+  confirm.mockRestore();
+});

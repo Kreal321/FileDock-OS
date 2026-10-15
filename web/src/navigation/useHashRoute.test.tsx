@@ -15,3 +15,31 @@ test('hash navigation responds to history events', async () => {
   });
   await waitFor(() => expect(result.current.id).toBe('audit'));
 });
+
+test('dirty route guard protects history changes and reset bypasses it on signout', async () => {
+  const { useUnsavedChanges } = await import('./useUnsavedChanges.ts');
+  const { resetNavigation } = await import('./useHashRoute.ts');
+  window.history.replaceState(null, '', '#/dashboard');
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  const { result, unmount } = renderHook(() => {
+    useUnsavedChanges(true);
+    return useHashRoute();
+  });
+  act(() => {
+    window.location.hash = '#/settings/audit';
+    window.dispatchEvent(new Event('hashchange'));
+  });
+  await waitFor(() => expect(window.location.hash).toBe('#/dashboard'));
+  expect(result.current.id).toBe('dashboard');
+  confirm.mockReturnValue(true);
+  act(() => {
+    window.location.hash = '#/settings/audit';
+    window.dispatchEvent(new Event('hashchange'));
+  });
+  await waitFor(() => expect(result.current.id).toBe('audit'));
+  confirm.mockReturnValue(false);
+  act(() => resetNavigation());
+  expect(window.location.hash).toBe('#/dashboard');
+  unmount();
+  confirm.mockRestore();
+});

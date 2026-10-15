@@ -1,5 +1,6 @@
 import { destinations } from '../../navigation/destinations.ts';
 import { PageHeader } from '../../components/PageHeader.tsx';
+import { Panel } from '../../components/Panel.tsx';
 import { Icon } from '../../components/Icon.tsx';
 const descriptions: Record<string, string> = {
   administrators: 'Manage accounts and your password.',
@@ -14,29 +15,42 @@ const descriptions: Record<string, string> = {
   'state-protection': 'Check configuration recovery copies.',
   locations: 'Review owned recovery locations.',
 };
+const groups = [
+  {
+    title: 'Access and connectivity',
+    ids: ['administrators', 'tokens', 'network', 'notification-channels'],
+  },
+  { title: 'Recovery', ids: ['state-protection', 'locations'] },
+  {
+    title: 'Operations and diagnostics',
+    ids: ['operations', 'activity', 'alerts', 'logs', 'audit'],
+  },
+];
 export function SettingsPage() {
   return (
-    <div className="stack">
+    <section className="stack">
       <PageHeader
         title="Settings"
         description="Manage access, connectivity, and appliance activity."
       />
-      <div className="settings-cards">
-        {destinations
-          .filter((d) => d.group === 'settings')
-          .map((d) => (
-            <a key={d.id} className="panel destination-card" href={d.hashRoute}>
-              <span className="icon-tile">
+      {groups.map((group) => (
+        <Panel key={group.title}>
+          <h2 className="settings-group-title">{group.title}</h2>
+          {group.ids.map((id) => {
+            const d = destinations.find((d) => d.id === id);
+            return d ? (
+              <a key={id} className="settings-row settings-link" href={d.hashRoute}>
                 <Icon name={d.icon} />
-              </span>
-              <div>
-                <h2>{d.label}</h2>
-                <p>{descriptions[d.id]}</p>
-              </div>
-              <Icon name="arrow" />
-            </a>
-          ))}
-      </div>
-    </div>
+                <div className="settings-row-content">
+                  <h3>{d.label}</h3>
+                  <p className="muted">{descriptions[id]}</p>
+                </div>
+                <span aria-hidden="true">›</span>
+              </a>
+            ) : null;
+          })}
+        </Panel>
+      ))}
+    </section>
   );
 }

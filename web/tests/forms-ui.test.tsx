@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SetupWizard } from '../src/features/setup/SetupWizard.tsx';
 import { NetworkPage } from '../src/features/settings/NetworkPage.tsx';
 import { TokensPage } from '../src/features/tokens/TokensPage.tsx';
@@ -24,6 +24,7 @@ test('network refetch keeps dirty input and outage disables only mutations', asy
       <NetworkPage canMutate />
     </QueryClientProvider>,
   );
+  fireEvent.click(await screen.findByRole('button', { name: 'Configure network' }));
   const input = await screen.findByLabelText('Listen addresses (one per line)');
   fireEvent.change(input, { target: { value: '192.0.2.22' } });
   input.focus();
@@ -51,8 +52,9 @@ test('tokens can be read during outages and secrets clear on expiry', async () =
       <TokensPage canMutate />
     </QueryClientProvider>,
   );
-  fireEvent.change(screen.getByLabelText('Token name'), { target: { value: 'test' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+  fireEvent.change(screen.getByLabelText('Token name'), { target: { value: 'test' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create token' }));
   expect(await screen.findByText('synthetic-once')).toBeInTheDocument();
   window.dispatchEvent(new Event('filedock:session-expired'));
   await waitFor(() => expect(screen.queryByText('synthetic-once')).not.toBeInTheDocument());
@@ -101,8 +103,11 @@ test('last enabled administrator is guarded and changing password needs current 
       <AdminsPage onSignedOut={() => {}} />
     </QueryClientProvider>,
   );
-  expect(await screen.findByRole('button', { name: 'Disable root' })).toBeDisabled();
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for root' }));
+  expect(screen.getByRole('button', { name: 'Disable root' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Remove root' })).toBeDisabled();
+  expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
   expect(screen.getByLabelText('Current password')).toBeRequired();
 });
 
@@ -119,6 +124,7 @@ test('network disconnect acknowledgement is explicit in submitted payload', asyn
       <NetworkPage />
     </QueryClientProvider>,
   );
+  fireEvent.click(await screen.findByRole('button', { name: 'Configure network' }));
   fireEvent.change(await screen.findByLabelText('Listen addresses (one per line)'), {
     target: { value: '192.0.2.22' },
   });
@@ -133,4 +139,127 @@ test('network disconnect acknowledgement is explicit in submitted payload', asyn
       }),
     ),
   );
+});
+
+test('administrator creation is deliberate and mismatched passwords preserve the dialog', async () => {
+  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).endsWith('/auth/me')
+              ? { id: 'one', username: 'root' }
+              : [{ id: 'one', username: 'root', enabled: true, lockedUntil: null }],
+          ),
+        ),
+    ),
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AdminsPage onSignedOut={() => {}} />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByLabelText('Username')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Add administrator' }));
+  fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'kyson' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a' } });
+  fireEvent.change(screen.getByLabelText('Re-enter password'), { target: { value: 'b' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create administrator' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Passwords do not match');
+  expect(screen.getByLabelText('Username')).toHaveValue('kyson');
+});
+
+test('password dialog submits current password and signs out only after success', async () => {
+  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  const signedOut = vi.fn();
+  const fetcher = vi.fn(
+    async (url, init) =>
+      new Response(
+        JSON.stringify(
+          init?.method === 'POST'
+            ? {}
+            : String(url).endsWith('/auth/me')
+              ? { id: 'one', username: 'root' }
+              : [{ id: 'one', username: 'root', enabled: true, lockedUntil: null }],
+        ),
+      ),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AdminsPage onSignedOut={signedOut} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+  fireEvent.change(screen.getByLabelText('Current password'), {
+    target: { value: 'old-synthetic' },
+  });
+  fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a' } });
+  fireEvent.change(screen.getByLabelText('Re-enter new password'), { target: { value: 'a' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Update password' }));
+  await waitFor(() => expect(signedOut).toHaveBeenCalledOnce());
+  expect(fetcher).toHaveBeenCalledWith(
+    '/api/v1/admins/one/password',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        currentPassword: 'old-synthetic',
+        password: 'a',
+        passwordConfirmation: 'a',
+      }),
+    }),
+  );
+});
+test('failed administrator save retains draft and exposes focused error', async () => {
+  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (url, init) =>
+        new Response(
+          JSON.stringify(
+            init?.method === 'POST'
+              ? { detail: 'Name already exists' }
+              : String(url).endsWith('/auth/me')
+                ? { id: 'one', username: 'root' }
+                : [],
+          ),
+          { status: init?.method === 'POST' ? 409 : 200 },
+        ),
+    ),
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <AdminsPage onSignedOut={() => {}} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add administrator' }));
+  fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'existing' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a' } });
+  fireEvent.change(screen.getByLabelText('Re-enter password'), { target: { value: 'a' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create administrator' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Name already exists');
+  expect(screen.getByRole('alert')).toHaveFocus();
+  expect(screen.getByLabelText('Username')).toHaveValue('existing');
+});
+
+test('dashboard treats an absent restore report as explicit empty query data', async () => {
+  const { RestoreReport } = await import('../src/features/restore/RestoreReport.tsx');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(null, { status: 204 })),
+  );
+  const client = new QueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <RestoreReport />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(client.getQueryData(['restore-report'])).toBeNull());
+  expect(screen.queryByRole('heading', { name: 'Restore report' })).not.toBeInTheDocument();
 });

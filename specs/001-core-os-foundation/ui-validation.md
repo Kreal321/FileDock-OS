@@ -4,7 +4,9 @@
 **Plan**: [plan.md](./plan.md#ui-revision-implementation-approach-and-delivery)
 **Contract**: [management-ui.md](./contracts/management-ui.md)
 
-The redesigned screens and local assets are implemented. Local lint/build, unit tests and macOS
+The 2026-10-13 redesigned screens and local assets are implemented. The
+[2026-10-15 layout refinement](./ui-layout-revision.md) is planned, not implemented or accepted.
+Evidence below for the earlier revision does not certify the new layouts. Local lint/build, unit tests and macOS
 Chromium scenarios pass; reviewed macOS screenshot candidates exist. See [ui-acceptance.md](./ui-acceptance.md)
 for actual evidence. Canonical Linux baselines and combined P1 manual acceptance remain pending.
 Existing Phase 1–5 completion is historical service evidence, not acceptance of every UI requirement.
@@ -125,3 +127,40 @@ baseline still requires generation, visual review and approval on a Linux test h
 macOS images into Linux baselines. Baseline generation uses the fixture suite against Vite and
 `--update-snapshots`; inspect every result against the guide, then rerun without that option.
 The default browser command deliberately fails when its platform baseline is missing.
+
+
+## 2026-10-15 layout acceptance extension (pending implementation)
+
+Use the build/Playwright commands above after the new task pass is implemented. Extend test-only
+fixtures/scenarios; do not merely update old screenshots to accept layout changes without review.
+Save desktop1440px and phone 360px captures plus actual 1280px/200% zoom observations. Compare with
+[prototype gallery and corrections](./ui-layout-revision.md#prototype-gallery-and-precedence).
+
+1. Navigate Dashboard→Folders→Extensions→every Settings child→operation detail→folder new/edit.
+   Assert exactly one `aria-current=page`; Settings expansion has no selected fill. No second
+   sidebar/settings-nav exists. Direct hashes, refresh, back/forward and unknown-route gates work.
+2. Expand/collapse the nested tree by keyboard; inspect every implemented link. Mobile uses the
+   same tree, hidden links leave tab order, Escape closes and focus returns. No duplicate nav rail.
+3. Administrators initially shows accounts and a compact password summary, without creation or
+   password fields. Add/Change buttons open named dialogs. Check focus trap/return, Escape, Cancel,
+   field errors, busy/failure and last-admin/current-password/confirmation/sign-out rules.
+4. Repeat focused-action checks for tokens, notifications, network and extension package inspection.
+   Preserve one-time-secret clearing, disconnect acknowledgement, permissions/data bindings and
+   all core/built-in/optional subsystem restrictions. Long editors use full pages, never clipped dialogs.
+5. Create/Edit Folder opens its own URL/page. All six numbered sections are in one document with
+   no tabs, next/back wizard or closed Advanced panel. Name edits immediately update read-only path.
+   Check each mode, importance applicability, provider absence, empty pools, System Pool warning,
+   full advanced controls, validation summary→field focus, ETag conflict and dirty leave behavior.
+6. Verify data/column alignment on every table: long names/paths/capabilities, multiline errors,
+   numbers, dates, compact actions and headers. Folder list retains Hybrid importance and separate
+   mode/protection/exposure. Only table regions scroll horizontally, never the whole page.
+7. Measure nonoverlapping44x44px effective targets, contrast, visible focus, keyboard row actions,
+   status words/glyphs and reduced motion. Compact visual buttons alone do not meet acceptance.
+8. Refetch/reconnect while a form/dialog is dirty; retain draft/focus/context. Lose Core/browser
+   live connection: mutation disabled, filters/paging/read-only inspection/sign-out remain usable.
+   Sign-out/expiry clears private queries, dialogs, password/token/recovery-key state.
+9. Recheck all implemented pages from the page inventory, local assets offline and real appliance
+   behavior. Record baseline platform/browser/release, images, results and outstanding failures.
+
+No tests, browser checks, VM deployment or baseline acceptance were performed by this planning pass.
+Existing Phase8 runtime/Linux acceptance remains separate and pending where previously recorded.

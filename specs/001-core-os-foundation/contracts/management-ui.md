@@ -1,13 +1,14 @@
 # Management UI contract — US11
 
-**Revision**: 2026-10-13
+**Revision**: 2026-10-15 (refines 2026-10-13)
 **Authority**: [spec.md](../spec.md), FR-124–FR-135; [approved design guide](../ui-design-guide.md)
 **Models**: [data-model.md](../data-model.md#ui-presentation-models-2026-10-13-revision)
 **Lifecycle/API contract**: [management-api.md](./management-api.md)
 
 This is the planned UI interface, not a claim that these redesigned views are implemented.
-No new REST/gRPC endpoints, database fields, or privileged actions are required. Only the current
-read APIs are used for the new Operations/Audit presentation surfaces.
+No new REST/gRPC endpoints, database fields, or privileged actions are required. The 2026-10-15 revision reuses the implemented operations, audit, alerts, extension, folder,
+notification and recovery interfaces. See the [layout revision](../ui-layout-revision.md) and
+[design system](../../../.interface-design/system.md) for prototype precedence and measurements.
 
 ## 1. Layout and assets
 
@@ -15,8 +16,11 @@ read APIs are used for the new Operations/Audit presentation surfaces.
   these are implementation starting values within the guide's spacing rhythm, not pixel-match
   requirements for the reference sheet. At narrower widths, collapse the sidebar and stack panels;
   use 16 px main padding on phones. Layout adapts to content rather than assuming fixed screen height.
-- Titles/section/body/caption: Inter 32/20/16/14 px, semibold/semibold/regular/regular. Respect the
-  guide's 12 px cards and 8/16/24/32 px spacing. Keep styles centralized and use thin borders/shadows.
+- Type: Inter28px page title,20px section title,16px form-section title,14px body,12px caption;
+  semibold headings/row identity, medium labels, regular metadata. Use4px base grid, primarily
+  8/16/24/32px spacing;6px controls,8px panels,12px dialogs. Keep tokens/styles centralized.
+- One sidebar only. Remove in-content Settings navigation and secondary rails. Panels contain
+  the primary list or saved summary; short edits appear through deliberate actions, not permanent forms.
 - Local Inter v4.1 WOFF2, readable fallback, and original SVGs are available without external requests.
   Font SOURCE metadata and the OFL/copyright notice ship with the UI. Screenshot artwork stays
   documentation-only; no embedded sample labels, metrics, avatars, or marketing/guide panels.
@@ -39,10 +43,32 @@ read APIs are used for the new Operations/Audit presentation surfaces.
 | `#/settings/operations/{id}` | Operation detail | Exact returned ID, encoded as a path segment; no credential or arbitrary content in route |
 | `#/settings/audit` | Audit | Paged administrative history with supported actor/action filters |
 
-The sidebar initially enables Dashboard and Settings. Settings child views retain their own page
-heading and named secondary navigation. The reference's other sections are inserted in its order
-when their real views ship. Omit search and the notification bell in the first redesign increment.
-Do not infer availability from the existence of a future endpoint in the broader API contract.
+The sidebar currently exposes Dashboard, Managed Folders, Extensions and Settings. Settings is
+one disclosure group within that sidebar, not another rail or horizontal navigation strip. Its
+Overview link owns `#/settings`; child links own their existing routes. Include Administrators,
+API tokens, Network, Notifications, State protection, Owned locations, Operations, Activity, Alerts,
+Logs and Audit. Preserve Operations as a link, not only a group label. Only implemented views appear.
+
+Exactly one link has `aria-current="page"` and selected fill. The Settings disclosure has only
+`aria-expanded`, separate from selection. Active child routes auto-reveal the group. Operation
+detail selects Operations; folder create/edit selects Managed Folders. No broad non-Dashboard test.
+Parent links and expand controls must not have conflicting click behavior.
+
+Additional page routes (planned, existing request APIs reused):
+
+| Hash route | Page / active destination |
+| --- | --- |
+| `#/folders` | Folder list / Managed Folders |
+| `#/folders/new` | Full-page Create folder / Managed Folders |
+| `#/folders/{id}/edit` | Full-page Edit folder / Managed Folders; exact encoded ID |
+| `#/extensions` | Implemented subsystem/extension inventory / Extensions |
+| `#/settings/state-protection` / `#/settings/locations` | Recovery coverage / owned locations |
+| `#/settings/logs` / `#/settings/activity` / `#/settings/alerts` | Actual operations data views |
+| `#/settings/notification-channels` | Real channel list and actions |
+
+Register explicit folder routes before generic resource matches. Keep public auth gates and unknown
+route handling. Hashes never carry credentials, form draft data or secrets. Omit unavailable global
+search/alert controls; existing persistent critical alerts remain visible.
 
 Use native links with real hash destinations, `aria-current` for selection, a named navigation
 landmark, a skip-to-main link, and one main landmark/page title. Handle hash changes, back/forward,
@@ -75,49 +101,40 @@ connectivity and Core `canMutate` are known true; absent information is false.
 
 ## 4. Actual data sources and dashboard slots
 
-| UI projection | Implemented source | Constraints |
+| UI projection | Existing source | Constraints |
 | --- | --- | --- |
-| Appliance identity/version | `GET /system/status` | Missing name/version is unavailable, not a guessed release |
-| Service cards/counts | `GET /system/status` components | Keep Core, Management, Docker, Samba, NFS, Kopia, fd-s3, rclone visible; unknown expected components get Unknown presentation, not a invented healthy observation |
-| Core banner/change availability | `GET /system/core-health` + browser live connection | Preserve Starting/Healthy/Unreachable/Incompatible and detail; cached HTTP values are not proof of a live connection |
-| Notices | System notices + warning flags | Render all applicable notices; false/absent protection flag is not proof of remote backup coverage |
-| Recent operations / journal | `GET /operations?activeOnly=&pageSize=&pageToken=`, detail route | Dashboard preview requests five rows, offers real View all; full view pages explicitly and preserves continuation |
-| Administrative activity / Audit | `GET /audit?pageSize=&pageToken=&actor=&action=` | Five-row dashboard preview; exact actor/action filters supported. No time filter, alert feed, or raw detail JSON in the first view |
-| Account | `GET /auth/me` | Session identity, no fake John Doe/avatar |
+| Appliance identity/services/notices | `/system/status`, `/system/core-health` and live events | Keep actual Core/Management/runtime/built-in observations, all warnings, unknown/stale distinction; no fabricated coverage |
+| Account | `/auth/me`, existing administrator/token endpoints | Actual username/derived initials; no sample identity, secret defaults or changed session rules |
+| Operations | `/operations` and exact-ID detail | Paged list; accepted work links to persistent progress; no success inferred from202 |
+| Audit | `/audit` | Supported actor/action/target/result/time filters and opaque paging from management-api.md; never raw secrets/details by default |
+| Logs / Activity / Alerts | `/logs`, `/activity`, `/alerts` and ack | Actual filtered events/records; persistent critical banner and no-channel notice; no data != empty |
+| Notifications | `/notification-channels` and test/action endpoints | Actual provider capability and channel state; test success only on actual delivery result |
+| Folders | `/folders`, `/folders/options`, `/folders/validate` and resource mutations | Capability-based modes/access, generation checks; separate name/path/mode/Hybrid importance/protection/exposure |
+| Extensions / recovery | Existing extension/subsystem and state-protection/location APIs | Retain actual classes, permissions, health, ownership and recovery-point scope |
 
-Until detailed US4 coverage exists, show protection information as unavailable with a plain
-notice and no green protected/backup summary. Do not use the existing false warning flag to
-suppress that missing-information notice.
+Reuse implemented request DTOs and existing view adapters. The UI revision adds no endpoint,
+collector or invented backend field. Future capacity/cache/CPU/RAM/history/container inventory slots
+appear only with real source data; a current point is not a historical trend. System Pool capacity
+must retain its limits; successful folder backup never certifies appliance-wide recovery.
 
-Use summary cards for actual Core connection, Management/container-runtime status, and a scoped
-reported-service summary. Use content panels for every subsystem's health/detail, notices, recent
-operations, and administrative activity. Include real navigation to Operations/Audit detail where
-supported. Do not calculate "all healthy" from an empty array or count Unknown synthetic rows as
-observed records. Docker service health is not the number/health of its containers.
-
-The following slots are deferred: folder/pool/cloud counts and lists, capacity, protected-folder
-counts, backup history/status, cache/CPU/RAM charts, alert counts/list, container inventory. They
-require their original feature's real data. Do not request those unimplemented endpoints or fill
-these positions with fixtures. Later storage panels must retain System Pool limits and protection
-scope; a mode badge never establishes a recovery point.
-
-The operation list/detail is read-only in this increment. A manual reconcile action is optional
-future UI work over the existing F-scope endpoint; if added, 202 means accepted and links to
-persisted progress rather than claiming instant success.
+The dashboard retains scoped summaries/content panels, not a forced card count. Do not calculate
+all-healthy from an empty array. Cached subsystem health remains stale even with a fresh HTTP
+receipt. Use receipt labels rather than invented observation timestamps. Optional global controls
+remain absent until they have real implemented behavior. Paged views remain available during outages.
 
 ## 5. Shared component behavior
 
 | Component | Required interface/state behavior |
 | --- | --- |
-| Button | primary/secondary/danger; busy/disabled; native button with explicit type and name; 44 px target; focus and failure remain visible |
+| Button | primary/secondary/danger plus shared quiet/icon action treatment and standard/compact sizing; native button with explicit type/name; effective 44px target even when 36 px visual; focus/busy/failure visible |
 | Field / Select | Label, value, help, required/error state; error associated with the field; native form semantics and password autocomplete behavior retained |
 | Switch | Labeled native checkbox/switch semantics; saved value distinguished from pending/failed submission; no false saved visual state |
 | Tabs | For actual in-page tabs, correct tab/panel relationships and arrow/Home/End focus; Settings page links use navigation semantics instead |
 | Panel / PageHeader | Stable heading structure, guide spacing/radius, optional genuine actions; no clickable card without a named real destination |
 | StatusBadge / Notice | Text plus icon/shape and semantic tone; raw domain states retained; actionable persistent warnings are not dismissed by an unrelated success |
 | StateView | Separate loading, confirmed empty, error/retry, unavailable, and stale presentations; preserve data while refreshing |
-| DataTable | Caption/name, headers, paging, overflow within its region, readable long values, accessible row actions; no default dump of secret/detail payloads |
-| Dialog / disclosure | Explicit close, Escape, initial focus and focus restoration; modal background is noninteractive only while truly modal |
+| DataTable | Caption/name; shared column metadata controls header/cell alignment and width; consistent padding/middle alignment; end-aligned tabular numbers; compact trailing action column; paging/scoped overflow, long values and accessible resource-named actions; no payload dump |
+| Dialog / disclosure | Existing native dialog, named header/description/body and one footer; sensible initial field/error focus, trap/return, Escape/close, busy/error behavior and dirty-cancel confirmation; viewport-bounded scrollable body; background inert only while truly modal |
 | Icon | Standardized viewBox/stroke/currentColor; decorative icons hidden; standalone actions have accessible names |
 
 Charts are a future component with real history, textual summaries, keyboard-readable information,
@@ -158,3 +175,38 @@ and reduced-motion support. The sample's charts do not require a graph library i
 No visual baseline is accepted merely because it matches a previous rendering. Its first approval
 must compare the composition and states with the design guide and this contract. Test fixtures
 live only in test paths and request interception; they never turn into production defaults.
+
+
+## 8. Current page/action layout contract — 2026-10-15
+
+[Layout revision](../ui-layout-revision.md#page-cleanup-inventory) is the full-screen migration inventory.
+No API/domain behavior is changed by this presentation contract. Implemented later-story APIs in management-api.md supply folders/extensions/alerts/notifications/
+recovery and supported audit filters. Metrics/providers still not implemented remain omitted.
+
+- Administrators: table leads; PageHeader Add administrator opens dialog; compact Your password row
+  opens Change password dialog. No permanent account creation/password form. Preserve actor-only
+  password behavior, last enabled account checks, matching re-entry and advisory length.
+- Tokens: list plus Create action; dialog retains scope/expiry, then memory-only secret-once result.
+  Closing/sign-out/expiry clears it; no secret screenshot or persistent draft.
+- Notifications: list plus channel editor/test/remove actions, retain missing-channel warning and
+  actual delivery result. Extensions: preserve all subsystem classes, health, permissions, binding,
+  default-provider and package-review controls; compact list first, focused review on demand.
+- Network/recovery: saved-state summaries and actual warnings lead; short actions use dialogs,
+  long connection/destination/takeover editors use full pages retaining all safety acknowledgements.
+- Folders: create/edit full page with one form and six sequential expanded numbered sections.
+  Identity, Storage Mode, Source/Backend, Data Importance, Access, Advanced; no tabs or wizard.
+  Importance input onlyHybrid, otherwise applicability text. Advanced stays on page. Name-derived
+  read-only path matches API normalization. ETag conflict and validation preserve draft; no blind retry.
+- A folder error summary focuses and links to corresponding fields; preserve typed-name deletion,
+  importance/mode change acknowledgements and dependency errors. Cancel/back/navigation asks before
+  discarding dirty values. Refresh/close uses browser-supported warning without persistent secret drafts.
+- Shared cards/summary rows have one relevant action, not tall inline forms. Lists retain filtering,
+  paging and read-only access on outage. Compact ellipsis actions are resource-named, keyboard-usable,
+  and do not depend on hover. Use disclosure/list semantics or a proven menu primitive with complete
+  keyboard behavior, never incomplete hand-rolled ARIA menus.
+- Accepted visual dimensions and responsive behavior are defined in system.md. No raster reference
+  reduces44px effective targets, hides Hybrid importance or required protection/exposure, or claims
+  unimplemented capabilities. Only real observed state is presented as healthy/protected.
+
+All 2026-10-15 work remains planned. Prior screenshots/tests are historical and do not certify this
+revision. New behavioral/visual coverage must follow ui-validation.md before acceptance.

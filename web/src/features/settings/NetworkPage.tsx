@@ -1,11 +1,15 @@
-import { PageHeader } from '../../components/PageHeader.tsx';
+import { useId, useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../api/client.ts';
 import { dataView } from '../../api/view-models.ts';
+import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
+import { PageHeader } from '../../components/PageHeader.tsx';
+import { Panel } from '../../components/Panel.tsx';
+import { SettingsRow } from '../../components/SettingsRow.tsx';
+import { Dialog } from '../../components/Dialog.tsx';
 import { StateView } from '../../components/StateView.tsx';
 import { TextAreaField } from '../../components/Field.tsx';
 import { Button } from '../../components/Button.tsx';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
-import { api } from '../../api/client.ts';
 type Network = {
   listenAddresses: string[];
   port: number;
@@ -26,28 +30,36 @@ export function NetworkPage({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [ack, setAck] = useState(false);
+  const dirty = draft !== null && (draft !== query.data?.listenAddresses.join('\n') || ack);
+  const formId = useId();
+  useUnsavedChanges(dirty);
+  function close() {
+    setDraft(null);
+    setAck(false);
+    setError('');
+  }
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!canMutate || busy) return;
-    const form = new FormData(event.currentTarget);
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const saved = await api.put<{ listenAddresses: string[] }>('/system/network', {
-        listenAddresses: String(form.get('addresses'))
-          .split(/[\s,]+/)
-          .filter(Boolean),
-        confirmDisconnect: form.get('confirmDisconnect') === 'on',
+        listenAddresses: (draft ?? '').split(/[\s,]+/).filter(Boolean),
+        confirmDisconnect: ack,
       });
       cache.setQueryData<Network>(['network'], (old) =>
         old ? { ...old, listenAddresses: saved.listenAddresses } : old,
       );
+      close();
       setMessage(
         'Saved. The HTTP listeners will update shortly. Reconnect using one of the chosen addresses.',
       );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update network settings.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update network settings.');
     } finally {
       setBusy(false);
     }
@@ -58,46 +70,92 @@ export function NetworkPage({
       <StateView
         {...dataView(query.data, query.isPending, query.error, query.dataUpdatedAt, !connected)}
         onRetry={() => void query.refetch()}
-        empty="No records returned."
+        empty="Network settings unavailable."
       />
-      <p>
-        The UI and API use HTTP on port {query.data?.port ?? 8021}. Choose local IP addresses, or
-        use :: for all interfaces.
-      </p>
-      <p>
-        If access is lost, run <code>filedockctl network reset</code> as root from the VM console.
-      </p>
-      {query.isPending ? <p role="status">Loading network settings…</p> : null}
       {query.data ? (
-        <form className="panel stack" onSubmit={save}>
+        <Panel>
+          <SettingsRow
+            title="Management listeners"
+            description={`HTTP on port ${query.data.port}`}
+            action={
+              <Button
+                variant="secondary"
+                size="compact"
+                disabled={!canMutate}
+                onClick={() => {
+                  setDraft(query.data!.listenAddresses.join('\n'));
+                  setAck(false);
+                  setError('');
+                }}
+              >
+                Configure network
+              </Button>
+            }
+          >
+            <p>{query.data.listenAddresses.join(', ')}</p>
+          </SettingsRow>
+          <SettingsRow
+            title="Console recovery"
+            description={
+              <>
+                If access is lost, run <code>filedockctl network reset</code> as root from the VM
+                console.
+              </>
+            }
+          />
+        </Panel>
+      ) : null}
+      {message ? <p role="status">{message}</p> : null}
+      <Dialog
+        open={draft !== null}
+        title="Configure network"
+        description={`The UI and API use HTTP on port ${query.data?.port ?? 8021}. Choose local IP addresses, or use :: for all interfaces.`}
+        onClose={close}
+        dirty={dirty}
+        busy={busy}
+        footer={
+          <Button form={formId} type="submit" disabled={!canMutate} busy={busy}>
+            Save network settings
+          </Button>
+        }
+      >
+        {error ? (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <form id={formId} className="stack" onSubmit={save}>
           <TextAreaField
             label="Listen addresses (one per line)"
             name="addresses"
             required
-            defaultValue={query.data.listenAddresses.join('\n')}
+            value={draft ?? ''}
+            onChange={(e) => setDraft(e.target.value)}
           />
-          <ul>
-            {query.data.availableAddresses.map((address) => (
-              <li key={`${address.interfaceName}-${address.address}`}>
-                {address.interfaceName}: {address.address}
-              </li>
-            ))}
-          </ul>
+          <div>
+            <h3>Available addresses</h3>
+            <ul>
+              {query.data?.availableAddresses.map((a) => (
+                <li key={`${a.interfaceName}-${a.address}`}>
+                  {a.interfaceName}: {a.address}
+                </li>
+              ))}
+            </ul>
+          </div>
           <label className="inline-label">
-            <input name="confirmDisconnect" type="checkbox" />
+            <input
+              name="confirmDisconnect"
+              type="checkbox"
+              checked={ack}
+              onChange={(e) => setAck(e.target.checked)}
+            />
             Allow this change to disconnect my current connection
           </label>
-          <Button variant="primary" disabled={!canMutate} busy={busy} type="submit">
-            Save network settings
-          </Button>
+          <p className="caption muted">
+            Console recovery: <code>filedockctl network reset</code>
+          </p>
         </form>
-      ) : null}
-      {error || query.error ? (
-        <p className="error" role="alert">
-          {error || query.error?.message}
-        </p>
-      ) : null}
-      {message ? <p role="status">{message}</p> : null}
+      </Dialog>
     </section>
   );
 }

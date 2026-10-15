@@ -15,6 +15,7 @@ export function Field({
       <input
         id={key}
         aria-invalid={error ? true : undefined}
+        aria-errormessage={error ? `${key}-help` : undefined}
         aria-describedby={hint || error ? `${key}-help` : undefined}
         {...props}
       />
@@ -41,6 +42,7 @@ export function TextAreaField({
       <textarea
         id={key}
         aria-invalid={error ? true : undefined}
+        aria-errormessage={error ? `${key}-help` : undefined}
         aria-describedby={hint || error ? `${key}-help` : undefined}
         {...props}
       />

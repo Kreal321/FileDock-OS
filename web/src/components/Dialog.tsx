@@ -3,56 +3,91 @@ import { Button } from './Button.tsx';
 export function Dialog({
   open,
   title,
+  description,
   onClose,
   children,
   busy = false,
+  dirty = false,
+  footer,
 }: {
   open: boolean;
   title: string;
+  description?: string;
   onClose: () => void;
   children: ReactNode;
   busy?: boolean;
+  dirty?: boolean;
+  footer?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   const closeRef = useRef(onClose);
+  const state = useRef({ busy, dirty });
+  const lastError = useRef('');
   useEffect(() => {
     closeRef.current = onClose;
-  }, [onClose]);
+    state.current = { busy, dirty };
+  });
+  const close = () => {
+    if (!state.current.busy && (!state.current.dirty || window.confirm('Discard unsaved changes?')))
+      closeRef.current();
+  };
   useEffect(() => {
-    const element = ref.current;
-    if (!open || !element) return;
+    const el = ref.current;
+    if (!open || !el) return;
     const previous = document.activeElement as HTMLElement | null;
-    if (element.showModal) element.showModal();
-    else element.setAttribute('open', '');
-    const focus = element.querySelector<HTMLElement>('button,input,select,textarea,[tabindex="0"]');
+    if (el.showModal) el.showModal();
+    else el.setAttribute('open', '');
+    const focus =
+      el.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+      el.querySelector<HTMLElement>(
+        'input:not(:disabled),select:not(:disabled),textarea:not(:disabled)',
+      ) ??
+      el.querySelector<HTMLElement>('[data-initial-focus],button:not(:disabled)');
     focus?.focus();
     return () => {
-      if (element.close) element.close();
-      else element.removeAttribute('open');
-      previous?.focus();
+      lastError.current = '';
+      if (el.close) el.close();
+      else el.removeAttribute('open');
+      if (previous?.isConnected) previous.focus();
     };
   }, [open]);
+  useEffect(() => {
+    const el = ref.current;
+    const error = el?.querySelector<HTMLElement>('[role="alert"]');
+    const text = error?.textContent ?? '';
+    if (text && text !== lastError.current) {
+      const invalid = el?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (invalid) invalid.focus();
+      else {
+        error?.setAttribute('tabindex', '-1');
+        error?.focus();
+      }
+    }
+    lastError.current = text;
+  });
   return open ? (
     <dialog
       ref={ref}
       aria-labelledby={id}
+      aria-describedby={description ? `${id}-description` : undefined}
       aria-busy={busy || undefined}
       onCancel={(e) => {
         e.preventDefault();
-        if (!busy) closeRef.current();
+        close();
       }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
-          if (!busy) closeRef.current();
+          e.stopPropagation();
+          close();
         }
         if (e.key === 'Tab') {
           const els = Array.from(
             ref.current?.querySelectorAll<HTMLElement>(
-              'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+              'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]',
             ) ?? [],
-          );
+          ).filter((el) => !el.hidden);
           const first = els[0],
             last = els.at(-1);
           if (e.shiftKey && document.activeElement === first) {
@@ -65,13 +100,32 @@ export function Dialog({
         }
       }}
     >
-      <div className="stack">
-        <h2 id={id}>{title}</h2>
-        {children}
-        <Button variant="secondary" disabled={busy} onClick={onClose}>
+      <header className="dialog-header">
+        <div>
+          <h2 id={id}>{title}</h2>
+          {description ? (
+            <p className="muted" id={`${id}-description`}>
+              {description}
+            </p>
+          ) : null}
+        </div>
+        <Button
+          variant="quiet"
+          size="icon"
+          aria-label={`Close ${title}`}
+          disabled={busy}
+          onClick={close}
+        >
+          ×
+        </Button>
+      </header>
+      <div className="dialog-body stack">{children}</div>
+      <footer className="dialog-footer">
+        <Button variant="secondary" disabled={busy} onClick={close}>
           Cancel
         </Button>
-      </div>
+        {footer}
+      </footer>
     </dialog>
   ) : null;
 }

@@ -91,6 +91,24 @@ impl EventBus {
             }
             ring.push_back(event.clone());
         }
+        // Journal only lifecycle boundaries, never progress ticks or event payloads.
+        let operation_id = event
+            .payload
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        match event.r#type.as_str() {
+            "operation.started" | "operation.completed" => {
+                tracing::info!(event = %event.r#type, operation_id, "operation lifecycle");
+            }
+            "operation.failed" => {
+                tracing::error!(event = %event.r#type, operation_id, "operation failed");
+            }
+            "operation.rolled_back" => {
+                tracing::warn!(event = %event.r#type, operation_id, "operation rolled back");
+            }
+            _ => {}
+        }
         let _ = self.live.send(event.clone());
         Ok(event)
     }

@@ -1,17 +1,19 @@
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../api/client.ts';
+import { dataView } from '../../api/view-models.ts';
+import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
 import { Panel } from '../../components/Panel.tsx';
 import { PageHeader } from '../../components/PageHeader.tsx';
 import { DataTable } from '../../components/DataTable.tsx';
+import { TableToolbar } from '../../components/TableToolbar.tsx';
+import { RowActions } from '../../components/RowActions.tsx';
 import { Dialog } from '../../components/Dialog.tsx';
 import { StatusBadge } from '../../components/StatusBadge.tsx';
-import { dataView } from '../../api/view-models.ts';
 import { StateView } from '../../components/StateView.tsx';
-import { Select } from '../../components/Select.tsx';
 import { Field } from '../../components/Field.tsx';
+import { Select } from '../../components/Select.tsx';
 import { Button } from '../../components/Button.tsx';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { api } from '../../api/client.ts';
-
 type Token = {
   id: string;
   name: string;
@@ -20,7 +22,6 @@ type Token = {
   revokedAt: string | null;
   lastUsedAt: string | null;
 };
-
 export function TokensPage({
   canMutate = true,
   connected = true,
@@ -31,12 +32,22 @@ export function TokensPage({
   const cache = useQueryClient();
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api.get<Token[]>('/tokens') });
   const [secret, setSecret] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [revoking, setRevoking] = useState<Token | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const formId = useId();
   const active = useRef(true);
+  useUnsavedChanges(dirty);
   useEffect(() => {
     active.current = true;
     const clear = () => {
       active.current = false;
       setSecret('');
+      setCreating(false);
+      setRevoking(null);
+      setDirty(false);
     };
     window.addEventListener('filedock:session-expired', clear);
     return () => {
@@ -44,100 +55,101 @@ export function TokensPage({
       window.removeEventListener('filedock:session-expired', clear);
     };
   }, []);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [revoking, setRevoking] = useState<Token | null>(null);
-  async function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function close() {
+    setSecret('');
+    setCreating(false);
+    setRevoking(null);
+    setDirty(false);
+    setError('');
+  }
+  async function create(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     if (!canMutate || busy) return;
-    const element = event.currentTarget;
-    const form = new FormData(element);
+    const data = new FormData(e.currentTarget);
     setError('');
     setBusy(true);
-    setSecret('');
     try {
-      const expiry = String(form.get('expiresAt') ?? '');
+      const expiry = String(data.get('expiresAt') ?? '');
       const result = await api.post<{ token: string }>('/tokens', {
-        name: form.get('name'),
-        scope: form.get('scope'),
+        name: data.get('name'),
+        scope: data.get('scope'),
         expiresAt: expiry ? new Date(expiry).toISOString() : null,
       });
-      if (active.current) setSecret(result.token);
-      element.reset();
+      if (active.current) {
+        setDirty(false);
+        setCreating(false);
+        setSecret(result.token);
+      }
       await cache.invalidateQueries({ queryKey: ['tokens'] });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create token.');
+    } catch (e) {
+      if (active.current) setError(e instanceof Error ? e.message : 'Could not create token.');
     } finally {
       setBusy(false);
     }
   }
-  async function revoke(id: string) {
-    if (!canMutate || busy) return;
+  async function revoke() {
+    if (!canMutate || busy || !revoking) return;
     setError('');
     setBusy(true);
     try {
-      await api.delete(`/tokens/${encodeURIComponent(id)}`);
-      setRevoking(null);
+      await api.delete(`/tokens/${encodeURIComponent(revoking.id)}`);
+      close();
       await cache.invalidateQueries({ queryKey: ['tokens'] });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not revoke token.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not revoke token.');
     } finally {
       setBusy(false);
     }
   }
   return (
     <section className="stack">
-      <PageHeader title="API tokens" description="Connect applications with scoped access." />
+      <PageHeader
+        title="API tokens"
+        description="Connect applications with scoped access."
+        action={
+          <Button
+            aria-label="Create token"
+            disabled={!canMutate}
+            onClick={() => {
+              close();
+              setCreating(true);
+            }}
+          >
+            + Create token
+          </Button>
+        }
+      />
       <StateView
         {...dataView(tokens.data, tokens.isPending, tokens.error, tokens.dataUpdatedAt, !connected)}
         onRetry={() => void tokens.refetch()}
-        empty="No records returned."
+        empty="No API tokens yet. Create one to connect an application."
       />
-      <p>
-        Read-only tokens can view status and lists. Full tokens can change resources. Account, token
-        and network administration require a signed-in session.
+      <p className="muted">
+        Read-only tokens can inspect resources. Full tokens can change resources. Account, token and
+        network administration require a signed-in session.
       </p>
-      <form className="panel stack" onSubmit={create}>
-        <Field label="Token name" name="name" required maxLength={128} />
-        <Select label="Scope" name="scope" defaultValue="ReadOnly">
-          <option value="ReadOnly">Read-only</option>
-          <option value="Full">Full</option>
-        </Select>
-        <Field label="Expires at (optional)" name="expiresAt" type="datetime-local" />
-        <Button variant="primary" disabled={!canMutate} busy={busy} type="submit">
-          Create token
-        </Button>
-      </form>
-      {secret ? (
-        <div className="panel stack">
-          <p>Save this token now. It will not be shown again.</p>
-          <code className="recovery-key" data-secret>
-            {secret}
-          </code>
-          <Button variant="secondary" onClick={() => setSecret('')}>
-            I saved the token
-          </Button>
-        </div>
-      ) : null}
-      {error || tokens.error ? (
-        <p role="alert" className="error">
-          {error || tokens.error?.message}
+      {!creating && !revoking && !secret && error ? (
+        <p className="error" role="alert">
+          {error}
         </p>
-      ) : null}
-      {tokens.isPending ? <p role="status">Loading tokens…</p> : null}
-      {tokens.data?.length === 0 ? (
-        <p className="muted">No API tokens yet. Create one to connect an application.</p>
       ) : null}
       {tokens.data?.length ? (
         <Panel className="stack">
-          <h2>Issued tokens</h2>
+          <TableToolbar title="Issued tokens" />
           <DataTable
             label="API tokens"
-            headers={['Name', 'Scope', 'Status', 'Expires', 'Last used', 'Actions']}
+            headers={[
+              'Name',
+              'Scope',
+              'Status',
+              'Expires',
+              'Last used',
+              { id: 'actions', label: 'Actions', align: 'actions' },
+            ]}
           >
             {tokens.data.map((token) => (
               <tr key={token.id}>
-                <td>{token.name}</td>
+                <td className="identity-name">{token.name}</td>
                 <td>{token.scope}</td>
                 <td>
                   <StatusBadge
@@ -154,17 +166,20 @@ export function TokensPage({
                 <td>{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : 'Never'}</td>
                 <td>
                   {!token.revokedAt ? (
-                    <Button
-                      variant="danger"
-                      busy={busy}
-                      disabled={!canMutate}
-                      onClick={() => {
-                        setError('');
-                        setRevoking(token);
-                      }}
-                    >
-                      Revoke {token.name}
-                    </Button>
+                    <RowActions
+                      label={`Actions for ${token.name}`}
+                      actions={[
+                        {
+                          label: `Revoke ${token.name}`,
+                          disabled: !canMutate || busy,
+                          danger: true,
+                          onClick: () => {
+                            setError('');
+                            setRevoking(token);
+                          },
+                        },
+                      ]}
+                    />
                   ) : null}
                 </td>
               </tr>
@@ -173,27 +188,59 @@ export function TokensPage({
         </Panel>
       ) : null}
       <Dialog
-        open={!!revoking}
-        title={`Revoke ${revoking?.name ?? 'token'}?`}
+        open={creating}
+        title="Create token"
+        onClose={close}
+        dirty={dirty}
         busy={busy}
-        onClose={() => setRevoking(null)}
+        footer={
+          <Button form={formId} type="submit" busy={busy} disabled={!canMutate}>
+            Create token
+          </Button>
+        }
       >
-        <p>Applications using this token will lose access.</p>
         {error ? (
           <p className="error" role="alert">
             {error}
           </p>
         ) : null}
-        <Button
-          variant="danger"
-          busy={busy}
-          disabled={!canMutate}
-          onClick={() => {
-            if (revoking) void revoke(revoking.id);
-          }}
-        >
-          Revoke token
-        </Button>
+        <form id={formId} className="stack" onSubmit={create} onChange={() => setDirty(true)}>
+          <Field label="Token name" name="name" required maxLength={128} />
+          <Select label="Scope" name="scope" defaultValue="ReadOnly">
+            <option value="ReadOnly">Read-only</option>
+            <option value="Full">Full</option>
+          </Select>
+          <Field label="Expires at (optional)" name="expiresAt" type="datetime-local" />
+        </form>
+      </Dialog>
+      <Dialog
+        open={!!secret}
+        title="Save your token"
+        description="Save this token now. It will not be shown again."
+        onClose={close}
+        footer={<Button onClick={close}>I saved the token</Button>}
+      >
+        <code className="recovery-key" data-secret>
+          {secret}
+        </code>
+      </Dialog>
+      <Dialog
+        open={!!revoking}
+        title={`Revoke ${revoking?.name ?? 'token'}?`}
+        description="Applications using this token will lose access."
+        onClose={close}
+        busy={busy}
+        footer={
+          <Button variant="danger" busy={busy} disabled={!canMutate} onClick={() => void revoke()}>
+            Revoke token
+          </Button>
+        }
+      >
+        {error ? (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </Dialog>
     </section>
   );

@@ -7,12 +7,14 @@ export function RestoreReport() {
   const q = useQuery({
     queryKey: ['restore-report'],
     queryFn: () =>
-      api.get<{
-        restoreOperationId: string;
-        snapshotTakenAt: string;
-        folders?: { folderId: string; name: string; outcome: string; detail: string }[];
-        items?: { kind: string; id: string; name: string; status: string; detail: string }[];
-      }>('/restore/report'),
+      api
+        .get<{
+          restoreOperationId: string;
+          snapshotTakenAt: string;
+          folders?: { folderId: string; name: string; outcome: string; detail: string }[];
+          items?: { kind: string; id: string; name: string; status: string; detail: string }[];
+        }>('/restore/report')
+        .then((report) => report ?? null),
   });
   if (!q.data) return null;
   return (

@@ -41,7 +41,12 @@ export const destinations: NavigationDestination[] = [
     { id: 'administrators', label: 'Administrators', icon: 'admin', requiredView: 'AdminsPage' },
     { id: 'tokens', label: 'API tokens', icon: 'token', requiredView: 'TokensPage' },
     { id: 'network', label: 'Network settings', icon: 'network', requiredView: 'NetworkPage' },
-    { id: 'operations', label: 'Operations', icon: 'operations', requiredView: 'OperationsPage' },
+    {
+      id: 'notification-channels',
+      label: 'Notifications',
+      icon: 'network',
+      requiredView: 'NotificationChannelsPage',
+    },
     {
       id: 'state-protection',
       label: 'State protection',
@@ -49,20 +54,16 @@ export const destinations: NavigationDestination[] = [
       requiredView: 'StateProtectionPage',
     },
     { id: 'locations', label: 'Owned locations', icon: 'settings', requiredView: 'LocationsPage' },
-    { id: 'logs', label: 'Logs', icon: 'operations', requiredView: 'LogsPage' },
+    { id: 'operations', label: 'Operations', icon: 'operations', requiredView: 'OperationsPage' },
     { id: 'activity', label: 'Activity', icon: 'operations', requiredView: 'ActivityPage' },
     { id: 'alerts', label: 'Alerts', icon: 'warning', requiredView: 'AlertsPage' },
-    {
-      id: 'notification-channels',
-      label: 'Notifications',
-      icon: 'network',
-      requiredView: 'NotificationChannelsPage',
-    },
+    { id: 'logs', label: 'Logs', icon: 'operations', requiredView: 'LogsPage' },
     { id: 'audit', label: 'Audit', icon: 'audit', requiredView: 'AuditPage' },
   ].map((d) => ({
     ...d,
     hashRoute: `#/settings/${d.id}`,
     group: 'settings' as const,
+    parentId: 'settings',
     availability: 'implemented' as const,
   })),
 ];

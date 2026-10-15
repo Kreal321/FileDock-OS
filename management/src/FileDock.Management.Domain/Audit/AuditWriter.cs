@@ -33,7 +33,7 @@ public sealed partial class AuditWriter(IAuditStore store, ILogger<AuditWriter> 
         LogAudit(logger, action, result, target);
     }
 
-    [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "audit {Action} {Result} {Target}")]
+    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "audit {Action} {Result} {Target}")]
     private static partial void LogAudit(ILogger logger, string action, string result, string target);
 
     public static string Redact(object? detail)

@@ -1,15 +1,19 @@
+import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../api/client.ts';
+import { dataView } from '../../api/view-models.ts';
+import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
 import { Panel } from '../../components/Panel.tsx';
 import { PageHeader } from '../../components/PageHeader.tsx';
 import { DataTable } from '../../components/DataTable.tsx';
+import { TableToolbar } from '../../components/TableToolbar.tsx';
+import { SettingsRow } from '../../components/SettingsRow.tsx';
+import { RowActions } from '../../components/RowActions.tsx';
 import { Dialog } from '../../components/Dialog.tsx';
 import { StatusBadge } from '../../components/StatusBadge.tsx';
-import { dataView } from '../../api/view-models.ts';
 import { StateView } from '../../components/StateView.tsx';
 import { Field } from '../../components/Field.tsx';
 import { Button } from '../../components/Button.tsx';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
-import { api } from '../../api/client.ts';
 type Admin = { id: string; username: string; enabled: boolean; lockedUntil: string | null };
 export function AdminsPage({
   onSignedOut,
@@ -28,224 +32,276 @@ export function AdminsPage({
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<'create' | 'password' | 'sessions' | null>(null);
   const [removing, setRemoving] = useState<Admin | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const formId = useId();
+  useUnsavedChanges(dirty);
+  function close() {
+    setEditing(null);
+    setRemoving(null);
+    setDirty(false);
+    setError('');
+  }
+  useEffect(() => {
+    const clear = () => {
+      setEditing(null);
+      setRemoving(null);
+      setDirty(false);
+      setError('');
+    };
+    window.addEventListener('filedock:session-expired', clear);
+    return () => window.removeEventListener('filedock:session-expired', clear);
+  }, []);
+  function open(kind: 'create' | 'password' | 'sessions') {
+    setError('');
+    setDirty(false);
+    setEditing(kind);
+  }
   async function act(action: () => Promise<unknown>) {
     if (!canMutate || busy) return;
     setError('');
     setBusy(true);
     try {
       await action();
-      setRemoving(null);
+      close();
       await cache.invalidateQueries({ queryKey: ['admins'] });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save administrator.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save administrator.');
     } finally {
       setBusy(false);
     }
   }
-  async function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const element = event.currentTarget;
-    const form = new FormData(element);
-    if (form.get('password') !== form.get('passwordConfirmation')) {
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!canMutate || busy) return;
+    const data = new FormData(e.currentTarget);
+    if (data.get('password') !== data.get('passwordConfirmation')) {
       setError('Passwords do not match.');
       return;
     }
-    await act(async () => {
-      await api.post('/admins', Object.fromEntries(form));
-      element.reset();
+    void act(async () => {
+      if (editing === 'create') await api.post('/admins', Object.fromEntries(data));
+      else if (me.data) {
+        await api.post(
+          `/admins/${encodeURIComponent(me.data.id)}/password`,
+          Object.fromEntries(data),
+        );
+        onSignedOut();
+      }
     });
   }
-  async function password(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!me.data) return;
-    const form = new FormData(event.currentTarget);
-    if (form.get('password') !== form.get('passwordConfirmation')) {
-      setError('Passwords do not match.');
-      return;
-    }
-    await act(async () => {
-      await api.post(`/admins/${me.data!.id}/password`, Object.fromEntries(form));
-      onSignedOut();
-    });
-  }
+  const title = removing
+    ? `Remove ${removing.username}?`
+    : editing === 'create'
+      ? 'Add administrator'
+      : editing === 'password'
+        ? 'Change password'
+        : 'Sign out all sessions?';
   return (
     <section className="stack">
       <PageHeader
         title="Administrators"
         description="Manage appliance accounts and your password."
+        action={
+          <Button
+            aria-label="Add administrator"
+            disabled={!canMutate}
+            onClick={() => open('create')}
+          >
+            + Add administrator
+          </Button>
+        }
       />
       <StateView
         {...dataView(admins.data, admins.isPending, admins.error, admins.dataUpdatedAt, !connected)}
         onRetry={() => void admins.refetch()}
-        empty="No records returned."
+        empty="No administrator accounts returned."
       />
-      <p>
-        Every administrator has full access. The last enabled account cannot be disabled or removed.
-      </p>
-      {error || admins.error || me.error ? (
+      {!editing && !removing && (error || me.error) ? (
         <p className="error" role="alert">
-          {error || admins.error?.message || me.error?.message}
+          {error || me.error?.message}
         </p>
       ) : null}
-      <form className="panel stack" onSubmit={create}>
-        <h2>Create administrator</h2>
-        <Field label="Username" name="username" required maxLength={64} autoComplete="off" />
-        <Field
-          label="Password"
-          name="password"
-          type="password"
-          required
-          autoComplete="new-password"
-        />
-        <p>We recommend more than 8 characters.</p>
-        <Field
-          label="Re-enter password"
-          name="passwordConfirmation"
-          type="password"
-          required
-          autoComplete="new-password"
-        />
-        <Button type="submit" variant="primary" disabled={!canMutate} busy={busy}>
-          Create administrator
-        </Button>
-      </form>
-      {admins.isPending ? <p role="status">Loading administrators…</p> : null}
-      {admins.data?.length === 0 ? <p>No administrators returned.</p> : null}
       {admins.data?.length ? (
         <Panel className="stack">
-          <h2>Accounts</h2>
-          <DataTable label="Administrators" headers={['Username', 'Status', 'Actions']}>
+          <TableToolbar title="Accounts" />
+          <DataTable
+            label="Administrators"
+            headers={[
+              { id: 'username', label: 'Username' },
+              { id: 'access', label: 'Access' },
+              { id: 'status', label: 'Status' },
+              { id: 'actions', label: 'Actions', align: 'actions' },
+            ]}
+          >
             {admins.data.map((admin) => {
-              const lastEnabled =
-                admin.enabled && admins.data.filter((a) => a.enabled).length === 1;
+              const last = admin.enabled && admins.data.filter((a) => a.enabled).length === 1;
               return (
                 <tr key={admin.id}>
                   <td>
-                    {admin.username}
-                    {admin.id === me.data?.id ? ' (you)' : ''}
+                    <span className="identity-name">{admin.username}</span>
+                    {admin.id === me.data?.id ? <span className="account-tag">You</span> : null}
                   </td>
+                  <td>Full administrator</td>
                   <td>
                     <StatusBadge state={admin.enabled ? 'Enabled' : 'Disabled'} />
+                    {last ? (
+                      <span className="identity-detail">Last enabled administrator</span>
+                    ) : null}
                     {admin.lockedUntil && new Date(admin.lockedUntil) > new Date() ? (
-                      <p className="caption">
+                      <span className="identity-detail">
                         Locked until {new Date(admin.lockedUntil).toLocaleString()}
-                      </p>
+                      </span>
                     ) : null}
                   </td>
                   <td>
-                    <div className="actions">
-                      <Button
-                        variant="secondary"
-                        busy={busy}
-                        disabled={!canMutate || lastEnabled}
-                        onClick={() =>
-                          void act(async () => {
-                            await api.patch(`/admins/${encodeURIComponent(admin.id)}`, {
-                              enabled: !admin.enabled,
-                            });
-                            if (admin.id === me.data?.id && admin.enabled) onSignedOut();
-                          })
-                        }
-                      >
-                        {admin.enabled ? 'Disable' : 'Enable'} {admin.username}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        busy={busy}
-                        disabled={!canMutate || lastEnabled}
-                        onClick={() => {
-                          setError('');
-                          setRemoving(admin);
-                        }}
-                      >
-                        Remove {admin.username}
-                      </Button>
-                    </div>
-                    {lastEnabled ? (
-                      <p className="caption muted">Last enabled administrator</p>
-                    ) : null}
+                    <RowActions
+                      label={`Actions for ${admin.username}`}
+                      actions={[
+                        {
+                          label: `${admin.enabled ? 'Disable' : 'Enable'} ${admin.username}`,
+                          disabled: !canMutate || busy || last,
+                          onClick: () =>
+                            void act(async () => {
+                              await api.patch(`/admins/${encodeURIComponent(admin.id)}`, {
+                                enabled: !admin.enabled,
+                              });
+                              if (admin.id === me.data?.id && admin.enabled) onSignedOut();
+                            }),
+                        },
+                        {
+                          label: `Remove ${admin.username}`,
+                          danger: true,
+                          disabled: !canMutate || busy || last,
+                          onClick: () => {
+                            setError('');
+                            setRemoving(admin);
+                          },
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               );
             })}
           </DataTable>
+          <p className="caption muted">At least one administrator account must remain enabled.</p>
         </Panel>
       ) : null}
+      <Panel>
+        <SettingsRow
+          title="Your password"
+          description="Update your sign-in password. Resetting another account requires the local console."
+          action={
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={!canMutate || !me.data}
+              onClick={() => open('password')}
+            >
+              Change password
+            </Button>
+          }
+        />
+        <SettingsRow
+          title="Your sessions"
+          description="End all of your sessions on this appliance."
+          action={
+            <Button
+              variant="quiet"
+              size="compact"
+              disabled={!canMutate}
+              onClick={() => open('sessions')}
+            >
+              Sign out all sessions
+            </Button>
+          }
+        />
+      </Panel>
       <Dialog
-        open={!!removing}
-        title={`Remove ${removing?.username ?? 'administrator'}?`}
-        onClose={() => setRemoving(null)}
+        open={!!editing || !!removing}
+        title={title}
+        description={
+          editing === 'password'
+            ? 'This signs out all your sessions.'
+            : removing
+              ? 'This permanently removes the account and ends its sessions.'
+              : editing === 'sessions'
+                ? 'You will need to sign in again on every device.'
+                : undefined
+        }
+        onClose={close}
+        dirty={dirty}
         busy={busy}
+        footer={
+          editing === 'create' || editing === 'password' ? (
+            <Button
+              form={formId}
+              type="submit"
+              busy={busy}
+              disabled={!canMutate || (editing === 'password' && !me.data)}
+            >
+              {editing === 'create' ? 'Create administrator' : 'Update password'}
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              busy={busy}
+              disabled={!canMutate}
+              onClick={() =>
+                void act(async () => {
+                  if (removing) {
+                    await api.delete(`/admins/${encodeURIComponent(removing.id)}`);
+                    if (removing.id === me.data?.id) onSignedOut();
+                  } else {
+                    await api.post('/auth/sign-out-all');
+                    onSignedOut();
+                  }
+                })
+              }
+            >
+              {removing ? 'Remove account' : 'Sign out all sessions'}
+            </Button>
+          )
+        }
       >
-        <p>
-          This permanently removes the account and ends its sessions. To retain it, disable it
-          instead.
-        </p>
         {error ? (
           <p className="error" role="alert">
             {error}
           </p>
         ) : null}
-        <Button
-          variant="danger"
-          disabled={!canMutate}
-          busy={busy}
-          onClick={() => {
-            if (removing)
-              void act(async () => {
-                await api.delete(`/admins/${encodeURIComponent(removing.id)}`);
-                if (removing.id === me.data?.id) onSignedOut();
-              });
-          }}
-        >
-          Remove account
-        </Button>
+        {editing === 'create' || editing === 'password' ? (
+          <form id={formId} className="stack" onSubmit={submit} onChange={() => setDirty(true)}>
+            {editing === 'create' ? (
+              <Field label="Username" name="username" required maxLength={64} autoComplete="off" />
+            ) : (
+              <Field
+                label="Current password"
+                name="currentPassword"
+                type="password"
+                required
+                autoComplete="current-password"
+              />
+            )}
+            <Field
+              label={editing === 'create' ? 'Password' : 'New password'}
+              name="password"
+              type="password"
+              required
+              autoComplete="new-password"
+              hint="We recommend more than 8 characters."
+            />
+            <Field
+              label={editing === 'create' ? 'Re-enter password' : 'Re-enter new password'}
+              name="passwordConfirmation"
+              type="password"
+              required
+              autoComplete="new-password"
+            />
+          </form>
+        ) : null}
       </Dialog>
-      <form className="panel stack" onSubmit={password}>
-        <h2>Change your password</h2>
-        <p>
-          This signs out all your sessions. Resetting another account's password requires the local
-          console.
-        </p>
-        <Field
-          label="Current password"
-          type="password"
-          name="currentPassword"
-          required
-          autoComplete="current-password"
-        />
-        <Field
-          label="New password"
-          type="password"
-          name="password"
-          required
-          autoComplete="new-password"
-        />
-        <Field
-          label="Re-enter new password"
-          type="password"
-          name="passwordConfirmation"
-          required
-          autoComplete="new-password"
-        />
-        <Button variant="primary" disabled={!canMutate || !me.data} busy={busy} type="submit">
-          Change password
-        </Button>
-      </form>
-      <Button
-        variant="secondary"
-        disabled={!canMutate}
-        busy={busy}
-        onClick={() =>
-          void act(async () => {
-            await api.post('/auth/sign-out-all');
-            onSignedOut();
-          })
-        }
-      >
-        Sign out all sessions
-      </Button>
     </section>
   );
 }

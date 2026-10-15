@@ -4,6 +4,10 @@
 **Status:** Implementation and local automated checks complete; combined P1 manual acceptance pending.  
 **Scope:** US1 + US2 + US3 + US11, HTTP Management UI/API on port 8021. No backend endpoints or storage schema changed.
 
+> This record describes the 2026-10-13 implementation. The approved
+> [2026-10-15 layout revision](./ui-layout-revision.md) is planned and requires its own implementation
+> and acceptance evidence; the results below do not certify it.
+
 ## Implemented
 
 - Light FileDock theme, accessible semantic variants, local Inter v4.1 font/license and original SVGs.

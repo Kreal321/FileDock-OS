@@ -198,6 +198,15 @@ with a target recovery point as recent as 5 minutes.
   authority for what the system can do. The reference is retained in
   [assets/management-ui-design-guide.png](./assets/management-ui-design-guide.png).
 
+### Session 2026-10-15 — Approved layout refinement
+
+- One sidebar with nested Settings subpages; exactly one active leaf, expansion distinct from selection.
+- Lists and saved summaries lead; Add administrator and Change password open dialogs; shared table
+  alignment and compact action treatment apply across the system.
+- Create/Edit Folder is a full page with all six numbered sections visible in a single scroll, no
+  tabs or wizard gating. Name generates the read-only FileDock path.
+- Retain prototypes with written corrections in [ui-layout-revision.md](./ui-layout-revision.md).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Install the appliance and reach the management UI (Priority: P1)
@@ -342,6 +351,15 @@ keyboard. Later feature screens undergo the same review when their functionality
 7. **Given** the appliance has no internet access, **When** the administrator opens the UI,
    **Then** its branding, icons, typography or readable fallback, and controls remain usable.
    Required password confirmation and recovery-key download behavior remain unchanged.
+
+8. **Given** any authenticated route, **When** the administrator navigates among main destinations,
+   Settings children and resource editors/details, **Then** exactly one destination is current,
+   Settings children nest in the sole sidebar, and expansion does not select the Settings parent.
+9. **Given** Administrators or a short settings action, **When** the page opens, **Then** its list
+   or saved summary leads, with compact actions opening focused dialogs; fields are not permanently
+   shown on the overview. Security checks, validation and 44px targets remain intact.
+10. **Given** Create/Edit Folder, **When** the page opens, **Then** all six numbered sections appear
+    on one scrollable page without tabs or wizard steps, with generated path and applicable controls.
 
 ---
 
@@ -613,7 +631,7 @@ Backup folders.
 **Acceptance Scenarios**:
 
 1. **Given** the Create Managed Folder flow, **When** the administrator enters the name `Movies`,
-   **Then** the FileDock path is suggested as `/storage/movies` and can be edited.
+   **Then** the FileDock path is generated as `/storage/movies` and shown read-only as the name is entered.
 2. **Given** a name or path already used by another managed folder, or a path inside or containing
    another managed folder, **When** the administrator continues, **Then** the flow stops at Identity
    and gives the reason.
@@ -1225,13 +1243,16 @@ that every snapshot stays readable and nothing at the location was rewritten.
   5. Access
   6. Advanced
 
-  Editing an existing folder MUST use the same sections and validation.
+  Editing an existing folder MUST use the same sections and validation. Create and edit MUST use
+  a full page with all six numbered sections in one scroll, without tabs or step gating. Required
+  fields MUST remain visible in their applicable sections; Advanced settings MUST be in-place,
+  not a separate tab or modal. Inapplicable sections show a short explanation.
 - **FR-066**: Identity MUST include:
   - a **Name**, 1–64 characters and unique among managed folders;
   - a **FileDock Path** under the storage root.
 
-  The path is suggested from the name, for example `Movies` becomes `/storage/movies`, and can be
-  edited. It MUST be unique and MUST NOT be inside or contain another managed folder's path.
+  The path MUST be generated from the name, for example `Movies` becomes `/storage/movies`, and
+  displayed read-only as the name is entered. Changing the name updates the generated path. It MUST be unique and MUST NOT be inside or contain another managed folder's path.
 - **FR-067**: The storage modes MUST be Local Only, Cloud Mount, Hybrid Backup, and Tiered Storage.
   Each folder has exactly one. This feature delivers Local Only, and features 004, 002, and 003
   deliver Cloud Mount, Hybrid Backup, and Tiered Storage. A mode whose required capability has no
@@ -1338,7 +1359,8 @@ that every snapshot stays readable and nothing at the location was rewritten.
 
   Backup settings MUST be offered only in Hybrid Backup mode.
 
-  Advanced MUST be collapsed by default and pre-filled with defaults chosen from the mode. For
+  Advanced MUST remain expanded within the single-page folder form and be pre-filled with
+  defaults chosen from the mode. For
   Hybrid Backup, the defaults also depend on data importance.
 - **FR-079**: Wherever folders are listed, the appliance MUST show name, path, storage mode, access,
   and protection state. For Hybrid Backup folders it MUST also show data importance. Protection
@@ -1714,12 +1736,14 @@ The approved [UI design guide](./ui-design-guide.md), including its retained ref
 is normative for presentation. Functional behavior remains governed by the requirements above.
 
 - **FR-124**: Every management screen MUST follow the guide's light theme, FileDock identity,
-  type hierarchy, color roles, 8 px spacing rhythm, rounded white cards, and restrained borders
+  type hierarchy, color roles, a 4 px spacing grid with 8/16/24/32 px major spacing, rounded white cards, and restrained borders
   and shadows. The design MUST remain usable offline, including icons and a readable typeface.
 - **FR-125**: Authenticated desktop screens MUST use a shared left navigation sidebar, top bar,
   and main content area. Navigation MUST show the active destination, preserve the guide's
   icon-plus-label hierarchy, and expose implemented areas through the specified destination
-  labels. Setup and sign-in MUST use the same visual language without exposing authenticated
+  labels. Exactly one current destination MUST be selected. Settings subpages MUST nest in the
+  same sidebar; expansion MUST NOT select the parent. There MUST NOT be a second sidebar or
+  duplicate in-content Settings navigation. Setup and sign-in MUST use the same visual language without exposing authenticated
   information or navigation before access is granted.
 - **FR-126**: Navigation, search, alert controls, links, and actions MUST lead to real supported
   behavior. An implemented area with no resources MUST remain accessible with an empty state;
@@ -1741,7 +1765,10 @@ is normative for presentation. Functional behavior remains governed by the requi
 - **FR-130**: Buttons, fields, selects, switches, tabs, dialogs, tables, cards, and status badges
   MUST follow the shared component rules in the guide, including primary/secondary/danger roles
   and visible focus, busy, disabled, error, and saved states. Destructive confirmation, secret
-  masking/one-time display, and the existing form validation rules MUST be preserved.
+  masking/one-time display, and the existing form validation rules MUST be preserved. Short
+  account/settings actions MUST open focused dialogs rather than permanent forms on overview
+  pages. Tables MUST align headers/cells and use compact accessible row actions. Long editors
+  MUST have enough space on dedicated pages.
 - **FR-131**: Layout MUST adapt at 360 px-wide viewports and at 200% zoom on a 1280 px-wide viewport.
   Navigation MUST remain accessible, cards MUST wrap and panels stack in reading order, and all
   essential controls and warnings MUST remain visible. Only table/chart regions may require

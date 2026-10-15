@@ -9,7 +9,8 @@ description: "Task list for 001-core-os-foundation"
 **Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
 [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md),
 [ui-design-guide.md](./ui-design-guide.md), [management-ui.md](./contracts/management-ui.md),
-[ui-validation.md](./ui-validation.md)
+[ui-validation.md](./ui-validation.md), [ui-layout-revision.md](./ui-layout-revision.md),
+[system.md](../../.interface-design/system.md)
 
 **Tests**: Included where the spec or plan requires them. The success criteria are defined by
 acceptance, failure-injection, disaster-recovery, and fill tests (SC-001 to SC-031). US11 explicitly requires screen/state, accessibility, offline and novice
@@ -669,6 +670,197 @@ See [Phases 9–10 testing](phase9-10-testing.md).
 
 ---
 
+## Phase 10A: Approved UI layout refinement (2026-10-15)
+
+**Scope**: US11 (P1) shared presentation and account/settings flows, followed by UI refinements for
+US4–US8 (P2). Functional backends from Phases 3–10 already exist. This is a presentation increment,
+not a repeat of those implementations. Execute before Phase 11 when implementing this revision.
+
+**Inputs**: [approved layout and prototypes](./ui-layout-revision.md),
+[shared design patterns](../../.interface-design/system.md), [plan](./plan.md), research R28–R30,
+[data models](./data-model.md#layout-presentation-models--2026-10-15-refinement),
+[UI contract](./contracts/management-ui.md), [validation extension](./ui-validation.md#2026-10-15-layout-acceptance-extension-pending-implementation).
+
+**History**: Preserve T001–T235 and their completion states. T236–T272 are the new revision work; T236–T251 are implemented with local evidence in
+[ui-layout-acceptance.md](./ui-layout-acceptance.md), while T252–T272 remain unchecked.
+Prior screenshots, implementation marks, prototype approval and successful service tests do not
+certify this layout. T230/T232–T235 and any other earlier incomplete acceptance remain separately
+open; reuse evidence only when the same scenario/release actually passes. No backend API, schema,
+service listener, storage capability or compatibility layer is added by these tasks.
+
+### Phase 10A.1: Setup and scope confirmation
+
+- [X] T236 Reconcile the existing page/component inventory with `specs/001-core-os-foundation/ui-layout-revision.md` and `.interface-design/system.md`; record actual implemented routes, applicable prototype corrections, package/browser versions and a pending evidence matrix in `specs/001-core-os-foundation/ui-layout-acceptance.md`; preserve all existing task history and identify unavailable providers without treating prototype data as implementation
+
+### Phase 10A.2: Shared foundations (blocks page migrations)
+
+**Test authority**: FR-135 and US11 acceptance require screen/state, keyboard, continuity and security
+regression coverage. Write the checks before the associated changes and observe expected failures;
+these are implementation tasks, not tests run during task generation.
+
+- [X] T237 [P] Extend `web/tests/fixtures/ui-states.ts` with deterministic synthetic fixtures for every existing Settings child, extension classes/permissions, folder modes/options/protection/importance, notification channels, recovery coverage, long identity values, empty/error/stale results and generation conflicts; keep fixtures test-only, reuse real DTO shapes and mask synthetic one-time values in captures
+- [X] T238 [P] Add compact component regression cases in `web/src/components/components.test.tsx` for semantic aligned columns, long values, non-hover resource-named row actions, one dialog footer, initial field/error focus, Escape/focus return, dirty-cancel confirmation and busy/error states; pair browser geometry checks with 44 px effective target requirements rather than claiming unit tests prove layout (FR-130–FR-132)
+- [X] T239 [P] Extend `web/src/navigation/useHashRoute.test.tsx`, `web/src/layout/AppShell.test.tsx`, and `web/tests/forms-ui.test.tsx` with failing scenarios for exact one active destination, nested Settings/Overview and operation-detail ownership, absence of content settings-nav, history/mobile focus, account/password dialogs, token secret cleanup, network acknowledgement and dirty forms surviving live refetch/outages (FR-125, FR-130, FR-134)
+- [X] T240 Refine semantic tokens and shared layout rules in `web/src/styles/tokens.css` and `web/src/styles.css` using `.interface-design/system.md`: 28/20/16/14/12 px hierarchy, 4 px base grid, 6/8/12 px radii, quiet layered surfaces, 36/40 px visible controls with nonoverlapping 44 px effective targets, aligned tables, dialog/form-section/summary-row/toolbar styles and 360 px reflow; retain local Inter, contrast and reduced-motion behavior
+- [X] T241 Extend `web/src/components/Button.tsx` and add `web/src/components/RowActions.tsx` for shared standard/compact and quiet/icon actions with resource-specific accessible names; use native disclosure/list semantics with Escape, outside-dismiss and focus return, avoid incomplete ARIA menus, preserve disabled/busy feedback and use the centralized T240 styles rather than per-page button CSS
+- [X] T242 Extend `web/src/components/DataTable.tsx` with typed column metadata shared by headers/cells for start/end/actions alignment and widths, consistent padding, growing multiline identity rows and tabular numeric cells; add `web/src/components/TableToolbar.tsx` and `web/src/components/SettingsRow.tsx` for compact supported filters/actions and saved summaries; retain named overflow/paging/empty/error/stale regions and migrate shared callers without breaking their content
+- [X] T243 Refine `web/src/components/Dialog.tsx`, `web/src/components/Field.tsx`, and `web/src/components/PageHeader.tsx` to support named header/description, explicit form-bound footer actions without duplicate Cancel, suitable initial field/error focus, dirty-cancel confirmation, focus trap/return, inert background, bounded body scrolling and accessible field/help/error IDs; retain native dialog and server error/busy semantics
+- [X] T244 Define transient navigation/action/editor state in `web/src/api/view-models.ts` and implement reusable dirty-navigation protection in `web/src/navigation/useHashRoute.ts` plus `web/src/navigation/useUnsavedChanges.ts`; cover links, Cancel, browser back/forward and supported refresh/close warnings, avoid hash-update loops, allow deliberate auth expiry/sign-out cleanup and never persist credential drafts to browser storage
+
+**Foundation checkpoint**: Component and state contracts from T237–T244 are ready for page migration.
+No new UI kit/router, backend collector, local font download or subscription-per-page is introduced.
+
+### Phase 10A.3: US11 — one navigation tree and clean account/settings pages (P1)
+
+**Goal**: One active navigation destination, one sidebar, lists/summaries first, and intentional short-action dialogs.
+
+**Independent Test**: Navigate every existing main/Settings route including operation detail. Exactly
+one link is current; Settings expansion is not selected; no second rail or content strip appears.
+Administrators starts with an aligned table and password summary; Add/Change opens a focused dialog.
+Token/network operations preserve their security checks. Keyboard/mobile/outage operation remains usable.
+
+- [X] T245 [US11] Fix `web/src/layout/Sidebar.tsx` to render the sole navigation tree with Settings Overview and all implemented nested child links, exact current-leaf matching and Operations detail ownership; keep Settings expansion distinct from selection, auto-reveal current children, use separate link/disclosure semantics and implement mobile hidden-focus/Escape behavior with no duplicate sidebar
+- [X] T246 [US11] Integrate nested navigation in `web/src/layout/AppShell.tsx`, `web/src/layout/TopBar.tsx`, `web/src/navigation/destinations.ts`, and `web/src/App.tsx`; remove the in-content settings-nav, retain all existing hashes/auth gates/unknown handling and one live subscription, maintain actual identity/sign-out and focus-on-deliberate-navigation without moving focus during refetch
+- [X] T247 [P] [US11] Refactor `web/src/features/admins/AdminsPage.tsx` into an account table with compact row actions and Add administrator header action plus Your password summary; create/change-password forms open shared dialogs, preserve current-password/re-entry/advisory length, last-enabled guard, sign-out behavior, dirty/error context and outage mutation blocking (also US2)
+- [X] T248 [P] [US11] Refactor `web/src/features/tokens/TokensPage.tsx` into an aligned token table with a Create token dialog and revoke confirmation; preserve scope/expiry and memory-only one-time secret view, clear it on close/sign-out/expiry, retain server errors and read-only inspection during outages (also US2)
+- [X] T249 [P] [US11] Refactor `web/src/features/settings/NetworkPage.tsx` to show saved listener/subnet summaries and console recovery guidance with a focused Configure dialog; retain HTTP 8021, server validation, disconnect acknowledgement, save/error feedback and draft preservation; switch to a dedicated editor only if required content cannot fit the accessible dialog (also US2)
+- [X] T250 [P] [US11] Replace large overview card grids in `web/src/features/settings/SettingsPage.tsx` with concise grouped summary/link rows using implemented destination labels and real descriptions; remove duplicate subnavigation and decorative controls while preserving discoverability of every implemented Settings tool and read-only access
+- [X] T251 [P] [US11] Apply shared density, heading, summary/action and table rules to `web/src/features/dashboard/DashboardPage.tsx`, `web/src/layout/AuthLayout.tsx`, `web/src/features/auth/SignInPage.tsx`, `web/src/features/setup/SetupWizard.tsx`, and `web/src/features/setup/RecoveryKeyStep.tsx`; preserve truthful health/protection notices, editable root, advisory password confirmation, recovery download/reauthentication, setup order and local offline assets (also US1/US3)
+
+**US11 checkpoint**: Account/settings pages are clean and independently usable; functional security
+has not been redesigned. US11 full-system visual acceptance waits for all later page migrations.
+
+### Phase 10A.4: US4 — concise state protection configuration (P2)
+
+**Independent Test**: Recovery copies/durable-point and missing-remote/basic-claim warnings remain
+visible without opening an editor. Snapshot, connection/destination configuration and key actions
+are deliberate; long editors have space, secrets are cleared, and ownership acknowledgements remain.
+
+- [ ] T252 [US4] Extend `web/src/features/recovery/recovery-views.test.tsx` for summary-first state protection, deliberate snapshot/key actions, dedicated long editors, dirty/outage continuity, basic/third-party claim acknowledgements, actual recovery-point scope and reauthentication/secret cleanup
+- [ ] T253 [US4] Refactor `web/src/features/recovery/StateProtectionPage.tsx` and add `web/src/features/recovery/StateProtectionEditorPage.tsx` with explicit hash/dispatch wiring in `web/src/navigation/destinations.ts` and `web/src/App.tsx`: recovery summaries lead, short key/reauth actions use dialogs, long connection/destination editors use dedicated pages; reuse current APIs and retain all copy/ownership/protection warnings and audits
+
+### Phase 10A.5: US5 — clear locations and restore operations (P2)
+
+**Independent Test**: Locations show current ownership/claim safety and actions in aligned rows.
+Takeover remains explicit and audited. Restore retains its required input order and loss report;
+shared spacing/controls do not convert it into the folder wizard or expose secret data.
+
+- [ ] T254 [US5] Add `web/src/features/recovery/locations-layout.test.tsx` for aligned ownership rows, takeover confirmations, read-only outage behavior, correct selected location under refetch and required restore report warnings; reuse synthetic recovery fixtures without weakening the original restore scenarios
+- [ ] T255 [US5] Migrate `web/src/features/recovery/LocationsPage.tsx`, `web/src/features/restore/RestoreWizard.tsx`, and `web/src/features/restore/RestoreReport.tsx` to shared compact table/summary/action patterns; preserve source/setup-code/recovery-key sequence, actual ownership and takeover acknowledgements, pool mappings and post-restore exposure/loss details, using existing long-flow pages instead of cramped dialogs
+
+### Phase 10A.6: US6 — extension inventory before package editing (P2)
+
+**Independent Test**: Inventory displays all actual subsystem classes, identifiers, capabilities and
+health; installation controls are closed by default. Install/upgrade opens a review with all required
+permissions, bindings and provider consent; compact row actions retain class-specific restrictions.
+
+- [ ] T256 [US6] Extend `web/src/features/extensions/extensions.test.tsx` for inventory-first layout, on-demand install/upgrade review, accessible resource-specific row actions, preservation of core/built-in removal restrictions, unsigned/permission/data-binding/default-provider consent and live/outage draft behavior
+- [ ] T257 [US6] Refactor `web/src/features/extensions/ExtensionsPage.tsx` and add `web/src/features/extensions/ExtensionPackagePage.tsx` with hash/dispatch wiring in `web/src/navigation/destinations.ts` and `web/src/App.tsx`: use aligned inventory rows and compact controls, move long package inspection/review to a dedicated page, retain all classes/diagnostics/configuration/health, permission and data binding review and real accepted-operation progress
+
+### Phase 10A.7: US7 — consistent operational lists and channel actions (P2)
+
+**Independent Test**: Logs, Activity, Audit, Operations/detail and Alerts retain actual filters,
+paging/errors/stale state and readable aligned values. Critical banner and no-channel warnings
+remain. Notification add/edit/test is focused, and diagnostics export retains its existing permissions.
+
+- [ ] T258 [US7] Extend `web/src/features/alerts/AlertsPage.test.tsx` and add `web/src/features/operations/operations-layout.test.tsx` for supported list filters/paging, current Operations detail selection, compact alert ack/diagnostics actions, missing-channel/critical visibility, channel dialog errors/test result and offline read-only behavior
+- [ ] T259 [P] [US7] Migrate `web/src/features/alerts/NotificationChannelsPage.tsx` to shared aligned table, toolbar/row actions and single-footer add/edit/test/remove dialogs; keep actual provider discovery, no-channel warning, configuration/secret references, validation and delivered-only test success
+- [ ] T260 [P] [US7] Apply shared column/toolbar/action patterns to `web/src/features/logs/LogsPage.tsx`, `web/src/features/activity/ActivityPage.tsx`, `web/src/features/audit/AuditPage.tsx`, `web/src/features/operations/OperationsPage.tsx`, `web/src/features/operations/OperationDetailPage.tsx`, and `web/src/features/alerts/AlertsPage.tsx`; retain supported filters, cursors, raw severity/state, diagnostic download/audit, persistent critical banner and read-only detail access
+
+### Phase 10A.8: US8 — full-page six-section folder workflow (P2)
+
+**Independent Test**: New/edit opens a real page with six visible numbered sections in one scroll,
+no tabs/step gating/modal. Name immediately generates the read-only path. Mode/applicability,
+advanced controls, validation/error focus, ETag conflicts, dirty navigation, loss acknowledgement
+and capability/dependency guards work. List retains Hybrid importance and distinct protection/exposure.
+
+- [ ] T261 [US8] Extend `web/src/features/folders/FolderForm.test.tsx` and add `web/src/features/folders/folder-pages.test.tsx` for new/edit hashes, six expanded sections/no tabs, generated read-only path, every mode and Advanced fields, explicit Hybrid-only importance, no-provider/empty-pool states, ETag conflict draft retention, field-linked error summary, dirty Cancel/history and destructive/dependency safeguards
+- [ ] T262 [US8] Introduce `web/src/features/folders/FolderEditorPage.tsx` and refactor `web/src/features/folders/FolderForm.tsx` with route/dispatch changes in `web/src/navigation/destinations.ts` and `web/src/App.tsx` for `#/folders/new` and `#/folders/{id}/edit`; preserve existing list URLs and exact IDs, select Managed Folders, use one form with six expanded numbered sections and responsive explanation/field columns, no tabs/wizard/modal or collapsed Advanced
+- [ ] T263 [US8] Complete editor behavior in `web/src/features/folders/FolderEditorPage.tsx` and `web/src/features/folders/FolderForm.tsx`: derive read-only path from name consistently with API normalization, preserve mode-specific sources and all advanced settings, show importance applicability, wire field IDs/error-summary focus and dirty-navigation protection, preserve drafts on ETag conflict/outage/refetch and retain System Pool, provider, loss and typed-deletion confirmations without bypassing server validation
+- [ ] T264 [US8] Refactor `web/src/features/folders/FoldersPage.tsx` into the shared aligned list with name/path, mode, access, Hybrid importance and separate protection/exposure; use page links for create/edit and compact named row actions for guarded deletion, keep Unprotected distinct from At risk with text/glyph/explanation and do not turn provider absence into a fake healthy state
+
+### Phase 10A.9: Polish and cross-cutting acceptance
+
+- [ ] T265 Integrate all migrated pages through `web/src/App.tsx`, `web/src/navigation/destinations.ts`, `web/src/api/events.ts`, and `web/src/api/useLiveCoreStatus.ts`; reconcile page/editor route registration and parent ownership, dirty guard lifecycle, session-expiry/private-secret cleanup, one subscription, reconnect/query invalidation and mutation-only outage blocking; resolve shared style/callsite regressions in `web/src/styles.css` without per-page alignment hacks
+- [ ] T266 Extend `web/tests/e2e/ui-design.spec.ts`, `web/tests/fixtures/component-gallery.tsx`, and `web/playwright.config.ts` for all implemented pages/dialogs/long editors at 1440/360 px with long text, loading/empty/error/stale, nested navigation, all folder modes, keyboard/mobile, offline assets and live dirty-draft scenarios; retain deterministic platform/clock/font readiness and secret masking
+- [ ] T267 Review actual screen/component captures against `specs/001-core-os-foundation/ui-layout-revision.md` and `.interface-design/system.md`, then establish reviewed pinned Linux/Chromium baselines in `web/tests/e2e/ui-design.spec.ts-snapshots/`; record image-specific raster corrections and intentional functional differences in `specs/001-core-os-foundation/ui-layout-acceptance.md`, never pass by blindly updating snapshots or relabeling macOS captures
+- [ ] T268 Run the implementation validation commands from `specs/001-core-os-foundation/ui-validation.md` (web lint, unit tests, type/production build, browser checks and existing applicable API/native smoke regressions); inspect packaged local font/icon/license assets, absence of production fixtures/external requests and unchanged HTTP 8021 behavior; fix failures and record actual commands/results/release in `specs/001-core-os-foundation/ui-layout-acceptance.md`
+- [ ] T269 Verify every implemented page/dialog/editor at 360 px, desktop and actual 1280 px browser width/200% zoom with keyboard-only, screen-reader names, focus, text/control contrast, nonoverlapping 44 px targets, reduced motion and scoped table overflow; record measurements and remaining failures in `specs/001-core-os-foundation/ui-layout-acceptance.md` rather than treating viewport emulation or screenshots as complete accessibility evidence
+- [ ] T270 Build the UI-containing offline release per `specs/001-core-os-foundation/quickstart.md` and run the relevant real-appliance flows on a disposable/explicitly authorized test VM using `specs/001-core-os-foundation/ui-validation.md` and `specs/001-core-os-foundation/phase9-10-testing.md`; verify account/secret/listener, extension/notification/folder guards, actual outage/reconnect and external-network-blocked assets, record outcomes in `specs/001-core-os-foundation/ui-layout-acceptance.md`, and leave unavailable-provider/Phase 8/Linux checks pending unless actually exercised
+- [ ] T271 Conduct the five first-time-administrator review from `specs/001-core-os-foundation/ui-validation.md` (SC-031: four of five identify a failure, locate administrator management and find sign-out within two minutes), and record individual timings/help and honest pass/pending results in `specs/001-core-os-foundation/ui-layout-acceptance.md`; do not simulate human outcomes or block unrelated implementation while participants are unavailable
+- [ ] T272 Reconcile `specs/001-core-os-foundation/ui-layout-acceptance.md`, `specs/001-core-os-foundation/checklists/validation.md`, `specs/001-core-os-foundation/ui-acceptance.md`, and `.interface-design/system.md` with the implemented layouts and actual evidence; preserve prior acceptance history/task IDs, report local versus Linux/VM/novice outcomes separately and declare the revision accepted only when its applicable criteria actually pass
+
+**Delivery checkpoint**: Single nested navigation, clean summaries/dialogs, aligned compact tables
+and full-page six-section folder editing are implemented across all available screens. Prototype
+approval is not this checkpoint. Unavailable providers, pool execution prerequisites, Phase 8
+runtime tests and outstanding older acceptance are still explicit independent dependencies.
+
+### New task dependency graph and execution waves
+
+All IDs below are new; numeric order provides a safe serial execution. `[P]` is conditional on
+completed prerequisites and distinct files; it does not authorize concurrent edits of shared App,
+styles, navigation, fixtures or test harnesses. New route/dispatch additions are deliberately serial.
+
+| Wave | Tasks | Dependencies / file coordination |
+| --- | --- | --- |
+| Setup | T236 | Read approved docs/prototypes and existing implementation; create pending evidence record |
+| Requested regression tests | T237, T238, T239 in parallel | T236; distinct fixture/component/route-form test files |
+| Shared foundations | T240 → T241 → T242 → T243 → T244 | Tests ready; CSS conventions first, then reusable components/state; no page-specific forks |
+| US11 shell | T245 → T246 | T237–T244; exact leaf and nested disclosure before shell integration |
+| US11 pages | T247, T248, T249, T250, T251 in parallel | T246; each owns distinct page files; no shared CSS/App edits in parallel |
+| US4 | T252 → T253 | Shared foundations/shell and T237 recovery fixtures; long editor route wiring serialized |
+| US5 | T254 → T255 | Shared foundations/shell; after T253 when consuming its layout/route choices |
+| US6 | T256 → T257 | Shared foundations/shell, completed Phase 8 APIs; serialize route wiring after T253 |
+| US7 | T258 → (T259 and T260 in parallel) | Shared foundations/shell and completed Phase 9 APIs; distinct page files |
+| US8 | T261 → T262 → T263 → T264 | Shared foundations/shell and completed Phase 10 APIs; serialize new route wiring after T257 |
+| Global integration | T265 | T247–T264 complete; no shared registry/style integration left pending |
+| Browser/visual | T266 → T267 | T265; deterministic scenarios before approved baseline |
+| Acceptance | T268 → T269 → T270 → T271 → T272 | Fix automation before manual/package evidence; if external VM/browser/participants unavailable, record pending and complete independent evidence without falsely passing the gate |
+
+Story order: existing US1/US2/US3 foundations → shared layout → US11(P1) →
+US4/US5/US6/US7/US8 presentation(P2) → cross-cutting acceptance. The P2 UI tracks can be verified
+independently against their existing APIs after shared prerequisites. They do not implement Phase 11
+storage/shares/cloud/apps or features 002–004, and missing providers remain unavailable.
+
+### Parallel examples by story
+
+- **US11**: after T246, T247 Administrators, T248 Tokens, T249 Network, T250 Overview and T251
+  Dashboard/public pages can run together; shared style changes return to a serialized integration.
+- **US4**: author T252 first; T253 owns one cohesive protection-page/editor/route change. Do not
+  parallelize its App.tsx/destinations.ts edits with other editor-route tasks.
+- **US5**: T254 before T255; the locations/restore migration may run beside US7 page migrations
+  after shared foundations and US4 layout choices, because they touch different source/test files.
+- **US6**: T256 before T257; package-page work can run beside US11 page work, but its route wiring
+  is serialized after T253 and before T262. Required package consent is never split across incomplete changes.
+- **US7**: after T258, T259 notification-channel dialogs and T260 operational lists are independent.
+- **US8**: T261 before T262–T264 in order because form/list routes and editor state are coupled;
+  T261 tests can be authored beside T256/T258 after common fixture data is ready.
+
+### Implementation strategy and traceability
+
+**MVP for this revision**: T236–T251 gives one current destination and clean account/settings lists
+with action dialogs. This is the presentation MVP; US1 remains the appliance's installation MVP.
+Then migrate P2 recovery/extensions/operations/folders, integrate, and perform recorded acceptance.
+Do not reset earlier completed work to make the task list appear linear.
+
+| Requirements / design decision | New tasks |
+| --- | --- |
+| FR-124/130/131/132; R29; compact tokens/controls/tables | T238, T240–T243, T267–T269 |
+| FR-125/126/133; R28; sole nested sidebar/exact selection | T239, T244–T246, T250, T265–T266 |
+| FR-134; US2 account/token/listener and live invariants | T239, T244, T247–T249, T265, T268–T270 |
+| FR-127/128/129; truthful health/exposure, offline public flows | T237, T251, T253, T255, T259–T260, T264–T270 |
+| US4/US5 recovery/ownership/secret safety | T252–T255, T265–T270 |
+| US6 capability/class/package/consent behavior | T256–T257, T265–T270 |
+| US7 logs/alerts/audit/notifications/diagnostics | T258–T260, T265–T270 |
+| FR-065/066/078/079; US8 full-page sections/generated path/importance | T261–T264, T266–T270 |
+| FR-135, SC-027–SC-031; actual visual/accessibility/offline/novice evidence | T236, T266–T272 |
+
+**New task accounting**: 37 tasks — setup 1, shared foundations 8, US11 7, US4 2, US5 2,
+US6 2, US7 3, US8 4, cross-cutting 8. Ten `[P]` tasks identify distinct-file opportunities;
+additional conditional cross-story examples above do not permit shared-file conflicts.
+
+---
+
 ## Phase 11: User Story 9 - Local storage, shares, cloud connections, and containers (Priority: P3)
 
 **Goal**: Pools from data disks, the capped System Pool, SMB, NFS, and WebDAV exports, cloud
@@ -820,6 +1012,10 @@ native connector is hardened for control.
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
+
+- **Current UI refinement (Phase 10A)**: T236–T272 follows existing Phase 10 APIs and applies the
+  approved 2026-10-15 layouts before Phase 11. Its internal graph and evidence gates are defined
+  in Phase 10A; previous Phase 5A/feature acceptance remains historical and pending where recorded.
 
 - **Setup (Phase 1)**: no dependencies.
 - **Foundational (Phase 2)**: depends on Setup, and blocks every user story.

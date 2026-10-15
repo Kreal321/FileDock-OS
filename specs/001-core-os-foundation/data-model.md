@@ -164,7 +164,7 @@ Writable ──free < reserve + guard──▶ Full(reserve) ──free > reserv
 | Field | Type | Rules |
 |---|---|---|
 | name | string | 1–64 characters, unique (FR-066) |
-| filedock_path | string | Under `/storage/`, unique, and never inside or containing another folder's path |
+| filedock_path | string | Generated from name under `/storage/`, read-only UI preview, unique, and never inside or containing another folder's path |
 | storage_mode | enum `LocalOnly` \| `CloudMount` \| `HybridBackup` \| `TieredStorage` | Exactly one, covering the whole subtree (FR-069). This feature implements `LocalOnly`, and the other values are accepted only once their capability providers exist |
 | reference | ReferencePath | See below |
 | data_importance | enum? `Critical` \| `Important` \| `Rebuildable` | Present only for `HybridBackup` (FR-075). Feature 002 owns subfolder overrides |
@@ -561,3 +561,23 @@ persist them in `app.db`, `core.db`, configuration snapshots, or browser storage
 recovery/token values remain memory-only and follow the established display/download lifecycle;
 never put them in routes, telemetry, visual fixtures, or screenshots. Test-only synthetic values
 exist solely under the test harness and cannot become production fallbacks.
+
+
+## Layout presentation models — 2026-10-15 refinement
+
+Transient frontend models only; no new database entity, API payload, secret store, migration or
+snapshot field. Existing resource and generation contracts remain authoritative.
+
+| Model | Fields / relationships | Validation and transitions |
+| --- | --- | --- |
+| NavigationDestination refinement | parentId?, route matcher, implemented availability, child links; Settings Overview is a child | Exact one current leaf; parent expanded != selected. Detail/editor routes map to their owning list; hide unimplemented links |
+| NavigationDisclosure | expanded group IDs, mobileOpen, triggering element | Visiting child reveals ancestors; Escape/selection closes mobile overlay; hidden links not focusable; no durable persistence |
+| TableColumn | id, header, alignment start/end/actions, width/minWidth?, cell render intent | Headers and cells share metadata; numeric cells tabular; action track compact; no blanket minimum width or wrap rule |
+| ResourceAction | id, label, resource identity, disabled reason?, pending | Contextual accessible names; mutation rules enforced server-side; never hide danger confirmation in ellipsis shorthand |
+| ActionDialogState | kind, resourceId?, phase, draft, errors, trigger reference | closed→editing→submitting→success/close or error/editing; one active action, keep draft on failure, discard confirmation; clear secret drafts on close/logout |
+| FolderEditorState | create/edit, resourceId?, expectedGeneration?, draft, field errors, dirty | All six sections one page; generated path derived from name; mode-dependent fields, explicit importance only Hybrid; submit conflict preserves draft and prompts reload/review, no blind overwrite |
+
+Dirty navigation must cover in-app links, Cancel, browser history and refresh/close using the
+browser-supported unload warning where applicable. No autosaved credential draft in browser storage.
+Table filters and read-only navigation stay available on outage; disabled mutation retains a reason.
+The shared UI contract defines route names, focus/error behavior and page-versus-dialog selection.

@@ -57,8 +57,12 @@ export function FolderForm({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(folder?.identity.name ?? '');
-  const [path, setPath] = useState(folder?.identity.fileDockPath ?? '/storage/');
-  const [customPath, setCustomPath] = useState(!!folder);
+  const path =
+    '/storage/' +
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/^-+|-+$/g, '');
   const [mode, setMode] = useState<Mode>(folder?.storageMode ?? 'LocalOnly');
   const [pool, setPool] = useState(folder?.reference.poolId ?? '');
   const [relative, setRelative] = useState(folder?.reference.relativePath ?? '');
@@ -174,28 +178,16 @@ export function FolderForm({
           required
           maxLength={64}
           value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            if (!customPath)
-              setPath(
-                '/storage/' +
-                  e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9_-]/g, '-')
-                    .replace(/^-+|-+$/g, ''),
-              );
-          }}
+          onChange={(e) => setName(e.target.value)}
         />
-        <Field
-          label="FileDock Path"
-          required
-          value={path}
-          onChange={(e) => {
-            setCustomPath(true);
-            setPath(e.target.value);
-          }}
-          hint="A unique path under /storage. Managed folders cannot be nested."
-        />
+        {name ? (
+          <Field
+            label="FileDock Path"
+            value={path}
+            readOnly
+            hint="Generated from the name. Managed folders cannot be nested."
+          />
+        ) : null}
       </Panel>
       <Panel className="stack">
         <h2>2. Storage Mode</h2>

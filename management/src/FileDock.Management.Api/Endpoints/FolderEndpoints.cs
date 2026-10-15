@@ -31,8 +31,7 @@ public static class FolderEndpoints
     private static ApplyChangeRequest Change(FolderInput input, string id, ulong generation)
     {
         if (input.Identity is null || string.IsNullOrWhiteSpace(input.Identity.Name)) { throw new ArgumentException("Folder identity and name are required."); }
-        var path = input.Identity.FileDockPath;
-        if (string.IsNullOrEmpty(path)) { path = "/storage/" + string.Concat(input.Identity.Name.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-')).Trim('-'); }
+        var path = "/storage/" + string.Concat(input.Identity.Name.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-')).Trim('-');
         var spec = new { name = input.Identity.Name, filedockPath = path, input.StorageMode, Reference = input.Reference.ValueKind == JsonValueKind.Undefined ? JsonSerializer.SerializeToElement(new { }) : input.Reference, input.DataImportance, Access = input.Access ?? [], Advanced = input.Advanced.ValueKind == JsonValueKind.Undefined ? JsonSerializer.SerializeToElement(new { }) : input.Advanced };
         var request = new ApplyChangeRequest { Changes = { new ResourceChange { Upsert = new ResourceChange.Types.Upsert { Ref = Ref(id), ExpectedGeneration = generation, Spec = Struct.Parser.ParseJson(JsonSerializer.Serialize(spec, Json)) } } } };
         if (input.ConfirmImportanceReduction) { request.Confirmations.Add(new ChangeConfirmation { Resource = Ref(id), Kind = "lowerImportance", Value = "confirmed" }); }

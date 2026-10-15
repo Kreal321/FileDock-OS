@@ -2,6 +2,8 @@
 
 **Feature**: [001 — Core Appliance Foundation and OS Setup](./spec.md)
 **Approved reference**: User-supplied Management UI Design Guide, 2026-10-13
+**Layout refinement**: 2026-10-15 — [approved layouts and prototype gallery](./ui-layout-revision.md).
+The latest explicit layout decisions supersede conflicting earlier reference details.
 **Requirement coverage**: FR-124–FR-135; US11; SC-027–SC-031
 
 ![User-supplied FileDock Management UI Design Guide](./assets/management-ui-design-guide.png)
@@ -30,16 +32,16 @@ A screen must show a real value, an explicit empty/unavailable state, or omit an
 | Error red | `#EF4444`; failures and destructive actions |
 | Neutral gray | `#6B7280`; secondary information, neutral borders and states |
 | Typeface | Inter, with a readable sans-serif fallback; the rendered UI must work without downloading fonts from the internet |
-| Page heading | 32 px, semibold |
+| Page heading | 28 px, semibold |
 | Section heading | 20 px, semibold |
-| Body | 16 px, regular |
-| Caption | 14 px, regular |
-| Spacing | An 8 px rhythm, principally 8/16/24/32 px for gaps and padding |
-| Card radius | 12 px |
+| Form section / body | 16 px semibold / 14 px regular |
+| Caption | 12 px, regular |
+| Spacing | 4 px base grid; principally 8/16/24/32 px for gaps and padding |
+| Radius | 6 px controls, 8 px panels, 12 px dialogs |
 | Cards | Rounded white surfaces, subtle cool borders, soft shadows; avoid heavy outlines or dense decoration |
 | Icons | Consistent simple folder, storage, cloud, service, and settings symbols; meaningful actions retain a text name |
 
-Typography values are the desktop baseline; smaller screens may scale headings while preserving
+The 2026-10-15 scale refines the original reference for operational density. Typography values are the desktop baseline; smaller screens may scale headings while preserving
 readability and hierarchy. The reference's tinted icon tiles, pale blue selection backgrounds,
 mode badges, and slim progress bars are part of the visual language. Text, control boundaries,
 and focus indicators must remain readable; using a darker shade for text or contrast is permitted.
@@ -49,8 +51,9 @@ must not imply that its data is protected.
 ## Application shell and navigation
 
 On desktop, use a left sidebar with FileDock branding and icon-plus-label navigation, a top bar,
-and a main content area. The active destination has a pale blue background, blue label/icon,
-and an accent edge or equivalent clear selection indicator. Each page starts with a title and a
+and a main content area. Exactly one current destination has a pale blue background, blue label/icon,
+and a clear selection indicator. Settings children nest inside the same sidebar. Its disclosure
+parent indicates expansion, not selection; no second navigation rail or content Settings tab strip exists. Each page starts with a title and a
 short description. Preserve the shell while moving between authenticated pages.
 
 The top bar contains the signed-in identity and account actions. A search field and alert control
@@ -139,3 +142,21 @@ Existing Phase 1–5 completion marks record the earlier implementation and vali
 proof that the new visual requirements are implemented. Reconcile the plan, UI tasks, and visual
 acceptance checks with this revision before beginning the redesign. Keep the completed service,
 security, recovery, and data-plane work as the functional foundation.
+
+
+## Approved layout patterns — 2026-10-15
+
+See [layout revision](./ui-layout-revision.md) for retained prototype images, precedence, the full
+screen inventory and implementation slices, and [system.md](../../.interface-design/system.md)
+for reusable measured patterns. These patterns apply to all implemented and future feature001 UI:
+
+- One primary resource table or form per page; compact settings rows for saved configuration.
+- Short actions (administrator create, password change, token create, notification edit) open
+  focused dialogs. Long editors/reviews get dedicated pages. Required consent never disappears.
+- Create/Edit Folder uses one complete page with six numbered expanded sections, no tabs or
+  modal wizard. Name generates a read-only path preview. Advanced fields stay in-place.
+- Column-aware tables align headers/cells/actions, use consistent padding and readable identity
+  pairs, preserve long values and scope overflow to the table. Compact row actions have explicit
+  accessible names and 44px effective targets. No enormous repeated action bars.
+- Selection, loading/empty/error/stale, focus/busy/disabled and responsive states are all designed.
+  Written functional rules govern every screenshot discrepancy; sample data never ships as defaults.

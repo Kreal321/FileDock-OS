@@ -123,6 +123,11 @@ returns `422` with code `system_pool.immutable` (FR-101).
 | `GET/POST /share-users`, `PATCH/DELETE /share-users/{id}` | R / F | Share users. They can't use the UI | — |
 | `GET/PUT /folders/{id}/exports/{smb\|nfs\|webdav}` | R / F | Export rules | FR-082 |
 
+The Management API generates `identity.fileDockPath` from `identity.name` for create, edit, and
+validation. The UI shows this path read-only; a submitted custom path does not override it.
+Names are lowercased, characters outside ASCII letters, digits, `_` and `-` become `-`, and leading
+and trailing hyphens are removed before prefixing `/storage/`. Existing path validation still applies.
+
 Create-folder request body:
 
 ```json
