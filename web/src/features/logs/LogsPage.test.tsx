@@ -40,7 +40,7 @@ test('long log preview opens complete returned message in a named dialog', async
   const dialog = screen.getByRole('dialog', { name: 'Log details' });
   expect(within(dialog).getByLabelText('Full log message')).toHaveTextContent(message.trim());
   expect(within(dialog).getByText('filedock-management.service')).toBeVisible();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Close', exact: true }));
+  fireEvent.click(within(dialog).getByRole('button', { name: /^Close$/ }));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
 });
