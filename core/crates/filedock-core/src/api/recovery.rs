@@ -41,9 +41,10 @@ impl RecoverySvc {
                 && !self
                     .app
                     .store
-                    .list(kind, None, 1)
+                    .list(kind, None, 500)
                     .map_err(error)?
-                    .is_empty()
+                    .iter()
+                    .all(|r| kind == ResourceKind::Pool && r.spec["kind"] == "System")
             {
                 return Err(error("restore.target_not_fresh"));
             }

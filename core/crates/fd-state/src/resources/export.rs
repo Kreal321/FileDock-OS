@@ -91,7 +91,13 @@ impl ExportSpec {
                     let principal_ok = rule.principal.as_deref().is_some_and(|p| {
                         p.strip_prefix("user:")
                             .or_else(|| p.strip_prefix("group:"))
-                            .is_some_and(|name| !name.is_empty())
+                            .is_some_and(|name| {
+                                !name.is_empty()
+                                    && name.len() <= 32
+                                    && name
+                                        .bytes()
+                                        .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
+                            })
                     });
                     if !principal_ok || rule.client.is_some() {
                         issues.push(ValidationIssue::error(

@@ -50,6 +50,16 @@ var detect = new Command("detect-state", "Find surviving local configuration cop
 detect.SetAction(async parse => await AdminSocketClient.PostAsync(parse.GetValue(socket)!, "/admin/detect-state", null, true)); root.Add(detect);
 var restore = new Command("restore-local", "Restore the newest verified local snapshot using only the recovery key");
 restore.SetAction(async parse => await StateCommands.Restore(parse.GetValue(socket)!, parse.GetValue(json))); root.Add(restore);
+var systemPool = new Command("system-pool", "Inspect the System Pool or change its reserve");
+var showPool = new Command("show", "Show capacity, reserve, and availability");
+showPool.SetAction(async parse => await SystemPoolCommand.Show(parse.GetValue(socket)!,parse.GetValue(json)));
+systemPool.Add(showPool);
+var percent = new Option<uint?>("--max-usage");
+var reserve = new Option<ulong?>("--reserve");
+var interruption = new Option<bool>("--acknowledge-interruption");
+var limits = new Command("limits", "Change limits; shrinking can interrupt folder access") {percent,reserve,interruption};
+limits.SetAction(async parse=>await SystemPoolCommand.Limits(parse.GetValue(socket)!,parse.GetValue(percent),parse.GetValue(reserve),parse.GetValue(interruption),parse.GetValue(json)));
+systemPool.Add(limits);root.Add(systemPool);
 root.SetAction(parse =>
 {
     if (parse.GetValue(json))

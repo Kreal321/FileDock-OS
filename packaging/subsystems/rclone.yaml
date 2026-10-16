@@ -7,6 +7,7 @@ description: General cloud connector. Serves every family except native S3 write
 capabilities:
   - cloud.remote
   - cloud.mount
+  - protocol.webdav
 runtime:
   type: native-process
   executable: /usr/bin/rclone

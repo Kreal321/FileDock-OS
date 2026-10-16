@@ -18,6 +18,7 @@ public static class ObservabilityEndpoints
     public static async Task<IResult> Run(Func<Task<IResult>> action)
     {
         try { return await action(); }
+        catch (MissingGenerationException e) { return Results.Problem(statusCode: 428, detail: e.Message); }
         catch (RpcException e) { var (status, detail) = CoreClient.ToProblem(e); return Results.Problem(statusCode: status == 412 ? 422 : status, detail: detail); }
         catch (Exception e) when (e is ArgumentException or FormatException or JsonException) { return Results.Problem(statusCode: 400, detail: e.Message); }
     }

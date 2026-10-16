@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "title": "OAuth client ID"
+    },
+    "drive_id": {
+      "type": "string",
+      "title": "Drive ID"
+    },
+    "drive_type": {
+      "type": "string",
+      "title": "Drive type"
+    },
+    "region": {
+      "type": "string",
+      "title": "Region"
+    }
+  }
+}

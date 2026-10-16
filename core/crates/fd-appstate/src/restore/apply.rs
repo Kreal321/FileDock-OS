@@ -63,7 +63,7 @@ pub fn import_config(
     }
     db.with(|c|{let tx=c.transaction().map_err(fd_state::DbError::from)?;
  let done=db::get_setting(&tx,"restore.imported_operation")?.as_ref().and_then(Value::as_str).is_some_and(|id|id==operation_id);if done{return Ok(());}
- let has_user:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM resource WHERE deleted=0 AND kind NOT IN ('Settings','ConnectorRoutes'))",[],|r|r.get(0)).map_err(fd_state::DbError::from)?;
+ let has_user:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM resource WHERE deleted=0 AND kind NOT IN ('Settings','ConnectorRoutes') AND NOT (kind='Pool' AND json_extract(spec,'$.kind')='System'))",[],|r|r.get(0)).map_err(fd_state::DbError::from)?;
  if has_user{return Err(invalid("restore.target_not_fresh"));}
  tx.execute("DELETE FROM resource",[]).map_err(fd_state::DbError::from)?;let now=db::now_text();let mut seq=0;
  for(kind,id,spec)in &resources{seq+=1;let status=if *kind==ResourceKind::Pool&&!present.contains(id){json!({"state":"Unavailable","detail":"Awaiting disk assignment and storage capability provisioning"})}else{json!({"state":"Pending","detail":"Restored; awaiting reconciliation"})};tx.execute("INSERT INTO resource(kind,id,generation,spec,status,deleted,change_seq,created_at,updated_at) VALUES(?1,?2,1,?3,?4,0,?5,?6,?6)",params![kind.as_str(),id,spec.to_string(),status.to_string(),seq,now]).map_err(fd_state::DbError::from)?;}

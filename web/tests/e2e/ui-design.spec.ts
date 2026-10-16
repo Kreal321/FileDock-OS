@@ -38,6 +38,16 @@ async function appliance(
     else if (path.startsWith('/operations/')) data = operation;
     else if (path === '/audit') data = { items: [activity], nextPageToken: null };
     else if (path === '/admins') data = [{ ...identity, enabled: true, lockedUntil: null }];
+    else if (['/pools', '/disks'].includes(path)) data = { items: [], nextPageToken: null };
+    else if (path === '/pools/system')
+      data = {
+        available: false,
+        maxUsagePercent: 50,
+        reservedFreeBytes: '100000000000',
+        unavailableReason: 'System disk is too small for the reserve.',
+      };
+    else if (path === '/system/storage-settings')
+      data = { generation: 1, warningPercent: 90, criticalPercent: 95 };
     else if (path === '/tokens') data = [];
     else if (path === '/system/network') data = network;
     else if (path === '/setup/complete')
@@ -172,10 +182,10 @@ test('local assets, supported navigation, history, and keyboard', async ({ page 
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
   await page.goto('/#/pools');
-  await expect(page.getByText(/page is unavailable/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pools & disks', exact: true })).toBeVisible();
   expect(external).toEqual([]);
   expect(await page.evaluate(() => document.fonts.check('16px Inter'))).toBe(true);
-  await expect(page.getByRole('link', { name: 'Pools', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Pools & disks', exact: true })).toHaveCount(1);
   expect(components).toHaveLength(8);
 });
 

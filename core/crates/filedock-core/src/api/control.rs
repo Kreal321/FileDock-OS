@@ -36,10 +36,39 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let request_id = request_id_of(request.metadata());
+        if crate::storage_runtime::enabled().is_ok()
+            && fd_storage::pressure::space(std::path::Path::new("/var/lib/filedock"))
+                .is_ok_and(|s| s.free < 16 * 1024 * 1024)
+        {
+            return Err(Status::resource_exhausted("storage.disk_full"));
+        }
         let body = request.into_inner();
         let confirmations = body.confirmations.clone();
         let changes = proto_changes(body)?;
         for change in &changes {
+            if let Change::Upsert { resource, spec, .. } = change
+                && resource.kind == fd_state::ResourceKind::CloudConnection
+            {
+                crate::connection_runtime::validate(&self.app, spec)?;
+            }
+        }
+
+        for change in &changes {
+            if change.resource().kind == fd_state::ResourceKind::Pool {
+                let old = self
+                    .app
+                    .store
+                    .get(change.resource())
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                return Err(Status::failed_precondition(
+                    if old.is_some_and(|r| r.spec["kind"] == "System") {
+                        "system_pool.immutable"
+                    } else {
+                        "pool.use_storage_operations"
+                    },
+                ));
+            }
+
             if change.resource().kind != fd_state::ResourceKind::ManagedFolder {
                 continue;
             }
@@ -121,6 +150,9 @@ impl CoreControl for CoreControlSvc {
             Err(ApplyError::Conflict(resource)) => Err(Status::aborted(format!(
                 "generation mismatch for {resource}"
             ))),
+            Err(ApplyError::Db(fd_state::db::DbError::DiskFull)) => {
+                Err(Status::resource_exhausted("storage.disk_full"))
+            }
             Err(ApplyError::Db(error)) => Err(Status::internal(error.to_string())),
         }
     }
@@ -137,6 +169,9 @@ impl CoreControl for CoreControlSvc {
                 Ok(Response::new(proto_conv::issues_to_proto(&issues)))
             }
             Err(ApplyError::Conflict(resource)) => Err(Status::aborted(resource.to_string())),
+            Err(ApplyError::Db(fd_state::db::DbError::DiskFull)) => {
+                Err(Status::resource_exhausted("storage.disk_full"))
+            }
             Err(ApplyError::Db(error)) => Err(Status::internal(error.to_string())),
         }
     }
@@ -198,6 +233,42 @@ impl CoreControl for CoreControlSvc {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
         let actor = actor_of(request.metadata());
         let req = request.into_inner();
+        if req.kind == "AppAction" {
+            crate::storage_runtime::enabled()?;
+            let params = req
+                .params
+                .as_ref()
+                .map(proto_conv::struct_to_value)
+                .unwrap_or_default();
+            let action = params["action"].as_str().unwrap_or("");
+            if !["start", "stop", "update"].contains(&action) {
+                return Err(Status::invalid_argument("app.action_invalid"));
+            }
+            let id = params["id"]
+                .as_str()
+                .ok_or_else(|| Status::invalid_argument("app.id_missing"))?;
+            let resource = fd_state::ResourceRef::new(fd_state::ResourceKind::ContainerApp, id);
+            if self
+                .app
+                .store
+                .get(&resource)
+                .map_err(|e| Status::internal(e.to_string()))?
+                .is_none()
+            {
+                return Err(Status::not_found("app.not_found"));
+            }
+            let op = self
+                .app
+                .journal
+                .start("AppAction", params, Some(resource), &actor, &["apply"])
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let app = self.app.clone();
+            let id = op.id.clone();
+            tokio::spawn(async move {
+                let _ = crate::app_runtime::resume(app, &id).await;
+            });
+            return Ok(Response::new(operation_to_proto(&op)));
+        }
         if req.kind == "RestartExtension" {
             let params = req
                 .params

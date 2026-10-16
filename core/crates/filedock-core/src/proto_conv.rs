@@ -91,6 +91,15 @@ pub fn proto_to_value(value: &prost_types::Value) -> Value {
     match value.kind.as_ref() {
         Some(Kind::NullValue(_)) | None => Value::Null,
         Some(Kind::BoolValue(b)) => Value::Bool(*b),
+        Some(Kind::NumberValue(n))
+            if n.is_finite() && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0 =>
+        {
+            if *n >= 0.0 {
+                Value::from(*n as u64)
+            } else {
+                Value::from(*n as i64)
+            }
+        }
         Some(Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
             .map(Value::Number)
             .unwrap_or(Value::Null),
@@ -128,5 +137,20 @@ pub fn issues_to_proto(issues: &[ValidationIssue]) -> pb::ValidationReport {
                 conflicting: issue.conflicting.as_ref().map(ref_to_proto),
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn struct_numbers_preserve_integer_fields() {
+        let value = serde_json::json!({"percent":95,"negative":-2,"ratio":0.5});
+        assert_eq!(struct_to_value(&value_to_struct(&value)), value);
+        assert!(
+            struct_to_value(&value_to_struct(&value))["percent"]
+                .as_u64()
+                .is_some()
+        );
     }
 }

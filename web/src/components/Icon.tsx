@@ -1,5 +1,7 @@
 import type { SVGProps } from 'react';
 const paths: Record<string, string> = {
+  storage: 'M4 4h16v6H4z M4 14h16v6H4z M7 7h1 M7 17h1 M11 7h6 M11 17h6',
+  cloud: 'M7 18a5 5 0 1 1 0-10 6 6 0 0 1 11-1 5 5 0 1 1 1 11H7z',
   extension: 'M8 3h5v4a3 3 0 1 1 0 6v4H8a3 3 0 1 0-6 0H2V3h6z',
   folder: 'M3 7h7l2 2h9v11H3z M3 7V5h7l2 2',
   dashboard: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',

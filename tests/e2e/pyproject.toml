@@ -9,6 +9,7 @@ dependencies = [
     "pycdlib>=1.14",
     "pyyaml>=6.0",
     "boto3>=1.40",
+    "smbprotocol>=1.15,<2",
 ]
 
 [tool.uv]

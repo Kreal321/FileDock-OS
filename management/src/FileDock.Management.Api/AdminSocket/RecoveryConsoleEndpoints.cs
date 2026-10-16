@@ -1,8 +1,8 @@
 using System.Text.Json;
+using Filedock.Core.V1;
 using FileDock.Management.Core;
 using FileDock.Management.Domain.Audit;
 using FileDock.Management.Domain.Setup;
-using Filedock.Core.V1;
 using Google.Protobuf;
 using Grpc.Core;
 namespace FileDock.Management.Api.AdminSocket;
@@ -13,6 +13,19 @@ public static class RecoveryConsoleEndpoints
     {
         static Metadata Headers(bool mutate) => CoreClient.Metadata("console:root", Guid.NewGuid().ToString("N"), mutate);
         static JsonElement Json(IMessage message) => JsonSerializer.Deserialize<JsonElement>(JsonFormatter.Default.Format(message));
+        admin.MapPost("/system-pool", async (CoreClient core) => Results.Ok(Json(await core.Storage.GetSystemPoolAsync(new Empty(), Headers(false)))));
+        admin.MapPost("/system-pool/limits", async (ConsoleLimits body, CoreClient core, AuditWriter audit) =>
+        {
+            var old = await core.Storage.GetSystemPoolAsync(new Empty(), Headers(false));
+            if (body.ReservedFreeGb > ulong.MaxValue / 1_000_000_000)
+            {
+                return Results.Problem(statusCode: 422, detail: "system_pool.reserve_invalid");
+            }
+
+            var operation = await core.Storage.SetSystemPoolLimitsAsync(new SetSystemPoolLimitsRequest { MaxUsagePercent = body.MaxUsagePercent ?? old.MaxUsagePercent, ReservedFreeBytes = body.ReservedFreeGb is ulong gb ? gb * 1_000_000_000 : old.ReservedFreeBytes, ExpectedGeneration = old.Generation, AcknowledgedInterruption = body.AcknowledgedInterruption }, Headers(true));
+            await audit.WriteAsync("Console", "root", "root", "system-pool.limits.changed", old.PoolId, "Succeeded");
+            return Results.Accepted($"/api/v1/operations/{operation.Id}", CoreClient.ToOperation(operation));
+        });
         admin.MapPost("/state-protection", async (CoreClient core) => Results.Ok(Json(await core.Recovery.GetStateProtectionAsync(new Empty(), Headers(false)))));
         admin.MapPost("/detect-state", async (CoreClient core) => Results.Ok(Json(await core.Recovery.DetectLocalStateAsync(new Empty(), Headers(false)))));
         admin.MapPost("/recovery-key/regenerate", async (CoreClient core, AuditWriter audit) =>
@@ -42,3 +55,5 @@ public static class RecoveryConsoleEndpoints
 }
 public sealed record RestoreLocal(string LocalSourceToken, string RecoveryKey);
 public sealed record ConfirmKey(string KeyId);
+
+public sealed record ConsoleLimits(uint? MaxUsagePercent, ulong? ReservedFreeGb, bool AcknowledgedInterruption = false);

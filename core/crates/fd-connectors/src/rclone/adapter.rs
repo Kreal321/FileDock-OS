@@ -37,7 +37,7 @@ impl RcloneAdapter {
         false
     }
 
-    async fn call(&self, method: &str, body: Value) -> Result<Value, String> {
+    pub(crate) async fn call(&self, method: &str, body: Value) -> Result<Value, String> {
         let response = self
             .http
             .post(format!("http://localhost/{method}"))

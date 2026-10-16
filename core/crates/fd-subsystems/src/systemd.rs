@@ -184,6 +184,12 @@ impl Systemd {
                 let value = if k == "ExecStart" {
                     let args: Vec<String> = v.split_whitespace().map(str::to_owned).collect();
                     zbus::zvariant::Value::from(vec![(args[0].clone(), args, false)])
+                } else if k == "UMask" {
+                    zbus::zvariant::Value::from(
+                        u32::from_str_radix(v.trim_start_matches("0o"), 8).unwrap_or(0o077),
+                    )
+                } else if k == "NoNewPrivileges" {
+                    zbus::zvariant::Value::from(matches!(v.as_str(), "yes" | "true" | "1"))
                 } else {
                     zbus::zvariant::Value::from(v.as_str())
                 };

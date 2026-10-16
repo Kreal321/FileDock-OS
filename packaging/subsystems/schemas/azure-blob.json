@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account": {
+      "type": "string",
+      "title": "Storage account"
+    },
+    "endpoint": {
+      "type": "string",
+      "title": "Storage endpoint"
+    }
+  }
+}

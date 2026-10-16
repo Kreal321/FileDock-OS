@@ -14,3 +14,5 @@ pub use test::{ConnectionTester, StoredTestResult};
 pub mod ownership;
 
 pub mod object_io;
+
+pub mod oauth;

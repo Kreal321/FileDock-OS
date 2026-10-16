@@ -41,6 +41,10 @@ impl ContainerAppSpec {
                 "a Compose definition is required",
             ));
         }
+        match serde_saphyr::from_str::<serde_json::Value>(&self.compose) {
+            Ok(document) if document["services"].as_object().is_some_and(|s|!s.is_empty()) && document.get("include").is_none() && document["services"].as_object().is_none_or(|s|s.values().all(|s|s.get("extends").is_none())) && document.get("secrets").is_none_or(|s|s.is_object()) => {},
+            _=>issues.push(ValidationIssue::error("app.compose_invalid","compose","Use a self-contained Compose services object without include/extends; secrets must be an object")),
+        }
         for key in self.environment.keys() {
             let valid = key
                 .bytes()
@@ -52,6 +56,15 @@ impl ContainerAppSpec {
                     "container.env_name_invalid",
                     &format!("environment.{key}"),
                     "environment names are letters, digits, and '_'",
+                ));
+            }
+        }
+        for (name, value) in &self.environment {
+            if value.contains(['\n', '\r', '\0']) {
+                issues.push(ValidationIssue::error(
+                    "container.env_value_invalid",
+                    &format!("environment.{name}"),
+                    "Environment values must be single-line",
                 ));
             }
         }

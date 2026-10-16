@@ -117,3 +117,16 @@ against the real deployed UI, plus supervision/API checks. The temporary fixture
 the final dashboard showed eight healthy built-ins. This adds real-VM evidence to FR-127–FR-129,
 FR-133–FR-134 and SC-030; full T233, fresh setup/offline packaging, zoom/accessibility, novice and
 Linux visual approval remain pending. No pending acceptance task is marked complete by this smoke.
+
+## Phase 11 UI extension (2026-10-15)
+
+Pools & disks, Cloud, Shares and Docker now use the same implemented sidebar destinations,
+compact tables, row menus and action dialogs. The System Pool is shown separately from data
+pools; no chart/usage samples were introduced. Creation, limits, share-user, export-rule,
+connection/OAuth and Compose dialogs preserve explicit error/busy/read-only behavior.
+
+`web/tests/e2e/phase11.spec.ts` checks 1440 px and 360 px layouts, disk serial confirmation,
+retained inputs and disabled writes during a Core outage. Synthetic screenshots were reviewed
+locally; these do not replace canonical Linux baseline approval. See `phase11-testing.md` for
+actual data-plane and provider acceptance still pending. Existing golden screenshots were not
+silently replaced to accommodate the newly enabled navigation.

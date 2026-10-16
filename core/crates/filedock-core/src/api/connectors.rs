@@ -18,6 +18,38 @@ pub struct ConnectorsSvc {
 
 #[tonic::async_trait]
 impl Connectors for ConnectorsSvc {
+    async fn start_o_auth(
+        &self,
+        request: Request<pb::OAuthStartRequest>,
+    ) -> Result<Response<pb::OAuthFlow>, Status> {
+        check_metadata(request.metadata(), self.app.config.interface_version, true)?;
+        let actor = super::interceptors::actor_of(request.metadata());
+        let r = request.into_inner();
+        Ok(Response::new(
+            crate::oauth_runtime::start(
+                &self.app,
+                &actor,
+                &r.provider_family,
+                r.config
+                    .as_ref()
+                    .map(crate::proto_conv::struct_to_value)
+                    .unwrap_or(serde_json::json!({})),
+            )
+            .await?,
+        ))
+    }
+    async fn finish_o_auth(
+        &self,
+        request: Request<pb::OAuthFinishRequest>,
+    ) -> Result<Response<pb::OAuthFlow>, Status> {
+        check_metadata(request.metadata(), self.app.config.interface_version, true)?;
+        let actor = super::interceptors::actor_of(request.metadata());
+        let r = request.into_inner();
+        Ok(Response::new(
+            crate::oauth_runtime::finish(&self.app, &actor, &r.flow_id, &r.redirect_url).await?,
+        ))
+    }
+
     async fn list_connectors(
         &self,
         request: Request<pb::Empty>,
@@ -29,7 +61,10 @@ impl Connectors for ConnectorsSvc {
             .connectors()
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(ListConnectorsResponse {
-            connectors: rows.iter().map(to_connector).collect(),
+            connectors: rows
+                .iter()
+                .map(|r| to_connector_with_schema(&self.app, r))
+                .collect(),
         }))
     }
 
@@ -146,6 +181,7 @@ fn to_connector(row: &fd_subsystems::SubsystemRecord) -> CloudConnector {
                             .get("conditionalWrites")
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false),
+                        connection_schema: None,
                         provider_checksums: entry
                             .get("providerChecksums")
                             .and_then(|v| v.as_bool())
@@ -177,4 +213,13 @@ fn route_target(target: &fd_state::resources::RouteTarget) -> pb::RouteTarget {
             BackupEngine => pb::route_target::Target::BackupEngine(true),
         }),
     }
+}
+
+fn to_connector_with_schema(app: &App, row: &fd_subsystems::SubsystemRecord) -> CloudConnector {
+    let mut connector = to_connector(row);
+    for family in &mut connector.families {
+        family.connection_schema = crate::connection_runtime::schema(app, row, &family.family)
+            .map(|v| crate::proto_conv::value_to_struct(&v));
+    }
+    connector
 }

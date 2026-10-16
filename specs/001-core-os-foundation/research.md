@@ -578,13 +578,15 @@ Each entry gives the decision, the rationale, and the alternatives considered.
   - **NFS**: the Core renders `/etc/exports.d/filedock.exports`, then runs `exportfs -ra`. Access
     rules are client networks or hosts with read-only or read-write access, NFSv4 with `sec=sys`.
   - **WebDAV**:
-    - one `rclone serve webdav` transient unit per WebDAV-enabled folder;
-    - TLS uses the appliance certificate, and a per-export htpasswd file is generated from share
-      users;
+    - independent `rclone serve webdav` transient units per WebDAV-enabled folder, split into
+      read-only and read-write listeners when rules include both roles (rclone's read-only flag
+      applies to a whole listener);
+    - HTTP follows the current development appliance transport decision; each role receives only
+      its permitted enabled share users in a private htpasswd file;
     - ports are allocated from 8440–8499 and recorded in the export's status.
 - **Rationale**: These are the proven built-ins the guide names. Configuration files survive Core
-  restarts, which preserves data-plane independence (R7). One WebDAV process per folder is the
-  only way to give each export its own access rules with rclone.
+  restarts, which preserves data-plane independence (R7). Per-folder role listeners enforce each
+  export's access rules without giving read-only users write access.
 - **Alternatives considered**:
   - A single WebDAV server combining all folders: it can't have per-folder users.
   - Proxying WebDAV through the Management Service: puts the control plane in the data path.
@@ -1040,3 +1042,17 @@ API/auth/live contracts; no code changes, package installs, or tests were perfor
 **Phase 0 result (2026-10-15)**: R28–R30 resolve this update. Read-only delegated research inspected
 actual components, styles, routes and form guards. No production code, package installs or tests
 were changed/run. Constitution gates pass before research and after design.
+
+## Phase 11 implementation notes (2026-10-15)
+
+- The installer starts Core and records the System Pool identity/default limits. Sparse-image
+  creation follows confirmed first-run setup (or configuration recovery), so automatic metadata
+  does not make a fresh restore target non-fresh. A disk too small for the reserve stays Unavailable.
+- Pool health, SMART polling, and the reserve watchdog run independently. SMART commands have
+  bounded execution and cannot delay missing-disk detection or the two-second reserve watchdog.
+- Compose volume sources are explicit paths/names; interpolation in volume sources is rejected
+  during desired-state validation so access/removal guards see the same dependencies as Docker.
+  Other Compose fields may use declared environment variables. Project names are immutable.
+- Storage/shares/cloud/apps reuse the approved single sidebar, compact tables and action dialogs.
+  System Pool usage and limits come from Storage RPCs; no sample metrics enter production pages.
+- Phase 11 validation and remaining Linux/provider checks are recorded in `phase11-testing.md`.

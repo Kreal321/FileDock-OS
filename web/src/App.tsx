@@ -10,6 +10,10 @@ import { NetworkPage } from './features/settings/NetworkPage.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { OperationsPage } from './features/operations/OperationsPage.tsx';
 import { OperationDetailPage } from './features/operations/OperationDetailPage.tsx';
+import { PoolsPage } from './features/pools/PoolsPage.tsx';
+import { AppsPage } from './features/apps/AppsPage.tsx';
+import { SharesPage } from './features/shares/SharesPage.tsx';
+import { ConnectionsPage } from './features/connections/ConnectionsPage.tsx';
 import { FoldersPage } from './features/folders/FoldersPage.tsx';
 import { LogsPage } from './features/logs/LogsPage.tsx';
 import { ActivityPage } from './features/activity/ActivityPage.tsx';
@@ -98,6 +102,16 @@ function Shell() {
     <AppShell route={route} onSignOut={signOut}>
       {(canMutate, connected, browserConnected) => {
         switch (route.id) {
+          case 'pools':
+            return <PoolsPage canMutate={canMutate} connected={connected && browserConnected} />;
+          case 'apps':
+            return <AppsPage canMutate={canMutate} connected={connected && browserConnected} />;
+          case 'shares':
+            return <SharesPage canMutate={canMutate} connected={connected && browserConnected} />;
+          case 'connections':
+            return (
+              <ConnectionsPage canMutate={canMutate} connected={connected && browserConnected} />
+            );
           case 'folders':
             return <FoldersPage canMutate={canMutate} connected={browserConnected} />;
           case 'extensions':

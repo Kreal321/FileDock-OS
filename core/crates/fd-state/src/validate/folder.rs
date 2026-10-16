@@ -288,6 +288,40 @@ pub fn validate(view: &StateView<'_>, changes: &[Change]) -> Vec<ValidationIssue
     for app in view.list(ResourceKind::ContainerApp) {
         let compose = app.spec["compose"].as_str().unwrap_or("");
         let sources = compose_sources(compose, &app.spec["environment"]);
+        if serde_saphyr::from_str::<Value>(compose).is_err() {
+            issues.push(ValidationIssue::error(
+                "app.compose_invalid",
+                "compose",
+                "Compose must be valid YAML",
+            ));
+        }
+        for source in &sources {
+            if source.contains('$') {
+                issues.push(ValidationIssue::error("app.bind_interpolation_unsupported", "compose", "Use explicit volume sources so folder bindings can be checked before changing access"));
+            }
+            if source.starts_with("/storage/") {
+                match folders.iter().find(|f| f.spec["filedockPath"] == *source) {
+                    Some(folder)
+                        if folder.spec["access"]
+                            .as_array()
+                            .is_some_and(|a| a.iter().any(|v| v == "Docker")) => {}
+                    _ => issues.push(
+                        ValidationIssue::error(
+                            "app.docker_access_required",
+                            "compose",
+                            "Managed bind sources must name folders with Docker access",
+                        )
+                        .with_conflicting(app.resource.clone()),
+                    ),
+                }
+            } else {
+                issues.push(ValidationIssue::warning(
+                    "app.data_outside_managed_folders",
+                    "compose",
+                    format!("{source} is outside FileDock protection"),
+                ));
+            }
+        }
         for old in view.original_folders.values() {
             if old.spec["filedockPath"]
                 .as_str()
@@ -295,6 +329,7 @@ pub fn validate(view: &StateView<'_>, changes: &[Change]) -> Vec<ValidationIssue
             {
                 let now = view.get(&old.resource);
                 if now.is_none()
+                    || now.is_some_and(|r| r.spec["filedockPath"] != old.spec["filedockPath"])
                     || !now.is_some_and(|r| {
                         r.spec["access"]
                             .as_array()
@@ -331,7 +366,7 @@ fn cloud_identity(view: &StateView<'_>, id: &str) -> String {
     id.to_owned()
 }
 
-fn compose_sources(text: &str, environment: &Value) -> Vec<String> {
+pub fn compose_sources(text: &str, _environment: &Value) -> Vec<String> {
     let Ok(document) = serde_saphyr::from_str::<Value>(text) else {
         return vec![];
     };
@@ -346,13 +381,7 @@ fn compose_sources(text: &str, environment: &Value) -> Vec<String> {
             } else {
                 v["source"].as_str().map(str::to_owned)
             }?;
-            let source =
-                if let Some(name) = source.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
-                    environment[name].as_str().unwrap_or("").to_owned()
-                } else {
-                    source
-                };
-            source.starts_with('/').then_some(source)
+            Some(source)
         })
         .collect()
 }

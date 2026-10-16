@@ -45,10 +45,12 @@ export function Sidebar({
           }
         }}
       >
-        {['dashboard', 'folders', 'extensions'].map((id) => {
-          const d = destinations.find((d) => d.id === id)!;
-          return link(d.id, d.label, d.hashRoute, d.icon);
-        })}
+        {['dashboard', 'folders', 'pools', 'connections', 'shares', 'apps', 'extensions'].map(
+          (id) => {
+            const d = destinations.find((d) => d.id === id)!;
+            return link(d.id, d.label, d.hashRoute, d.icon);
+          },
+        )}
         <details className="nav-group" ref={settings}>
           <summary className="nav-link nav-group-toggle">
             <Icon name="settings" />

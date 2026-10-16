@@ -80,13 +80,8 @@ pub fn mount_name(path: &str) -> String {
     format!("{name}.mount")
 }
 fn quote(path: &Path) -> String {
-    format!(
-        "\"{}\"",
-        path.to_string_lossy()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('%', "%%")
-    )
+    // Mount What/Where are scalar paths, not shell commands. Outer quotes become literal bytes.
+    path.to_string_lossy().replace('%', "%%")
 }
 pub fn unit(id: &str, source: &Path, target: &Path, pool: &Path) -> String {
     let parent = mount_name(&pool.to_string_lossy());
@@ -266,6 +261,12 @@ impl Controller for FolderController {
             .await?;
             return Ok(());
         }
+        if relative
+            .chars()
+            .any(|c| matches!(c, '\n' | '\r' | '\\' | '"' | '%'))
+        {
+            return Err(failed("reference.path_invalid"));
+        }
         let source = pool.join(relative.trim_start_matches('/'));
         // Refuse symlink components before creating directories; never follow a reference out of a pool.
         let mut walk = pool.clone();
@@ -346,6 +347,21 @@ impl Controller for FolderController {
             .await?;
             return Err(failed("folder.mount_failed"));
         }
+        // A successful systemd start is insufficient: reject an old or misdirected bind mount.
+        let source_meta = std::fs::metadata(&source).map_err(failed)?;
+        let target_meta = std::fs::metadata(target).map_err(failed)?;
+        use std::os::unix::fs::MetadataExt;
+        if source_meta.dev() != target_meta.dev() || source_meta.ino() != target_meta.ino() {
+            let _ = command("systemctl", &["stop", &name]).await;
+            self.status(
+                &row,
+                "Unavailable",
+                "Mount source verification failed; writes are stopped",
+                &folder,
+            )
+            .await?;
+            return Err(failed("folder.mount_source_mismatch"));
+        }
         atomic(&record, &serde_json::to_vec(&vec![name]).map_err(failed)?)?;
         self.status(&row, "Ready", "Local pool bind mount is active", &folder)
             .await?;
@@ -369,6 +385,9 @@ mod tests {
         );
         assert!(u.contains("BindsTo=mnt-filedock-pools-id.mount"));
         assert!(u.contains("Options=bind"));
+        assert!(u.contains("\nWhat=/mnt/filedock/pools/id/data\n"));
+        assert!(u.contains("\nWhere=/storage/data\n"));
+        assert!(!u.contains("What=\""));
     }
     #[test]
     fn local_exposure_is_never_reported_protected() {

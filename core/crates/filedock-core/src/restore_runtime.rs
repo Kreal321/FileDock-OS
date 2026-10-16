@@ -291,6 +291,15 @@ pub async fn resume(app: &Arc<App>, id: &str) -> Result<(), Status> {
             }
         }
     }
+    if crate::storage_runtime::enabled().is_ok() {
+        let _storage = app.storage_lock.lock().await;
+        if let Err(error) = crate::pool_recovery::reattach(app) {
+            tracing::warn!(%error,"Some restored pools require manual mapping");
+        }
+        if let Err(error) = crate::storage_runtime::initialize(app) {
+            tracing::warn!(%error,"Restored System Pool is unavailable");
+        }
+    }
     for row in crate::extension_runtime::rows(app, fd_state::ResourceKind::Extension)? {
         if let Some(hash) = row.spec["packageSha256"].as_str() {
             let file = stage(app, id)?.join(format!("{hash}.fdext"));
@@ -475,22 +484,10 @@ pub async fn snapshot_operation(app: &App, id: &str) {
     );
 }
 pub async fn map_pools(
-    app: &App,
+    app: &Arc<App>,
     request: &pb::MapPoolsRequest,
 ) -> Result<fd_journal::Operation, Status> {
-    let op = app
-        .journal
-        .get(&request.restore_operation_id)
-        .map_err(error)?;
-    if op.kind != "Restore" {
-        return Err(Status::invalid_argument("restore.operation_required"));
-    }
-    if request.mappings.is_empty() {
-        return Err(Status::invalid_argument("restore.mapping_required"));
-    }
-    // Provisioning is registered by US9. Never clear a Failed/Unavailable pool or touch a disk
-    // until a storage-capability provider can verify and execute its destructive confirmation.
-    Err(error("restore.storage_provider_unavailable"))
+    crate::pool_recovery::map(app, request).await
 }
 pub async fn takeover(
     app: &App,

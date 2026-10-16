@@ -1162,3 +1162,20 @@ th[data-align='actions'] {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Resource metadata stays readable on narrow screens; only its table region scrolls. */
+.resource-page table {
+  min-width: 640px;
+}
+.resource-page th,
+.resource-page .badge {
+  white-space: nowrap;
+}
+.disk-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.disk-choice input {
+  flex: 0 0 auto;
+}

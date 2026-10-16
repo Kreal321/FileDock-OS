@@ -49,10 +49,25 @@ pub fn remotes_for(connections: &[(String, CloudConnectionSpec)]) -> Vec<RcloneR
         .iter()
         .map(|(id, spec)| match &spec.definition {
             ConnectionDefinition::S3(s3) => s3_remote(id, s3),
-            ConnectionDefinition::Bound(_) => RcloneRemote {
-                name: id.clone(),
-                lines: vec![("type".into(), spec.provider_family.clone())],
-            },
+            ConnectionDefinition::Bound(bound) => {
+                let backend = match spec.provider_family.as_str() {
+                    "google-drive" => "drive",
+                    "azure-blob" => "azureblob",
+                    other => other,
+                };
+                let mut lines = vec![("type".into(), backend.to_string())];
+                if let Some(config) = bound.config.as_object() {
+                    for (key, value) in config {
+                        if let Some(value) = value.as_str() {
+                            lines.push((key.clone(), value.to_string()));
+                        }
+                    }
+                }
+                RcloneRemote {
+                    name: id.clone(),
+                    lines,
+                }
+            }
         })
         .collect()
 }

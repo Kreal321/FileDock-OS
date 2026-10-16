@@ -8,13 +8,34 @@ use crate::ValidationIssue;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingsSpec {
     pub appliance_name: String,
+    #[serde(default = "warning_percent")]
+    pub disk_pressure_warning_percent: u32,
+    #[serde(default = "critical_percent")]
+    pub disk_pressure_critical_percent: u32,
     #[serde(default)]
     pub notification_channels: Vec<NotificationChannel>,
+}
+
+fn warning_percent() -> u32 {
+    90
+}
+fn critical_percent() -> u32 {
+    95
 }
 
 impl SettingsSpec {
     pub(crate) fn validate(&self, issues: &mut Vec<ValidationIssue>) {
         check_name("applianceName", &self.appliance_name, 64, issues);
+        if self.disk_pressure_warning_percent < 1
+            || self.disk_pressure_warning_percent >= self.disk_pressure_critical_percent
+            || self.disk_pressure_critical_percent > 99
+        {
+            issues.push(ValidationIssue::error(
+                "storage.thresholds_invalid",
+                "diskPressureWarningPercent",
+                "Warning must be below critical, with both between 1 and 99 percent",
+            ));
+        }
         let mut ids = std::collections::BTreeSet::new();
         for channel in &self.notification_channels {
             if !super::is_uuid(&channel.id)

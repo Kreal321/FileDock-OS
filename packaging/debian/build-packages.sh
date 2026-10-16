@@ -53,7 +53,7 @@ Section: admin
 Priority: optional
 Architecture: $ARCH
 Maintainer: FileDock <ops@filedock.dev>
-Depends: systemd, libc6, libgcc-s1, acl (= $ACL_VER)
+Depends: systemd, libc6, libgcc-s1, acl (= $ACL_VER), lvm2 (= $(awk '$1=="apt" && $2=="lvm2" {print $3; exit}' "$ROOT/packaging/versions.lock")), e2fsprogs (= $(awk '$1=="apt" && $2=="e2fsprogs" {print $3; exit}' "$ROOT/packaging/versions.lock")), smartmontools (= $(awk '$1=="apt" && $2=="smartmontools" {print $3; exit}' "$ROOT/packaging/versions.lock")), util-linux, mount, udev, passwd, openssl
 Description: FileDock Core Service
  Privileged reconciler, journal, secrets, and subsystem orchestrator.
 EOF
@@ -117,6 +117,9 @@ install_bin "$pkg_bin/usr/lib/filedock/fd-s3" "$ROOT/target/release/fd-s3"
 if compgen -G "$ROOT/packaging/subsystems/*.yaml" >/dev/null; then
   install -m 0644 "$ROOT/packaging/subsystems/"*.yaml "$pkg_bin/usr/share/filedock/subsystems/"
 fi
+
+mkdir -p "$pkg_bin/usr/share/filedock/subsystems/schemas"
+install -m 0644 "$ROOT/packaging/subsystems/schemas/"*.json "$pkg_bin/usr/share/filedock/subsystems/schemas/"
 
 if command -v dpkg-deb >/dev/null; then
   dpkg-deb --root-owner-group --build "$pkg_core" "$DIST/filedock-core_${VERSION}_${ARCH}.deb"

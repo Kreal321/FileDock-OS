@@ -779,8 +779,11 @@ dependencies = [
  "async-trait",
  "chrono",
  "fd-observe",
+ "fd-secrets",
  "fd-state",
+ "fd-storage",
  "fd-subsystems",
+ "serde-saphyr",
  "serde_json",
  "thiserror",
  "tokio",
@@ -850,6 +853,13 @@ dependencies = [
 [[package]]
 name = "fd-storage"
 version = "0.1.0"
+dependencies = [
+ "fd-state",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "fd-subsystems"
@@ -904,6 +914,7 @@ dependencies = [
  "fd-reconcile",
  "fd-secrets",
  "fd-state",
+ "fd-storage",
  "fd-subsystems",
  "hex",
  "hyper-util",

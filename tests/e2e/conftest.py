@@ -125,6 +125,12 @@ class ApiClient:
         if etag: headers["If-Match"]=etag
         return self.http.put(path, json=json, headers=headers)
 
+    def patch(self, path: str, json: object = None, *, etag: str | None = None) -> httpx.Response:
+        headers = self._csrf()
+        if etag:
+            headers["If-Match"] = etag
+        return self.http.patch(path, json=json, headers=headers)
+
     def delete(self, path: str, *, etag: str | None = None) -> httpx.Response:
         headers=self._csrf()
         if etag: headers["If-Match"]=etag

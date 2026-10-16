@@ -121,6 +121,8 @@ service Connectors {
   rpc ApplyRouteChange(RouteChangeRequest) returns (RouteTable);
   // Runs the routed connector's Probe and stores the result on the connection (FR-083, FR-117).
   rpc TestConnection(ConnectionRef) returns (ConnectionTestResult);
+  rpc StartOAuth(OAuthStartRequest) returns (OAuthFlow);
+  rpc FinishOAuth(OAuthFinishRequest) returns (OAuthFlow);
 }
 
 service Observability {
@@ -762,6 +764,7 @@ message ConnectorFamily {
   repeated string capabilities = 2;     // cloud.remote | cloud.mount
   bool conditional_writes = 3;
   bool provider_checksums = 4;
+  google.protobuf.Struct connection_schema = 5;
 }
 
 message CloudConnector {
@@ -861,3 +864,8 @@ message NotificationChannelRef { string id = 1; }
 message ActivityPage { repeated Event events = 1; string next_page_token = 2; }
 
 message ChangeConfirmation { ResourceRef resource = 1; string kind = 2; string value = 3; }
+
+// Connector-owned, short-lived noninteractive authorization. Tokens never appear in responses.
+message OAuthStartRequest { string provider_family = 1; google.protobuf.Struct config = 2; }
+message OAuthFinishRequest { string flow_id = 1; string redirect_url = 2; }
+message OAuthFlow { string flow_id = 1; string auth_url = 2; string question = 3; bool complete = 4; string credential_ref = 5; }

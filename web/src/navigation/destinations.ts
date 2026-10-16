@@ -1,6 +1,17 @@
 import type { NavigationDestination } from '../api/view-models.ts';
 export type Route = { id: string; operationId?: string; unavailable?: boolean };
 export const destinations: NavigationDestination[] = [
+  ...[
+    { id: 'pools', label: 'Pools & disks', icon: 'storage', requiredView: 'PoolsPage' },
+    { id: 'connections', label: 'Cloud', icon: 'cloud', requiredView: 'ConnectionsPage' },
+    { id: 'shares', label: 'Shares', icon: 'folder', requiredView: 'SharesPage' },
+    { id: 'apps', label: 'Docker', icon: 'extension', requiredView: 'AppsPage' },
+  ].map((d) => ({
+    ...d,
+    hashRoute: `#/${d.id}`,
+    group: 'main' as const,
+    availability: 'implemented' as const,
+  })),
   {
     id: 'folders',
     hashRoute: '#/folders',

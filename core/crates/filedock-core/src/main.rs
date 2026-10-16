@@ -1,14 +1,20 @@
 //! FileDock Core Service daemon.
 
 mod api;
+mod app_runtime;
 mod config;
+mod connection_runtime;
 mod extension_runtime;
 mod notification_runtime;
+mod oauth_runtime;
+mod pool_recovery;
 mod proto_conv;
 mod restore_runtime;
 mod runtime;
+mod sharing_runtime;
 mod startup;
 mod state_runtime;
+mod storage_runtime;
 
 use std::sync::Arc;
 
@@ -30,6 +36,13 @@ use crate::config::Config;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = std::env::args().nth(1);
+    if command.as_deref() == Some("system-pool-loop") {
+        if unsafe { libc::geteuid() } != 0 {
+            return Err("root required".into());
+        }
+        fd_storage::system_pool::image::attach_loop(&storage_runtime::image())?;
+        return Ok(());
+    }
     if command.as_deref() == Some("detect-state") {
         let config = Config::from_env();
         let mut roots = vec![(config.state_root, "system disk".into())];
@@ -104,21 +117,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         subsystems.upsert_from_manifest(&manifest)?;
     }
 
-    let mut controllers: Vec<Arc<dyn fd_reconcile::Controller>> = [
-        fd_state::ResourceKind::Pool,
-        fd_state::ResourceKind::Export,
-        fd_state::ResourceKind::ContainerApp,
-        fd_state::ResourceKind::Extension,
-    ]
-    .into_iter()
-    .map(|kind| {
-        Arc::new(fd_reconcile::adopt::AdoptionController {
-            kind,
-            store: store.clone(),
-            events: events.clone(),
-        }) as Arc<dyn fd_reconcile::Controller>
-    })
-    .collect();
+    let mut controllers: Vec<Arc<dyn fd_reconcile::Controller>> =
+        [fd_state::ResourceKind::Extension]
+            .into_iter()
+            .map(|kind| {
+                Arc::new(fd_reconcile::adopt::AdoptionController {
+                    kind,
+                    store: store.clone(),
+                    events: events.clone(),
+                }) as Arc<dyn fd_reconcile::Controller>
+            })
+            .collect();
     controllers.push(Arc::new(
         fd_reconcile::controllers::folder::FolderController {
             store: store.clone(),
@@ -129,6 +138,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             enabled: cfg!(target_os = "linux")
                 && std::env::var("FD_RUNTIME_ENABLED").as_deref() != Ok("0"),
             gate: tokio::sync::Mutex::new(()),
+        },
+    ));
+    controllers.push(Arc::new(
+        fd_reconcile::controllers::container_app::ContainerAppController {
+            store: store.clone(),
+            events: events.clone(),
+            root: config.apps_root.clone(),
+            secrets_path: config.secrets.clone(),
+            dek_path: config.dek.clone(),
+            secrets_root: config.secrets_run.clone(),
+            enabled: cfg!(target_os = "linux")
+                && std::env::var("FD_RUNTIME_ENABLED").as_deref() != Ok("0"),
         },
     ));
     let reconciler = Arc::new(Reconciler::new(store.clone(), controllers));
@@ -190,7 +211,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         loop {
             match observed.recv().await {
-                Ok(event) if event.r#type.starts_with("subsystem.") => {
+                Ok(event)
+                    if event.r#type.starts_with("subsystem.")
+                        || event.r#type == "folder.status" =>
+                {
                     event_reconciler.enqueue_all_kinds().await
                 }
                 Ok(_) => {}

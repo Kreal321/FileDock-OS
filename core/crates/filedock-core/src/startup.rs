@@ -57,6 +57,13 @@ pub async fn run(
     journal.resume_all_except(
         &[],
         &[
+            "MapPools",
+            "AppAction",
+            "CreatePool",
+            "AdoptFilesystem",
+            "ExtendPool",
+            "RecreatePool",
+            "SystemPoolResize",
             "Restore",
             "StateSnapshot",
             "InstallExtension",

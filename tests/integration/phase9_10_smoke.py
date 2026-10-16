@@ -37,7 +37,8 @@ def main():
    body={'identity':{'name':'Movies','fileDockPath':'/storage/movies'},'storageMode':'LocalOnly','reference':{'poolId':pool,'relativePath':'/movies'},'dataImportance':None,'access':[],'advanced':{}}
    code,report=a.call('POST','/api/v1/folders/validate',body);assert code==200 and report['valid'],report
    code,folder=a.call('POST','/api/v1/folders',body);assert code==201,(code,folder)
-   duplicate=dict(body,identity={'name':'Other','fileDockPath':'/storage/movies/sub'})
+   # Paths are generated from the name; a supplied custom path cannot bypass overlap checks.
+   duplicate=dict(body,identity={'name':'Movies','fileDockPath':'/storage/unrelated'})
    code,report=a.call('POST','/api/v1/folders/validate',duplicate);assert code==200 and not report['valid'] and any(i['code']=='folder.path_overlap' for i in report['issues'])
    bad=dict(body,storageMode='HybridBackup',dataImportance='Critical');bad['reference']={**body['reference'],'backupDestination':{'connectionId':str(uuid.uuid4()),'remotePath':'backup'}}
    code,report=a.call('POST','/api/v1/folders/validate',bad);assert code==200 and any(i['code']=='mode.capability_missing' for i in report['issues'])

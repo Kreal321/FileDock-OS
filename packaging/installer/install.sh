@@ -361,6 +361,21 @@ ensure_paths
 install_journald_cap
 install_packages || exit 3
 configure_services || exit 3
+mkdir -p /etc/filedock/samba
+if ! grep -q '^include = /etc/filedock/samba/shares.conf$' /etc/samba/smb.conf; then
+  printf '\n[global]\ninclude = /etc/filedock/samba/shares.conf\n' >> /etc/samba/smb.conf
+fi
+mkdir -p /etc/nfs.conf.d
+printf '[nfsd]\nvers3=n\nvers4=y\n' > /etc/nfs.conf.d/filedock.conf
+# Core initializes the sparse System Pool from its durable default limits. Report availability;
+# a small system disk is supported and must never make installation fail.
+for system_pool_attempt in {1..30}; do
+  if system_pool_status="$(filedockctl --json system-pool show 2>/dev/null)" && [[ "$system_pool_status" != *'initialization pending'* ]]; then
+    echo "System Pool: $system_pool_status"
+    break
+  fi
+  sleep 1
+done
 # Discover surviving state before issuing a new setup code. --yes leaves key entry to the UI.
 restore_discovery="$(filedockctl --json detect-state 2>/dev/null)" || restore_discovery=""
 if [[ "$restore_discovery" == *'"localSourceToken"'* ]]; then

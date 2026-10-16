@@ -27,7 +27,28 @@ impl ShareUserSpec {
             && name
                 .iter()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_".contains(b));
-        if !valid {
+        if !valid
+            || matches!(
+                self.username.as_str(),
+                "root"
+                    | "daemon"
+                    | "bin"
+                    | "sys"
+                    | "sync"
+                    | "games"
+                    | "man"
+                    | "lp"
+                    | "mail"
+                    | "news"
+                    | "uucp"
+                    | "proxy"
+                    | "www-data"
+                    | "backup"
+                    | "list"
+                    | "irc"
+                    | "nobody"
+            )
+        {
             issues.push(ValidationIssue::error(
                 "share_user.name_invalid",
                 "username",

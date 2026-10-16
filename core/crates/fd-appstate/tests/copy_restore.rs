@@ -129,3 +129,44 @@ fn uploaded_archive_refuses_traversal_and_unknown_schema() {
         .is_err()
     );
 }
+
+#[test]
+fn fresh_restore_allows_automatic_system_pool_but_refuses_user_configuration() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = Db::open(&dir.path().join("source.db"), &[MIGRATION_0001_INIT]).unwrap();
+    let source_store = StateStore::new(source.clone());
+    source_store.seed_defaults().unwrap();
+    source_store
+        .apply(
+            fd_state::ChangeOrigin::Console {
+                actor: "test".into(),
+            },
+            &[fd_state::Change::Upsert {
+                resource: fd_state::ResourceRef::singleton(fd_state::ResourceKind::Settings),
+                expected_generation: 0,
+                spec: json!({"applianceName":"test"}),
+            }],
+        )
+        .unwrap();
+    let config = fd_appstate::fdconfig::serialize(
+        &source,
+        &uuid::Uuid::new_v4().to_string(),
+        json!({"configSeq":1}),
+    )
+    .unwrap();
+    let target = Db::open(&dir.path().join("target.db"), &[MIGRATION_0001_INIT]).unwrap();
+    let store = StateStore::new(target.clone());
+    store.seed_defaults().unwrap();
+    let system = fd_state::ResourceRef::new(
+        fd_state::ResourceKind::Pool,
+        "00000000-0000-7000-8000-000000000001",
+    );
+    store.apply(fd_state::ChangeOrigin::System{reason:"automatic System Pool".into()}, &[fd_state::Change::Upsert{resource:system,expected_generation:0,spec:json!({"name":"system","kind":"System","memberDisks":[],"layers":["loop","ext4"],"systemLimits":{"maxUsagePercent":50,"reservedFreeBytes":100000000000_u64}})}]).unwrap();
+    fd_appstate::restore::apply::import_config(&target, &config, "restore-test", &[]).unwrap();
+    fd_appstate::restore::apply::import_config(&target, &config, "restore-test", &[]).unwrap();
+    store.apply(fd_state::ChangeOrigin::Console{actor:"test".into()}, &[fd_state::Change::Upsert{resource:fd_state::ResourceRef::new(fd_state::ResourceKind::ShareUser,uuid::Uuid::new_v4().to_string()),expected_generation:0,spec:json!({"username":"alice","passwordSecret":"share/alice/password","enabled":true})}]).unwrap();
+    assert!(
+        fd_appstate::restore::apply::import_config(&target, &config, "another-restore", &[])
+            .is_err()
+    );
+}

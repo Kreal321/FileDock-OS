@@ -3,7 +3,8 @@ import { useHashRoute } from './useHashRoute.ts';
 import { resolveRoute } from './destinations.ts';
 test('resolves exact implemented routes and rejects unsupported views', () => {
   expect(resolveRoute('#/settings/network').id).toBe('network');
-  expect(resolveRoute('#/pools').unavailable).toBe(true);
+  expect(resolveRoute('#/pools').id).toBe('pools');
+  expect(resolveRoute('#/unsupported').unavailable).toBe(true);
   expect(resolveRoute('#/settings/operations/op%20one').operationId).toBe('op one');
 });
 test('hash navigation responds to history events', async () => {

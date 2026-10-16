@@ -211,6 +211,15 @@ impl StateView<'_> {
                         if existing.generation != *expected_generation {
                             return Err(ApplyError::Conflict(resource.clone()));
                         }
+                        if resource.kind == ResourceKind::ContainerApp
+                            && existing.spec["name"] != spec["name"]
+                        {
+                            return Err(ApplyError::Invalid(vec![ValidationIssue::error(
+                                "app.name_immutable",
+                                "name",
+                                "Create a new app to use another Compose project name",
+                            )]));
+                        }
                         existing.generation + 1
                     } else if *expected_generation == 0 {
                         1
@@ -634,6 +643,65 @@ impl Validator for BuiltinValidators {
             }
         }
         export_rules(view, &mut issues);
+        for export in view.list(ResourceKind::Export) {
+            for rule in export.spec["rules"].as_array().into_iter().flatten() {
+                if let Some(user) = rule["principal"]
+                    .as_str()
+                    .and_then(|p| p.strip_prefix("user:"))
+                    && !view
+                        .list(ResourceKind::ShareUser)
+                        .any(|u| u.spec["username"] == user)
+                {
+                    issues.push(
+                        ValidationIssue::error(
+                            "share_user.in_use_or_missing",
+                            "rules",
+                            "Export rules must refer to an existing share user",
+                        )
+                        .with_conflicting(export.resource.clone()),
+                    );
+                }
+            }
+        }
+        for folder in view.list(ResourceKind::ManagedFolder) {
+            for field in ["reference", "backupDestination"] {
+                let id = if field == "reference" {
+                    folder.spec["reference"]["connectionId"].as_str()
+                } else {
+                    folder.spec["reference"]["backupDestination"]["connectionId"].as_str()
+                };
+                if let Some(id) = id
+                    && view
+                        .get(&ResourceRef::new(ResourceKind::CloudConnection, id))
+                        .is_none()
+                {
+                    issues.push(
+                        ValidationIssue::error(
+                            "connection.in_use",
+                            "reference.connectionId",
+                            "A managed folder still uses this connection",
+                        )
+                        .with_conflicting(folder.resource.clone()),
+                    );
+                }
+            }
+        }
+        for destination in view.list(ResourceKind::ApplianceStateDestination) {
+            if let Some(id) = destination.spec["connectionId"].as_str()
+                && view
+                    .get(&ResourceRef::new(ResourceKind::CloudConnection, id))
+                    .is_none()
+            {
+                issues.push(
+                    ValidationIssue::error(
+                        "connection.in_use",
+                        "connectionId",
+                        "A state destination still uses this connection",
+                    )
+                    .with_conflicting(destination.resource.clone()),
+                );
+            }
+        }
         disk_membership(view, &mut issues);
         system_pool_count(view, &mut issues);
         issues

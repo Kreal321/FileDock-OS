@@ -871,51 +871,51 @@ sample container, write from a client, and read inside the container. Fill the S
 confirm the reserve holds (quickstart "Pools and managed folders", "System Pool", and "Pool
 failure").
 
-- [ ] T143 [P] [US9] Implement disk discovery (`lsblk --json` plus udev events) and SMART polling (every 6 hours and on change, early-failure attributes mark the pool Degraded) in `core/crates/fd-storage/src/disks.rs` (FR-061)
-- [ ] T144 [US9] Implement journaled LVM pool creation in `core/crates/fd-storage/src/pool/lvm.rs` (FR-062, research R8):
+- [X] T143 [P] [US9] Implement disk discovery (`lsblk --json` plus udev events) and SMART polling (every 6 hours and on change, early-failure attributes mark the pool Degraded) in `core/crates/fd-storage/src/disks.rs` (FR-061)
+- [X] T144 [US9] Implement journaled LVM pool creation in `core/crates/fd-storage/src/pool/lvm.rs` (FR-062, research R8):
   - `pvcreate`, then `vgcreate` tagged `filedock_pool=<uuid>`, a linear logical volume, and `mkfs.ext4`;
   - the `/.filedock-pool.json` marker and the reserved `/.filedock/` directory;
   - a mount unit at `/mnt/filedock/pools/<uuid>`.
-- [ ] T145 [US9] Implement adopting an existing filesystem as a single-disk non-LVM pool, with a marker and no erase, and growing an LVM pool online (`vgextend`, `lvextend`, `resize2fs`), in `core/crates/fd-storage/src/pool/adopt.rs` and `core/crates/fd-storage/src/pool/extend.rs` (FR-062)
-- [ ] T146 [US9] Implement pool failure detection and recreation in `core/crates/fd-storage/src/pool/health.rs` (FR-064, SC-018):
+- [X] T145 [US9] Implement adopting an existing filesystem as a single-disk non-LVM pool, with a marker and no erase, and growing an LVM pool online (`vgextend`, `lvextend`, `resize2fs`), in `core/crates/fd-storage/src/pool/adopt.rs` and `core/crates/fd-storage/src/pool/extend.rs` (FR-062)
+- [X] T146 [US9] Implement pool failure detection and recreation in `core/crates/fd-storage/src/pool/health.rs` (FR-064, SC-018):
   - Failed on missing physical volumes, a failed mount, or I/O errors;
   - its folders become Unavailable, with a critical alert listing each folder's recovery path;
   - recreate on replacement disks with the same pool UUID.
-- [ ] T147 [US9] Implement the System Pool in `core/crates/fd-storage/src/system_pool/image.rs` and `core/crates/fd-storage/src/system_pool/limits.rs` (FR-098 to FR-101, research R21):
+- [X] T147 [US9] Implement the System Pool in `core/crates/fd-storage/src/system_pool/image.rs` and `core/crates/fd-storage/src/system_pool/limits.rs` (FR-098 to FR-101, research R21):
   - a sparse ext4 image at `/var/lib/filedock/system-pool/pool.img`, loop-mounted with direct I/O and `discard`;
   - limits where the stricter one wins (50% default, range 10–90%; 100 GB reserve, at least 20 GB);
   - a journaled SystemPoolResize, refused below current usage;
   - Unavailable when the disk is too small, Degraded from SMART;
   - immutability rules.
-- [ ] T148 [US9] Implement the System Pool watchdog in `core/crates/fd-storage/src/system_pool/watchdog.rs` (FR-100, SC-022): `statvfs` every 2 seconds with a guard band of 5 GB or 2%, whichever is smaller; remount read-only at the reserve, raise a critical alert, never delete data, and remount read-write when space returns
-- [ ] T149 [US9] Implement disk-pressure monitoring in `core/crates/fd-storage/src/pressure.rs` (SC-013, spec Edge Cases):
+- [X] T148 [US9] Implement the System Pool watchdog in `core/crates/fd-storage/src/system_pool/watchdog.rs` (FR-100, SC-022): `statvfs` every 2 seconds with a guard band of 5 GB or 2%, whichever is smaller; remount read-only at the reserve, raise a critical alert, never delete data, and remount read-write when space returns
+- [X] T149 [US9] Implement disk-pressure monitoring in `core/crates/fd-storage/src/pressure.rs` (SC-013, spec Edge Cases):
   - checks every data pool and the system disk with `statvfs` every 30 seconds;
   - a warning alert at 90% used and a critical alert at 95%, both adjustable in Settings;
   - on the system disk, trims only disposable data FileDock owns (staged extension uploads older than 24 hours and generated diagnostic bundles) before raising critical; logs are already capped by journald;
   - never deletes any other data, and never fails a configuration write in a way that leaves partial state: ApplyChange returns `storage.disk_full` and commits nothing;
   - emptying Temporary subfolders under pressure belongs to feature 002, which provides Hybrid Backup.
-- [ ] T150 [US9] Add the System Pool phase to `packaging/installer/install.sh`: create the image with default limits, or record Unavailable with the reason (FR-098)
-- [ ] T151 [US9] Implement the Storage gRPC service (ListDisks, CreatePool, AdoptFilesystem, ExtendPool, RecreatePool, SetSystemPoolLimits, GetSystemPool) in `core/crates/filedock-core/src/api/storage.rs`
-- [ ] T152 [US9] Implement `/disks`, `/pools`, `/pools/adopt`, `/pools/{id}/disks`, `/pools/{id}/recreate`, `/pools/system`, and `/pools/system/limits` (with typed `ERASE` confirmation and `system_pool.*` errors) in `management/src/FileDock.Management.Api/Endpoints/StorageEndpoints.cs`. Implement `filedockctl system-pool limits` in `management/src/FileDock.Management.Cli/Commands/SystemPoolCommand.cs`
-- [ ] T153 [P] [US9] Build the disks and pools pages (typed confirmation naming every disk, the whole-pool-loss warning, and System Pool limits, capacity, and usage) in `web/src/features/pools/`
-- [ ] T154 [US9] Implement share users in `core/crates/fd-subsystems/src/adapters/share_users.rs`: Linux system users with no shell in group `filedock-share`, Samba `tdbsam` passwords, and WebDAV htpasswd entries (research R15)
-- [ ] T155 [P] [US9] Implement SMB exports in `core/crates/fd-subsystems/src/adapters/samba.rs`: render `/etc/filedock/samba/shares.conf` with per-export access rules, then `smbcontrol all reload-config` (FR-082)
-- [ ] T156 [P] [US9] Implement NFS exports in `core/crates/fd-subsystems/src/adapters/nfs.rs`: render `/etc/exports.d/filedock.exports` with client rules (NFSv4, `sec=sys`), then `exportfs -ra` (FR-082)
-- [ ] T157 [P] [US9] Implement WebDAV exports in `core/crates/fd-subsystems/src/adapters/webdav.rs`: one `rclone serve webdav` transient unit per folder, using HTTP and a per-export htpasswd file, on a port allocated from 8440–8499 (FR-082)
-- [ ] T158 [US9] Implement `/share-users` and `/folders/{id}/exports/{smb|nfs|webdav}` in `management/src/FileDock.Management.Api/Endpoints/ShareEndpoints.cs`
-- [ ] T159 [US9] Implement cloud connections in `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs` and `core/crates/fd-connectors/src/oauth.rs` (FR-083, FR-084):
+- [X] T150 [US9] Add the System Pool phase to `packaging/installer/install.sh`: initialize the identity/default limits, create the image after first-run confirmation or restore, or record Unavailable with the reason (FR-098; preserve fresh-target recovery)
+- [X] T151 [US9] Implement the Storage gRPC service (ListDisks, CreatePool, AdoptFilesystem, ExtendPool, RecreatePool, SetSystemPoolLimits, GetSystemPool) in `core/crates/filedock-core/src/api/storage.rs`
+- [X] T152 [US9] Implement `/disks`, `/pools`, `/pools/adopt`, `/pools/{id}/disks`, `/pools/{id}/recreate`, `/pools/system`, and `/pools/system/limits` (with typed `ERASE` confirmation and `system_pool.*` errors) in `management/src/FileDock.Management.Api/Endpoints/StorageEndpoints.cs`. Implement `filedockctl system-pool limits` in `management/src/FileDock.Management.Cli/Commands/SystemPoolCommand.cs`
+- [X] T153 [P] [US9] Build the disks and pools pages (typed confirmation naming every disk, the whole-pool-loss warning, and System Pool limits, capacity, and usage) in `web/src/features/pools/`
+- [X] T154 [US9] Implement share users in `core/crates/fd-subsystems/src/adapters/share_users.rs`: Linux system users with no shell in group `filedock-share`, Samba `tdbsam` passwords, and WebDAV htpasswd entries (research R15)
+- [X] T155 [P] [US9] Implement SMB exports in `core/crates/fd-subsystems/src/adapters/samba.rs`: render `/etc/filedock/samba/shares.conf` with per-export access rules, then `smbcontrol all reload-config` (FR-082)
+- [X] T156 [P] [US9] Implement NFS exports in `core/crates/fd-subsystems/src/adapters/nfs.rs`: render `/etc/exports.d/filedock.exports` with client rules (NFSv4, `sec=sys`), then `exportfs -ra` (FR-082)
+- [X] T157 [P] [US9] Implement WebDAV exports in `core/crates/fd-subsystems/src/adapters/webdav.rs`: independent `rclone serve webdav` transient units per folder/access role (read-only and read-write listeners when both are needed), using HTTP and per-role htpasswd files, on a port allocated from 8440–8499 (FR-082)
+- [X] T158 [US9] Implement `/share-users` and `/folders/{id}/exports/{smb|nfs|webdav}` in `management/src/FileDock.Management.Api/Endpoints/ShareEndpoints.cs`
+- [X] T159 [US9] Implement cloud connections in `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs` and `core/crates/fd-connectors/src/oauth.rs` (FR-083, FR-084):
   - `/connections` CRUD, with `connection.family_unserved` and `connection.credential_type_unsupported`;
   - `/connections/{id}/test`;
   - `/connections/oauth/start` and `/connections/oauth/finish`, using the paste-back flow that completes through rclone `config/update`;
   - the expiry warning 7 days ahead.
-- [ ] T160 [P] [US9] Build the connections page in `web/src/features/connections/`: a provider-family picker, the neutral S3 form or the connector's schema form, the OAuth paste-back flow, and test results showing the serving connector
-- [ ] T161 [US9] Implement the ContainerApp controller in `core/crates/fd-reconcile/src/controllers/container_app.rs` (FR-085 to FR-087, research R16):
+- [X] T160 [P] [US9] Build the connections page in `web/src/features/connections/`: a provider-family picker, the neutral S3 form or the connector's schema form, the OAuth paste-back flow, and test results showing the serving connector
+- [X] T161 [US9] Implement the ContainerApp controller in `core/crates/fd-reconcile/src/controllers/container_app.rs` (FR-085 to FR-087, research R16):
   - materialize under `/var/lib/filedock/apps/<app>/`, then `docker compose -p fd-<app> up -d`;
   - bind sources must be managed folders with Docker access;
   - warn about named volumes or binds outside managed folders;
   - refuse removing Docker access from a folder an app uses.
-- [ ] T162 [US9] Implement `/apps` (CRUD, start, stop, update, and binding warnings) in `management/src/FileDock.Management.Api/Endpoints/AppEndpoints.cs`, and the apps page in `web/src/features/apps/`
-- [ ] T163 [US9] Write the acceptance test `tests/e2e/test_storage_shares.py` (US9 scenarios 1–13, SC-018, SC-022):
+- [X] T162 [US9] Implement `/apps` (CRUD, start, stop, update, and binding warnings) in `management/src/FileDock.Management.Api/Endpoints/AppEndpoints.cs`, and the apps page in `web/src/features/apps/`
+- [X] T163 [US9] Write the acceptance test `tests/e2e/test_storage_shares.py` (US9 scenarios 1–13, SC-018, SC-022):
   - create, adopt, and grow pools;
   - removing a disk marks the pool Failed with an alert within 1 minute, and recreate keeps its identity;
   - System Pool fill and limits;
@@ -924,6 +924,11 @@ failure").
   - SMB, NFS, and WebDAV access rules;
   - a container bind;
   - the outside-data warning.
+
+**Implementation evidence (2026-10-15)**: T143–T163 code and test definitions are implemented.
+Local checks and outstanding Linux/PVE/provider acceptance are listed in
+[phase11-testing.md](./phase11-testing.md). Checked implementation tasks do not claim the
+independent VM test or destructive acceptance has passed.
 
 **Checkpoint**: The full local storage, sharing, and container foundation is in place. US3's full
 data-plane test and US5's pool flows can now run end to end.
@@ -1200,3 +1205,9 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 - [X] T200 Uninstall the current FileDock test installation on the PVE VM and clear FileDock state for manual reinstallation; preserve the offline bundle.
 
 - [X] T201 Set both Management UI and API to HTTP port 8021 with one listener; update installer/dev API target and documentation.
+
+### Phase 11 prerequisite repair
+
+- [X] T273 Fix the Phase 10 systemd mount scalar quoting defect found during PVE testing;
+  reject unsafe scalar paths and verify source/target device and inode after a bind mount.
+  Regression coverage is in fd-reconcile and fd-storage; installed Linux retest is pending.

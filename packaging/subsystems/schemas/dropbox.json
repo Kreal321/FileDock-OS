@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "title": "OAuth client ID"
+    },
+    "root_namespace_id": {
+      "type": "string",
+      "title": "Root namespace ID"
+    }
+  }
+}

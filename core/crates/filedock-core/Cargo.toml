@@ -26,6 +26,7 @@ fd-observe.workspace = true
 fd-reconcile.workspace = true
 fd-secrets.workspace = true
 fd-state.workspace = true
+fd-storage.workspace = true
 fd-subsystems.workspace = true
 bytes.workspace = true
 libc.workspace = true

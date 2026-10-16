@@ -8,6 +8,7 @@ pub mod observability;
 pub mod recovery;
 pub mod secrets;
 pub mod status;
+pub mod storage;
 
 use std::sync::Arc;
 
@@ -42,6 +43,8 @@ type TemporaryS3Connections = std::collections::BTreeMap<
 >;
 
 pub struct App {
+    pub storage_lock: Mutex<()>,
+    pub oauth_flows: Mutex<std::collections::BTreeMap<String, crate::oauth_runtime::Flow>>,
     pub config: Config,
     pub state_engine: Mutex<fd_appstate::engine::Engine>,
     pub restore_sources:
@@ -102,6 +105,8 @@ pub async fn serve(
         events.clone(),
     ));
     let app = Arc::new(App {
+        storage_lock: Mutex::new(()),
+        oauth_flows: Mutex::new(std::collections::BTreeMap::new()),
         state_engine: Mutex::new(fd_appstate::engine::Engine::new(
             store.db().clone(),
             config.state_spool.clone(),
@@ -186,6 +191,9 @@ pub async fn serve(
     }
     tokio::spawn(crate::state_runtime::run(app.clone()));
     tokio::spawn(crate::notification_runtime::run(app.clone()));
+    tokio::spawn(crate::storage_runtime::run(app.clone()));
+    tokio::spawn(crate::sharing_runtime::run(app.clone()));
+    tokio::spawn(crate::oauth_runtime::maintenance(app.clone()));
     let startup_app = app.clone();
     tokio::spawn(async move {
         for operation in startup_app.journal.unfinished().unwrap_or_default() {
@@ -194,6 +202,9 @@ pub async fn serve(
                 "InstallExtension" | "UpgradeExtension" | "RemoveExtension" | "RestartExtension"
             ) {
                 let _ = crate::extension_runtime::resume(&startup_app, &operation.id).await;
+            }
+            if operation.kind == "AppAction" {
+                let _ = crate::app_runtime::resume(startup_app.clone(), &operation.id).await;
             }
             if operation.kind == "Restore" {
                 let _ = crate::restore_runtime::resume(&startup_app, &operation.id).await;
@@ -220,6 +231,12 @@ pub async fn serve(
         mgmt_uid: config.mgmt_uid,
     };
     Server::builder()
+        .add_service(
+            fd_api::core::v1::storage_server::StorageServer::with_interceptor(
+                storage::StorageSvc { app: app.clone() },
+                interceptor.clone(),
+            ),
+        )
         .add_service(
             fd_api::core::v1::extensions_server::ExtensionsServer::with_interceptor(
                 extensions::ExtensionsSvc { app: app.clone() },

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub socket: PathBuf,
+    pub apps_root: PathBuf,
     pub state_root: PathBuf,
     pub extension_root: PathBuf,
     pub extension_inbox: PathBuf,
@@ -23,6 +24,7 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         Self {
+            apps_root: env_path("FD_APPS_ROOT", "/var/lib/filedock/apps"),
             extension_root: env_path("FD_EXTENSION_ROOT", "/var/lib/filedock/extensions"),
             extension_inbox: env_path("FD_EXTENSION_INBOX", "/var/lib/filedock/extensions/inbox"),
             extension_keys: env_path("FD_EXTENSION_KEYS", "/etc/filedock/extensions/trusted-keys"),

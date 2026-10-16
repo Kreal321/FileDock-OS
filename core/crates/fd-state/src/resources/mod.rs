@@ -228,7 +228,7 @@ mod tests {
             ),
             (
                 ResourceKind::ContainerApp,
-                json!({"name": "jellyfin", "compose": "services: {}"}),
+                json!({"name": "jellyfin", "compose": "services: {jellyfin: {image: jellyfin/jellyfin:1}}"}),
             ),
             (
                 ResourceKind::Extension,

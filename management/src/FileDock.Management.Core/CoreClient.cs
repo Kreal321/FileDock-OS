@@ -18,6 +18,7 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
     public Connectors.ConnectorsClient Connectors { get; }
     public Recovery.RecoveryClient Recovery { get; }
     public Extensions.ExtensionsClient Extensions { get; }
+    public Storage.StorageClient Storage { get; }
 
     public CoreClient(IConfiguration configuration)
     {
@@ -42,6 +43,7 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
         Connectors = new Connectors.ConnectorsClient(_channel);
         Recovery = new Recovery.RecoveryClient(_channel);
         Extensions = new Extensions.ExtensionsClient(_channel);
+        Storage = new Storage.StorageClient(_channel);
     }
 
     public async Task ApplyApplianceNameAsync(string applianceName, string actor, string requestId, CancellationToken cancellationToken = default)

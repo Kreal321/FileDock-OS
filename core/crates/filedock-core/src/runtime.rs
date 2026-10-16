@@ -107,6 +107,51 @@ pub async fn configure(app: &App) -> Result<(), Status> {
             rclone_connections.push((row.resource.id, connection));
         }
     }
+    // rclone may rotate OAuth credentials during an operation. Persist the latest token in the
+    // encrypted vault before deriving the next tmpfs configuration, so restart cannot restore an old token.
+    if app
+        .supervisor
+        .status("rclone")
+        .is_ok_and(|s| s.state == "Running")
+    {
+        let adapter = fd_connectors::rclone::RcloneAdapter::with_socket(
+            app.config.socket.parent().unwrap().join("rclone.sock"),
+        );
+        for (id, connection) in &rclone_connections {
+            if let ConnectionDefinition::Bound(bound) = &connection.definition
+                && let Ok(remote) = fd_connectors::oauth::credentials(&adapter, id).await
+                && let Some(token) = remote["token"].as_str()
+            {
+                let mut vault = app.secrets.lock().await;
+                for reference in &bound.credentials {
+                    if let Ok(bytes) = vault.get(reference)
+                        && let Ok(mut saved) = serde_json::from_slice::<serde_json::Value>(&bytes)
+                        && saved.get("token").is_some()
+                        && saved["token"] != token
+                    {
+                        saved["token"] = json!(token);
+                        vault
+                            .put(
+                                reference,
+                                &serde_json::to_vec(&saved).map_err(internal)?,
+                                vec!["rclone".into()],
+                            )
+                            .map_err(internal)?;
+                        app.store
+                            .db()
+                            .with(|c| {
+                                fd_state::db::put_setting(
+                                    c,
+                                    "config.changed_at",
+                                    &json!(fd_state::db::now_text()),
+                                )
+                            })
+                            .map_err(internal)?;
+                    }
+                }
+            }
+        }
+    }
     let secrets = app.secrets.lock().await;
     let mut secret_files = BTreeMap::new();
     for target in ["fd-s3", "rclone", "backup-engine"] {
@@ -137,6 +182,26 @@ pub async fn configure(app: &App) -> Result<(), Status> {
                 String::from_utf8(secrets.get(&def.secret_key_ref).map_err(internal)?.to_vec())
                     .map_err(internal)?,
             ));
+        }
+        if let ConnectionDefinition::Bound(def) = &spec.definition {
+            for reference in &def.credentials {
+                let bytes = secrets.get(reference).map_err(internal)?;
+                let credentials: serde_json::Value =
+                    serde_json::from_slice(&bytes).map_err(internal)?;
+                if let Some(values) = credentials.as_object() {
+                    for (key, value) in values {
+                        if key == "type" {
+                            continue;
+                        }
+                        if let Some(text) = value.as_str() {
+                            if key.contains(['\n', '\r', '=']) || text.contains(['\n', '\r']) {
+                                return Err(Status::invalid_argument("connection.config_invalid"));
+                            }
+                            remote.lines.push((key.clone(), text.to_owned()));
+                        }
+                    }
+                }
+            }
         }
     }
     drop(secrets);
@@ -227,7 +292,11 @@ pub async fn test_connection(
     let connector = fd_connectors::ConnectionTester::routed_connector(
         &routes,
         &connection,
-        RouteUse::OwnedObjectStorage,
+        if connection.is_object_storage() {
+            RouteUse::OwnedObjectStorage
+        } else {
+            RouteUse::CloudMount
+        },
     )
     .map_err(internal)?;
     if connector == "rclone" {
@@ -301,7 +370,13 @@ async fn test_rclone(
     } else {
         format!("{}:{}", reference.id, bucket)
     };
-    let adapter = fd_connectors::rclone::adapter::RcloneAdapter::new();
+    let adapter = fd_connectors::rclone::adapter::RcloneAdapter::with_socket(
+        app.config.socket.parent().unwrap().join("rclone.sock"),
+    );
+    if !connection.is_object_storage() {
+        adapter.list(&remote, "").await.map_err(internal)?;
+        return save_probe(app,reference,"rclone",ext::ProbeResult{checks:vec![ext::ProbeCheck{name:"list".into(),ok:true,detail:"Authorization verified; no write probe is performed for this provider family".into()}],write_steps_run:false,..Default::default()});
+    }
     // Fail closed on any ownership read error other than a known missing object.
     let owner = adapter.read(&remote, "_filedock/owner.json").await;
     let read_only = crate::state_runtime::locations(app)?.iter().any(|l| {
