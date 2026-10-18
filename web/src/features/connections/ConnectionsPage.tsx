@@ -67,13 +67,22 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
     new Set(
       options.data?.connectors
         .filter((c) => c.enabled)
-        .flatMap((c) => c.families.map((f) => f.family)) ?? [],
+        .flatMap((c) =>
+          c.families
+            .filter((f) => f.family === 's3-compatible' || f.connectionSchema)
+            .map((f) => f.family),
+        ) ?? [],
     ),
   );
   function open(row: Resource | null) {
     setEditing(row);
     setName(String(row?.spec.name ?? ''));
-    setFamily(String(row?.spec.providerFamily ?? 's3-compatible'));
+    setFamily(
+      String(
+        row?.spec.providerFamily ??
+          (families.includes('s3-compatible') ? 's3-compatible' : (families[0] ?? 's3-compatible')),
+      ),
+    );
     const def = (row?.spec.definition ?? {}) as Record<string, unknown>;
     setEndpoint(String(def.endpoint ?? ''));
     setRegion(String(def.region ?? 'us-east-1'));
@@ -96,9 +105,25 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
     setFlow(null);
     setPaste('');
   }
-  const schema = options.data?.connectors
-    .find((c) => c.enabled && c.families.some((f) => f.family === family))
-    ?.families.find((f) => f.family === family)?.connectionSchema;
+  const previousDefinition = editing?.spec.definition as Record<string, unknown> | undefined;
+  const previousOwner =
+    previousDefinition?.type === 'bound' ? String(previousDefinition.connectorId ?? '') : undefined;
+  const candidates =
+    options.data?.connectors.filter(
+      (connector) =>
+        connector.enabled &&
+        connector.families.some(
+          (provider) => provider.family === family && provider.connectionSchema,
+        ),
+    ) ?? [];
+  // Bound credentials belong to their stored owner. Never silently migrate an edited connection.
+  // New connections prefer the schema owner used by the current OAuth implementation.
+  const owner =
+    previousOwner !== undefined
+      ? candidates.find((connector) => connector.subsystemId === previousOwner)
+      : (candidates.find((connector) => connector.subsystemId === 'rclone') ?? candidates[0]);
+  const schema = owner?.families.find((provider) => provider.family === family)?.connectionSchema;
+  const ownerUnavailable = family !== 's3-compatible' && !owner;
   function configuration() {
     try {
       return JSON.parse(config) as Record<string, string>;
@@ -108,6 +133,7 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
   }
   function save() {
     void action.act(() => {
+      if (ownerUnavailable) throw new Error('The connection schema owner is unavailable.');
       const old = (editing?.spec.definition ?? {}) as Record<string, unknown>;
       const definition =
         family === 's3-compatible'
@@ -122,9 +148,7 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
             }
           : {
               type: 'bound',
-              connectorId: options.data?.connectors.find(
-                (c) => c.enabled && c.families.some((f) => f.family === family),
-              )?.subsystemId,
+              connectorId: owner?.subsystemId,
               config: JSON.parse(config),
               credentials: flow?.credentialRef ? [flow.credentialRef] : (old.credentials ?? []),
             };
@@ -222,7 +246,11 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
         dirty={dirty}
         busy={action.busy}
         footer={
-          <Button disabled={action.disabled || !name} busy={action.busy} onClick={save}>
+          <Button
+            disabled={action.disabled || !name || ownerUnavailable}
+            busy={action.busy}
+            onClick={save}
+          >
             Save connection
           </Button>
         }
@@ -244,9 +272,11 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
               onChange={(e) => {
                 setFamily(e.target.value);
                 setFlow(null);
+                setConfig('{}');
+                setPaste('');
               }}
             >
-              {families.map((f) => (
+              {Array.from(new Set([...families, ...(editing ? [family] : [])])).map((f) => (
                 <option key={f}>{f}</option>
               ))}
             </select>
@@ -288,6 +318,13 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
             </>
           ) : (
             <>
+              {ownerUnavailable && !options.isPending ? (
+                <p role="alert">
+                  {previousOwner
+                    ? "This connection's connector is unavailable or no longer provides its schema."
+                    : 'No enabled connector provides a connection schema for this provider.'}
+                </p>
+              ) : null}
               {Object.entries(schema?.properties ?? {}).map(([key, property]) => (
                 <Field
                   key={key}
@@ -309,23 +346,25 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
                   hint="Provider configuration follows its connector schema. Store authorization tokens through Authorize, not in this field."
                 />
               </details>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={action.disabled}
-                onClick={() =>
-                  void action.act(async () =>
-                    setFlow(
-                      await api.post<Flow>('/connections/oauth/start', {
-                        providerFamily: family,
-                        config: JSON.parse(config),
-                      }),
-                    ),
-                  )
-                }
-              >
-                Authorize provider
-              </Button>
+              {owner?.subsystemId === 'rclone' ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={action.disabled}
+                  onClick={() =>
+                    void action.act(async () =>
+                      setFlow(
+                        await api.post<Flow>('/connections/oauth/start', {
+                          providerFamily: family,
+                          config: JSON.parse(config),
+                        }),
+                      ),
+                    )
+                  }
+                >
+                  Authorize provider
+                </Button>
+              ) : null}
               {flow ? (
                 <>
                   <p>

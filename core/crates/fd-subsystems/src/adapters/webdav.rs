@@ -16,6 +16,10 @@ pub fn apply(
         return Ok(());
     }
     let mount = command("systemd-escape", &["--path", "--suffix=mount", path])?;
+    // systemd-run parses property values again. Preserve the literal backslashes in
+    // escaped unit names, and quote paths so spaces remain inside one path entry.
+    let dependency = property_word(&mount);
+    let writable_path = property_word(path);
     let mut args = vec![
         "--collect".into(),
         "--unit".to_owned(),
@@ -24,9 +28,9 @@ pub fn apply(
         "--property=Restart=on-failure".into(),
         "--property=ProtectSystem=strict".into(),
         "--property=NoNewPrivileges=yes".into(),
-        format!("--property=BindsTo={mount}"),
-        format!("--property=After={mount}"),
-        format!("--property=ReadWritePaths={path}"),
+        format!("--property=BindsTo={dependency}"),
+        format!("--property=After={dependency}"),
+        format!("--property=ReadWritePaths={writable_path}"),
         "/usr/bin/rclone".into(),
         "serve".into(),
         "webdav".into(),
@@ -44,4 +48,8 @@ pub fn apply(
         &args.iter().map(String::as_str).collect::<Vec<_>>(),
     )?;
     Ok(())
+}
+
+fn property_word(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('\"', "\\\""))
 }

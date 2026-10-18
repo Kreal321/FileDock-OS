@@ -1211,3 +1211,14 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 - [X] T273 Fix the Phase 10 systemd mount scalar quoting defect found during PVE testing;
   reject unsafe scalar paths and verify source/target device and inode after a bind mount.
   Regression coverage is in fd-reconcile and fd-storage; installed Linux retest is pending.
+
+### Phase 11 PVE findings repair (2026-10-18)
+
+Implementation tasks below are complete in source. Local compilation/lint passed; installed
+Linux and regression tests remain pending. See [phase11-fixes-2026-10-18.md](./phase11-fixes-2026-10-18.md).
+
+- [X] T274 Retain lsblk partition ancestry so root/swap disks are classified as system disks.
+- [X] T275 Escape WebDAV systemd-run dependency/path property values for generated folder names.
+- [X] T276 Isolate share failures and backend readiness by protocol; retry unapplied configuration.
+- [X] T277 Make NFS resize quiescing idempotent, refresh generated dependencies, serialize share/storage work, restore dependent reconciliation, and atomically record failed journal steps.
+- [X] T278 Select a schema-capable bound-connection owner for Azure and other providers; retain stored ownership on edits and align OAuth availability with its owner.

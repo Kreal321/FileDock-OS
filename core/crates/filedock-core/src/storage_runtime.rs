@@ -719,39 +719,18 @@ fn quiesce(app: &App, pool: &str) -> Result<()> {
         0o644,
     )?;
     fd_storage::run("smbcontrol", &["all", "reload-config"])?;
-    fd_storage::atomic(
-        Path::new("/etc/exports.d/filedock.exports"),
-        fd_subsystems::adapters::nfs::render(&nfs)
-            .map_err(err)?
-            .as_bytes(),
-        0o644,
-    )?;
-    fd_storage::run("exportfs", &["-ra"])?;
+    // One aggregate exportfs reload removes affected entries. Do not unexport them twice.
+    crate::sharing_runtime::apply_nfs(app, &nfs).map_err(err)?;
     for export in rows(app, ResourceKind::Export)? {
-        if let Some(folder) = folders
+        if folders
             .iter()
-            .find(|f| export.spec["folderId"] == f.resource.id)
+            .any(|f| export.spec["folderId"] == f.resource.id)
         {
             match export.spec["protocol"].as_str().unwrap_or("") {
                 "Smb" => {
                     fd_storage::run("smbcontrol", &["all", "close-share", &export.resource.id])?;
                 }
-                "Nfs" => {
-                    for rule in export.spec["rules"].as_array().into_iter().flatten() {
-                        if let Some(client) = rule["client"].as_str() {
-                            fd_storage::run(
-                                "exportfs",
-                                &[
-                                    "-u",
-                                    &format!(
-                                        "{client}:{}",
-                                        folder.spec["filedockPath"].as_str().unwrap_or("")
-                                    ),
-                                ],
-                            )?;
-                        }
-                    }
-                }
+                "Nfs" => {} // Already removed by the aggregate reload above.
                 "WebDav" => {
                     for role in ["read", "write"] {
                         let _ = fd_storage::run(

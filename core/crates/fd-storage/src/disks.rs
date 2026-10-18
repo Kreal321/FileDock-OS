@@ -87,6 +87,7 @@ pub fn discover() -> Result<Vec<Disk>> {
         "lsblk",
         &[
             "--json",
+            "--tree",
             "--bytes",
             "--paths",
             "--output",

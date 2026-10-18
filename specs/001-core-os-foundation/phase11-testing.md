@@ -144,3 +144,10 @@ or changing that host. This suite is not a non-destructive smoke for the current
 Reviewed browser captures are under ignored `web/test-results/phase11-*.png`; they are local
 review artifacts, not replacement canonical Linux screenshot baselines. Full UI human/zoom/keyboard
 acceptance remains subject to the existing UI acceptance plan.
+
+## October 18 repair update
+
+The October 16 installed-VM smoke reproduced five issues. Source fixes and their exact scope are
+recorded in [phase11-fixes-2026-10-18.md](./phase11-fixes-2026-10-18.md). Rust compilation/Clippy
+and the frontend build/lint pass. The fixed release has not been deployed or retested on PVE;
+the original smoke findings remain the historical evidence until the listed retest passes.

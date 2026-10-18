@@ -213,7 +213,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match observed.recv().await {
                 Ok(event)
                     if event.r#type.starts_with("subsystem.")
-                        || event.r#type == "folder.status" =>
+                        || event.r#type == "folder.status"
+                        || event.r#type == "pool.health.changed" =>
                 {
                     event_reconciler.enqueue_all_kinds().await
                 }

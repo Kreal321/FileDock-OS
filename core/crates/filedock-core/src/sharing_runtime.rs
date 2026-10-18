@@ -3,14 +3,19 @@ use crate::{api::App, storage_runtime::rows};
 use fd_state::ResourceKind;
 use fd_subsystems::adapters::{nfs, samba, share_users, webdav};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Arc};
 pub async fn run(app: Arc<App>) {
     if crate::storage_runtime::enabled().is_err() {
         return;
     }
     loop {
-        if let Err(error) = reconcile(&app).await {
-            tracing::warn!(%error,"share reconciliation failed");
+        {
+            // Resizes must not race a share pass which could re-export a quiesced folder.
+            let _storage = app.storage_lock.lock().await;
+            if let Err(error) = reconcile(&app).await {
+                tracing::warn!(%error,"share reconciliation failed");
+            }
         }
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
@@ -262,21 +267,28 @@ async fn reconcile(app: &App) -> Result<(), String> {
         match result {
             Ok(status) => statuses.push((row, status)),
             Err(detail) => {
-                smb.retain(|(id, _, _)| id != &row.resource.id);
-                if let Some(folder) = folders
-                    .iter()
-                    .find(|f| row.spec["folderId"] == f.resource.id)
-                {
-                    nfsexports.retain(|(path, _)| folder.spec["filedockPath"] != *path);
-                }
-                for role in ["read", "write"] {
-                    let _ = share_users::command(
-                        "systemctl",
-                        &[
-                            "stop",
-                            &format!("filedock-webdav-{}-{role}.service", row.resource.id),
-                        ],
-                    );
+                match row.spec["protocol"].as_str() {
+                    Some("Smb") => smb.retain(|(id, _, _)| id != &row.resource.id),
+                    Some("Nfs") => {
+                        if let Some(folder) = folders
+                            .iter()
+                            .find(|f| row.spec["folderId"] == f.resource.id)
+                        {
+                            nfsexports.retain(|(path, _)| folder.spec["filedockPath"] != *path);
+                        }
+                    }
+                    Some("WebDav") => {
+                        for role in ["read", "write"] {
+                            let _ = share_users::command(
+                                "systemctl",
+                                &[
+                                    "stop",
+                                    &format!("filedock-webdav-{}-{role}.service", row.resource.id),
+                                ],
+                            );
+                        }
+                    }
+                    _ => {}
                 }
                 statuses.push((
                     row,
@@ -302,28 +314,16 @@ async fn reconcile(app: &App) -> Result<(), String> {
             }
         }
     }
-    let applied = (|| -> Result<(), String> {
-        let smb = samba::render(&smb)?;
-        if update(
-            Path::new("/etc/filedock/samba/shares.conf"),
-            smb.as_bytes(),
-            0o644,
-        )? {
-            share_users::command("testparm", &["--suppress-prompt"])?;
-            share_users::command("smbcontrol", &["all", "reload-config"])?;
-        }
-        let nfs = nfs::render(&nfsexports)?;
-        if update(
-            Path::new("/etc/exports.d/filedock.exports"),
-            nfs.as_bytes(),
-            0o644,
-        )? {
-            share_users::command("exportfs", &["-ra"])?;
-        }
-        Ok(())
-    })();
+    // Each backend applies independently; readiness belongs only to that backend's result.
+    let smb_applied = apply_smb(app, &smb);
+    let nfs_applied = apply_nfs(app, &nfsexports);
     for (row, mut status) in statuses {
-        if let Err(detail) = &applied {
+        let failure = match row.spec["protocol"].as_str() {
+            Some("Smb") => smb_applied.as_ref().err(),
+            Some("Nfs") => nfs_applied.as_ref().err(),
+            _ => None,
+        };
+        if let Some(detail) = failure {
             status = json!({"state":"Failed","detail":detail,"observedGeneration":row.generation});
         }
         if row.status.as_ref() != Some(&status) {
@@ -335,5 +335,82 @@ async fn reconcile(app: &App) -> Result<(), String> {
                 .emit("export.state.changed", Some(row.resource.clone()), status);
         }
     }
-    applied
+    smb_applied.and(nfs_applied)
+}
+
+// Record only successfully applied content. A failed reload must be retried even if
+// the desired file is already on disk, including when the last export was deleted.
+fn pending_config(
+    app: &App,
+    protocol: &str,
+    path: &Path,
+    text: &str,
+) -> Result<(bool, String), String> {
+    let changed = update(path, text.as_bytes(), 0o644)?;
+    let hash = hex::encode(Sha256::digest(text.as_bytes()));
+    let applied = app
+        .store
+        .db()
+        .with(|c| fd_state::db::get_setting(c, &format!("shares.applied.{protocol}")))
+        .map_err(error)?;
+    Ok((
+        changed || applied.as_ref().and_then(serde_json::Value::as_str) != Some(hash.as_str()),
+        hash,
+    ))
+}
+fn applied_config(app: &App, protocol: &str, hash: &str) -> Result<(), String> {
+    app.store
+        .db()
+        .with(|c| fd_state::db::put_setting(c, &format!("shares.applied.{protocol}"), &json!(hash)))
+        .map_err(error)
+}
+fn subsystem_enabled(app: &App, id: &str) -> Result<bool, String> {
+    Ok(app
+        .subsystems
+        .get(id)
+        .map_err(error)?
+        .is_some_and(|s| s.enabled))
+}
+fn apply_smb(
+    app: &App,
+    exports: &[(String, String, Vec<fd_state::resources::ExportRule>)],
+) -> Result<(), String> {
+    let text = samba::render(exports)?;
+    let (pending, hash) = pending_config(
+        app,
+        "smb",
+        Path::new("/etc/filedock/samba/shares.conf"),
+        &text,
+    )?;
+    if pending {
+        share_users::command("testparm", &["--suppress-prompt"])?;
+        if subsystem_enabled(app, "samba")? {
+            share_users::command("smbcontrol", &["all", "reload-config"])?;
+        }
+        applied_config(app, "smb", &hash)?;
+    }
+    Ok(())
+}
+pub(crate) fn apply_nfs(
+    app: &App,
+    exports: &[(String, Vec<fd_state::resources::ExportRule>)],
+) -> Result<(), String> {
+    let text = nfs::render(exports)?;
+    let (pending, hash) = pending_config(
+        app,
+        "nfs",
+        Path::new("/etc/exports.d/filedock.exports"),
+        &text,
+    )?;
+    if pending {
+        // Debian's NFS generator derives mount dependencies from the exports file.
+        // Refresh them before stopping a removed/shrinking mount so NFS itself is not stopped.
+        share_users::command("systemctl", &["daemon-reload"])?;
+        if subsystem_enabled(app, "nfs")? {
+            share_users::command("systemctl", &["start", "nfs-server.service"])?;
+        }
+        share_users::command("exportfs", &["-ra"])?;
+        applied_config(app, "nfs", &hash)?;
+    }
+    Ok(())
 }

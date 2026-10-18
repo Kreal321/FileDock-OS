@@ -297,15 +297,30 @@ impl Journal {
         result: Result<Value, String>,
     ) -> Result<Operation, JournalError> {
         self.db.with(|conn| {
+            let tx = conn.transaction()?;
             match result {
                 Ok(value) => {
-                    conn.execute("UPDATE operation_step SET state='done', result=?1 WHERE operation_id=?2 AND name=?3",params![value.to_string(),id,name])?;
-                    let remaining:i64=conn.query_row("SELECT COUNT(*) FROM operation_step WHERE operation_id=?1 AND state<>'done'",[id],|row|row.get(0))?;
-                    set_state(conn,id,if remaining==0 {OperationState::Succeeded}else{OperationState::Running},None)?;
+                    tx.execute(
+                        "UPDATE operation_step SET state='done', result=?1, detail='' WHERE operation_id=?2 AND name=?3",
+                        params![value.to_string(), id, name],
+                    )?;
+                    let remaining: i64 = tx.query_row(
+                        "SELECT COUNT(*) FROM operation_step WHERE operation_id=?1 AND state<>'done'",
+                        [id], |row| row.get(0),
+                    )?;
+                    set_state(&tx, id, if remaining == 0 { OperationState::Succeeded } else { OperationState::Running }, None)?;
                 }
-                Err(error) => { set_state(conn,id,OperationState::Failed,Some(&error))?; }
+                Err(error) => {
+                    tx.execute(
+                        "UPDATE operation_step SET state='failed', result=NULL, detail=?1 WHERE operation_id=?2 AND name=?3",
+                        params![error, id, name],
+                    )?;
+                    set_state(&tx, id, OperationState::Failed, Some(&error))?;
+                }
             }
-            load(conn,id)
+            let operation = load(&tx, id)?;
+            tx.commit()?;
+            Ok(operation)
         })
     }
 
