@@ -13,7 +13,16 @@ pub fn apply(
     }
     let unit = format!("filedock-webdav-{id}.service");
     if command("systemctl", &["is-active", "--quiet", &unit]).is_ok() {
-        return Ok(());
+        let running = command(
+            "systemctl",
+            &["show", "--property=ExecStart", "--value", &unit],
+        )?;
+        if uses_live_directory_entries(&running) {
+            return Ok(());
+        }
+        // Transient units survive a Core upgrade. Reconcile the running command too,
+        // so existing exports receive the same cache policy as newly created ones.
+        command("systemctl", &["stop", &unit])?;
     }
     let mount = command("systemd-escape", &["--path", "--suffix=mount", path])?;
     // systemd-run parses property values again. Preserve the literal backslashes in
@@ -39,6 +48,9 @@ pub fn apply(
         format!("0.0.0.0:{port}"),
         "--htpasswd".into(),
         htpasswd.display().to_string(),
+        // Each role has its own VFS. Local files can also change through SMB, NFS
+        // or Docker; a cached directory would hide those changes for five minutes.
+        "--dir-cache-time=0s".into(),
     ];
     if readonly {
         args.push("--read-only".into())
@@ -52,4 +64,29 @@ pub fn apply(
 
 fn property_word(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('\"', "\\\""))
+}
+
+fn uses_live_directory_entries(command: &str) -> bool {
+    command
+        .split_whitespace()
+        .any(|word| word == "--dir-cache-time=0s")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn running_unit_requires_the_exact_live_directory_policy() {
+        assert!(uses_live_directory_entries(
+            "{ path=/usr/bin/rclone ; argv[]=/usr/bin/rclone serve webdav /storage/test --dir-cache-time=0s ; }"
+        ));
+        for command in [
+            "rclone serve webdav /storage/test",
+            "rclone serve webdav /storage/test --dir-cache-time=5m",
+            "rclone serve webdav /storage/test --dir-cache-time=0s-extra",
+        ] {
+            assert!(!uses_live_directory_entries(command));
+        }
+    }
 }

@@ -1214,11 +1214,17 @@ Task: "Create the s3-no-conditional and sample-connector fixtures in tests/fixtu
 
 ### Phase 11 PVE findings repair (2026-10-18)
 
-Implementation tasks below are complete in source. Local compilation/lint passed; installed
-Linux and regression tests remain pending. See [phase11-fixes-2026-10-18.md](./phase11-fixes-2026-10-18.md).
+Implementation tasks below are complete in source. Local compilation/lint and the focused
+installed Linux retest passed. A separate WebDAV cross-role visibility defect and remaining
+acceptance cases are recorded in [phase11-pve-retest-2026-10-18.md](./phase11-pve-retest-2026-10-18.md).
+See [phase11-fixes-2026-10-18.md](./phase11-fixes-2026-10-18.md) for implementation details.
 
 - [X] T274 Retain lsblk partition ancestry so root/swap disks are classified as system disks.
 - [X] T275 Escape WebDAV systemd-run dependency/path property values for generated folder names.
 - [X] T276 Isolate share failures and backend readiness by protocol; retry unapplied configuration.
 - [X] T277 Make NFS resize quiescing idempotent, refresh generated dependencies, serialize share/storage work, restore dependent reconciliation, and atomically record failed journal steps.
 - [X] T278 Select a schema-capable bound-connection owner for Azure and other providers; retain stored ownership on edits and align OAuth availability with its owner.
+
+- [X] T279 Disable directory caching for local WebDAV exports so separate roles and other
+  protocols observe file creation, rename and deletion promptly. Reconcile existing transient
+  units to the desired cache policy after upgrades. Installed release verification is pending.
