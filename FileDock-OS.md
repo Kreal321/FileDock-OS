@@ -774,7 +774,7 @@ The MVP should include the following.
 | SMB | Samba |
 | NFS | Linux kernel NFS |
 | WebDAV | rclone serve WebDAV |
-| Cloud connectors | rclone |
+| Cloud connectors | Native fd-s3 for S3-compatible owned storage; rclone for other providers/mounts; backup engine for repositories |
 | Cloud mount | rclone |
 | Backup | Kopia |
 | Container runtime | Docker Engine |
@@ -1879,48 +1879,50 @@ Reconnect cloud services
 
 ---
 
-# 50. Durability Classes for Managed Folders
+# 50. Storage Mode, Data Importance and Recovery
 
-Every managed folder should declare its durability class.
+Every managed folder selects one **Storage Mode**, which describes where its data lives.
+Protection is a separate observation, not a promise implied by the mode's name.
 
-Suggested UI:
+| Storage Mode | Authoritative data | Protection and exposure |
+| --- | --- | --- |
+| Local Only | Local pool | No off-appliance copy by default. Pool or appliance loss can lose all folder data. |
+| Cloud Mount | Existing cloud remote | Local bytes are disposable cache. Provider retention is separate from FileDock backup. |
+| Hybrid Backup | Local pool | Verified incremental snapshots protect data to the latest durable recovery point. Later local changes may be lost. |
+| Tiered Storage | Local hot tier and owned cloud tier | Verified cloud objects and durable tier metadata can be recovered. Hot data not yet migrated may be lost. |
 
-```text
-Durability
+Only Hybrid Backup asks for **Data Importance**: Critical, Important, Normal or Rebuildable.
+Critical defaults to a 5-minute backup interval, Important to 15 minutes, Normal to 1 hour;
+Rebuildable defaults to backup disabled. Administrators can change policies explicitly.
+Subfolders inherit their managed folder's mode; an importance override does not change it.
+Temporary subfolder contents are the only user data eligible for automatic pressure cleanup.
 
-- Disposable
-- Cloud Primary
-- Backed Up
-- Tiered
-```
+Protection status must show the schedule, last successful durable recovery point, pending
+changes and failures separately. Missing or stale observations never mean Healthy. A running
+application database copy is crash-consistent unless an application-aware provider establishes
+logical consistency. Recovery can require downtime; changes after the durable point and data
+without an off-appliance copy may be lost. A configuration snapshot does not back up folder bytes.
 
-## Disposable
+## Cloud connectors and routes
 
-Examples:
+The built-in native `fd-s3` connector serves S3-compatible owned object storage. The rclone
+connector serves other cloud families and Cloud Mount. Hybrid Backup repositories route to
+the backup engine, not through either general connector. Credentials are materialized only
+for actual referenced uses and their selected provider; probes use short-lived leases.
 
-- Cache
-- Temp
-- Transcode
+Settings → Connectors & routes shows family defaults and per-connection overrides. Preview
+identifies affected locations, credentials, capability loss and mount interruption. Overrides
+keep precedence when a default changes. Apply requires the current generation and the shown
+acknowledgements. An unavailable selected connector fails explicitly; no fallback is used.
 
-No backup.
-
-## Cloud Primary
-
-Cloud is authoritative.
-
-Local copies are cache only.
-
-## Backed Up
-
-Local is authoritative.
-
-Remote incremental snapshots protect it.
-
-## Tiered
-
-Data placement may be local or cloud.
-
-Tier metadata is authoritative and must be durable.
+An owned object location has one Writer. Every write session checks ownership. Conditional
+claim safety requires both declared capability and a successful provider probe; Basic safety
+requires an acknowledgement and a standing warning. Third-party owned storage also needs its
+own trust acknowledgement. Installing an extension changes no routes. Recovery can read a
+location without becoming its Writer; takeover is explicit and audited, except the documented
+reinstall recovery case. Reinstall bootstrap reads use built-in connectors until stored packages
+are restored. Mount/backup/tier data planes require their actual capability providers; installing
+the foundation alone does not make unavailable modes ready.
 
 ---
 

@@ -1,3 +1,4 @@
+import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { RestoreReport } from '../restore/RestoreReport.tsx';
 import type { Protection } from '../recovery/StateProtectionPage.tsx';
 import { useQuery } from '@tanstack/react-query';
@@ -116,7 +117,16 @@ export function DashboardPage({ connected = true }: { connected?: boolean }) {
           {n}
         </Notice>
       ))}
-      <a href="#/settings/state-protection">Review recovery copies and last durable snapshot</a>
+      <RecoveryPoint
+        label="Latest durable configuration recovery point"
+        at={protection.data?.copies
+          ?.map((copy) => copy.lastSnapshotAt)
+          .filter((at): at is string => Boolean(at && Number.isFinite(Date.parse(at))))
+          .sort()
+          .at(-1)}
+        cached={!connected || Boolean(protection.error)}
+      />
+      <a href="#/settings/state-protection">Review recovery copies and loss exposure</a>
       <RestoreReport />
       <div className="dashboard-grid">
         <Panel className="stack">

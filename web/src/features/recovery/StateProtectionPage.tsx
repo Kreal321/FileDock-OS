@@ -1,3 +1,4 @@
+import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
@@ -124,12 +125,12 @@ export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean 
                 <div key={i}>
                   <strong>{copy.description}</strong>
                   <p>
-                    {copy.kind} ·{' '}
-                    {copy.lastSnapshotAt
-                      ? `Last snapshot: ${new Date(copy.lastSnapshotAt).toLocaleString()}`
-                      : 'No durable snapshot yet'}{' '}
-                    · {q.error ? 'Cached' : copy.stale ? 'Stale' : 'Current'}
+                    {copy.kind} · {q.error ? 'Cached' : copy.stale ? 'Stale' : 'Current'}
                   </p>
+                  <RecoveryPoint
+                    at={copy.lastSnapshotAt}
+                    cached={Boolean(q.error) || Boolean(copy.stale)}
+                  />
                   {copy.lastError && <p className="error">{copy.lastError}</p>}
                 </div>
               ))}

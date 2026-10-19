@@ -323,6 +323,9 @@ EOF
   systemctl enable --now filedock-core.socket filedock-core.service filedock-management.service
   systemctl enable --now smbd.service nfs-server.service docker.service
   systemctl restart filedock-core.service filedock-management.service
+  # Existing connector processes must load updated binaries and vendor drop-ins too.
+  # Inactive connectors remain under Core supervision and are started when ready.
+  systemctl try-restart filedock-s3.service filedock-rclone.service
   for attempt in $(seq 1 60); do
     if curl --silent --fail --unix-socket /run/filedock/management-admin.sock http://localhost/health >/dev/null; then return 0; fi
     sleep 1

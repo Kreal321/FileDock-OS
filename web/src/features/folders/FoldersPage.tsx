@@ -1,3 +1,4 @@
+import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
@@ -130,6 +131,11 @@ export function FoldersPage({
                   <td>
                     <StatusBadge state={f.protectionState} />
                     <p>{f.exposure}</p>
+                    <RecoveryPoint
+                      label="Durable folder-data recovery point"
+                      at={f.status?.lastDurableRecoveryPoint}
+                      cached={!connected || Boolean(q.error)}
+                    />
                   </td>
                   <td>
                     {f.status?.state ?? 'Pending'}

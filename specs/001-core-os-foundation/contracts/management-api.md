@@ -239,3 +239,122 @@ FR-108.
 - Selecting an export protocol creates its declarative Export in the same Core transaction. Existing
   export rules and their application are managed in the Storage/sharing phase. Dependent exports,
   applications and extension bindings prevent folder deletion; deletion never erases underlying data.
+
+## OpenAPI operation inventory (Phase 13)
+
+This explicit inventory expands the shorthand tables above and includes implemented helper
+routes. It is checked against the generated document, including each operation’s documented
+problem response codes. Codes describe possible middleware/domain refusals, conditional on
+setup, scope, concurrency and Core availability; they are not all triggered on every request.
+The document itself requires read scope after setup. Root-only `/admin/*`, SignalR and static
+assets are intentionally outside the REST document.
+
+| Operation | Problem status codes |
+| --- | --- |
+| `GET /api/v1/activity` | `400,401,403,423,500` |
+| `GET /api/v1/admins` | `400,401,403,423,500` |
+| `POST /api/v1/admins` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/admins/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `PATCH /api/v1/admins/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/admins/{id}/password` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/alerts` | `400,401,403,423,500` |
+| `POST /api/v1/alerts/{id}/ack` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/apps` | `400,401,403,423,500` |
+| `POST /api/v1/apps` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/apps/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `PATCH /api/v1/apps/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/apps/{id}/{action}` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/audit` | `400,401,403,423,500` |
+| `GET /api/v1/auth/me` | `400,401,403,423,500` |
+| `POST /api/v1/auth/sign-in` | `400,401,403,409,422,429,500,503,507` |
+| `POST /api/v1/auth/sign-out` | `400,401,403,423,500,507` |
+| `POST /api/v1/auth/sign-out-all` | `400,401,403,423,500,507` |
+| `PUT /api/v1/capabilities/{capability}/default` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/connections` | `400,401,403,423,500` |
+| `POST /api/v1/connections` | `400,401,403,409,422,423,500,503,507` |
+| `POST /api/v1/connections/oauth/finish` | `400,401,403,409,422,423,500,503,507` |
+| `POST /api/v1/connections/oauth/start` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/connections/options` | `400,401,403,423,500` |
+| `DELETE /api/v1/connections/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `PATCH /api/v1/connections/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/connections/{id}/test` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/connector-routes` | `400,401,403,423,500` |
+| `PUT /api/v1/connector-routes` | `400,401,403,409,422,423,428,500,503,507` |
+| `POST /api/v1/connector-routes/preview` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/connectors` | `400,401,403,423,500` |
+| `PATCH /api/v1/connectors/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/diagnostics/bundle` | `400,401,403,423,500` |
+| `GET /api/v1/disks` | `400,401,403,423,500` |
+| `POST /api/v1/extensions` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/extensions/folders` | `400,401,403,423,500` |
+| `POST /api/v1/extensions/inspect` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/extensions/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/extensions/{id}/package` | `400,401,403,404,409,422,423,500,503,507` |
+| `POST /api/v1/extensions/{id}/restart` | `400,401,403,404,409,422,423,500,503,507` |
+| `POST /api/v1/extensions/{id}/upgrade` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/folders` | `400,401,403,423,500` |
+| `POST /api/v1/folders` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/folders/options` | `400,401,403,423,500` |
+| `POST /api/v1/folders/validate` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/folders/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/folders/{id}` | `400,401,403,404,423,500` |
+| `PATCH /api/v1/folders/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/folders/{id}/exports` | `400,401,403,404,423,500` |
+| `PUT /api/v1/folders/{id}/exports/{protocol}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/health` | `400,500` |
+| `GET /api/v1/locations` | `400,401,403,423,500` |
+| `POST /api/v1/locations/takeover` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/logs` | `400,401,403,423,500` |
+| `GET /api/v1/notification-channels` | `400,401,403,423,500` |
+| `POST /api/v1/notification-channels` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/notification-channels/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `PATCH /api/v1/notification-channels/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/notification-channels/{id}/test` | `400,401,403,404,409,422,423,500,503,507` |
+| `GET /api/v1/operations` | `400,401,403,423,500` |
+| `POST /api/v1/operations/reconcile` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/operations/{id}` | `400,401,403,404,423,500` |
+| `GET /api/v1/pools` | `400,401,403,423,500` |
+| `POST /api/v1/pools` | `400,401,403,409,422,423,500,503,507` |
+| `POST /api/v1/pools/adopt` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/pools/system` | `400,401,403,423,500` |
+| `PUT /api/v1/pools/system/limits` | `400,401,403,409,422,423,428,500,503,507` |
+| `DELETE /api/v1/pools/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/pools/{id}` | `400,401,403,404,423,500` |
+| `POST /api/v1/pools/{id}/disks` | `400,401,403,404,409,422,423,500,503,507` |
+| `POST /api/v1/pools/{id}/recreate` | `400,401,403,404,409,422,423,500,503,507` |
+| `POST /api/v1/recovery-key/confirm` | `400,401,403,409,422,423,500,503,507` |
+| `POST /api/v1/recovery-key/regenerate` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/restore/report` | `400,401,403,423,500` |
+| `POST /api/v1/restore/report/dismiss` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/secrets` | `400,401,403,423,500` |
+| `PUT /api/v1/secrets/{reference}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `POST /api/v1/setup/complete` | `400,401,403,409,422,429,500,503,507` |
+| `POST /api/v1/setup/recovery-key/confirm` | `400,401,403,409,422,429,500,503,507` |
+| `POST /api/v1/setup/restore` | `400,401,403,409,422,429,500,503,507` |
+| `POST /api/v1/setup/restore/file` | `400,401,403,409,422,429,500,503,507` |
+| `GET /api/v1/setup/restore/local` | `400,401,403,409,422,429,500,503` |
+| `POST /api/v1/setup/restore/local` | `400,401,403,409,422,429,500,503,507` |
+| `GET /api/v1/setup/restore/operations/{id}` | `400,401,403,404,409,422,429,500,503` |
+| `POST /api/v1/setup/restore/pool-mappings` | `400,401,403,409,422,429,500,503,507` |
+| `GET /api/v1/setup/restore/snapshots` | `400,401,403,409,422,429,500,503` |
+| `POST /api/v1/setup/restore/source` | `400,401,403,409,422,429,500,503,507` |
+| `POST /api/v1/setup/verify-code` | `400,401,403,409,422,429,500,503,507` |
+| `GET /api/v1/share-users` | `400,401,403,423,500` |
+| `POST /api/v1/share-users` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/share-users/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `PATCH /api/v1/share-users/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |
+| `GET /api/v1/state-protection` | `400,401,403,423,500` |
+| `GET /api/v1/state-protection/backup-file` | `400,401,403,423,500` |
+| `POST /api/v1/state-protection/connections` | `400,401,403,409,422,423,500,503,507` |
+| `PUT /api/v1/state-protection/destination` | `400,401,403,409,422,423,428,500,503,507` |
+| `POST /api/v1/state-protection/snapshot` | `400,401,403,409,422,423,500,503,507` |
+| `GET /api/v1/subsystems` | `400,401,403,423,500` |
+| `GET /api/v1/system/core-health` | `400,401,403,423,500` |
+| `GET /api/v1/system/network` | `400,401,403,423,500` |
+| `PUT /api/v1/system/network` | `400,401,403,409,422,423,428,500,503,507` |
+| `GET /api/v1/system/status` | `400,401,403,423,500` |
+| `GET /api/v1/system/storage-settings` | `400,401,403,423,500` |
+| `PUT /api/v1/system/storage-settings` | `400,401,403,409,422,423,428,500,503,507` |
+| `GET /api/v1/tokens` | `400,401,403,423,500` |
+| `POST /api/v1/tokens` | `400,401,403,409,422,423,500,503,507` |
+| `DELETE /api/v1/tokens/{id}` | `400,401,403,404,409,422,423,428,500,503,507` |

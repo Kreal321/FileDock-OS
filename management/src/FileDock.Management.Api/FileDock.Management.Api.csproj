@@ -14,4 +14,8 @@
     <InternalsVisibleTo Include="FileDock.Management.ApiTests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+
 </Project>

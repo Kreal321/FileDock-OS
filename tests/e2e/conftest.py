@@ -358,6 +358,14 @@ def small_disk_vm(vm_factory: Callable[[VmSpec], Vm]) -> Vm:
 
 
 @pytest.fixture
+def minimum_installed_vm(vm_factory: Callable[[VmSpec], Vm]) -> Vm:
+    """SC-009: actual minimum RAM/CPU; existing larger guests cannot stand in for this."""
+    vm = vm_factory(VmSpec(memory_mib=2048, vcpus=2, system_disk_gb=256, data_disks_gb=()))
+    vm.install()
+    return vm
+
+
+@pytest.fixture
 def installed_vm(vm: Vm) -> Vm:
     vm.install()
     return vm

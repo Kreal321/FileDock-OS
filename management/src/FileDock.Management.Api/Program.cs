@@ -21,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddFileDockProblemDetails();
+builder.Services.AddFileDockOpenApi();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddScoped<IAuditStore, EfAuditStore>();
@@ -124,6 +125,7 @@ using (var scope = app.Services.CreateScope())
 var api = app.MapGroup("/api/v1");
 api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapOpenApi("/api/v1/openapi.json").WithMetadata(new AccessScope("R"));
 api.MapSetup();
 api.MapAuth();
 api.MapSystem();

@@ -60,6 +60,8 @@ EOF
 install_bin "$pkg_core/usr/lib/filedock/filedock-core" "$ROOT/target/release/filedock-core"
 install_bin "$pkg_core/usr/lib/filedock/fd-extension-launcher" "$ROOT/target/release/fd-extension-launcher"
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.service" "$pkg_core/lib/systemd/system/"
+mkdir -p "$pkg_core/lib/systemd/system/filedock-core.service.d"
+install -m 0644 "$ROOT/packaging/systemd/filedock-core.service.d/background-priority.conf" "$pkg_core/lib/systemd/system/filedock-core.service.d/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.socket" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-extensions.socket" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-runtime.service" "$pkg_core/lib/systemd/system/"
@@ -113,6 +115,10 @@ Description: FileDock built-in subsystems
 EOF
 mkdir -p "$pkg_bin/lib/systemd/system"
 install -m 0644 "$ROOT/packaging/systemd/filedock-s3.service" "$ROOT/packaging/systemd/filedock-rclone.service" "$pkg_bin/lib/systemd/system/"
+for fd_connector in filedock-s3 filedock-rclone; do
+  mkdir -p "$pkg_bin/lib/systemd/system/$fd_connector.service.d"
+  install -m 0644 "$ROOT/packaging/systemd/$fd_connector.service.d/background-priority.conf" "$pkg_bin/lib/systemd/system/$fd_connector.service.d/"
+done
 for unit in smbd.service nfs-server.service docker.service; do
   mkdir -p "$pkg_bin/lib/systemd/system/$unit.d"
   printf '[Service]\nRestart=no\n' > "$pkg_bin/lib/systemd/system/$unit.d/50-filedock-supervision.conf"

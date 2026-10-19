@@ -21,7 +21,7 @@ export type Folder = {
   dataImportance: string | null;
   access: string[];
   advanced: Record<string, unknown>;
-  status?: { state: string; detail: string } | null;
+  status?: { state: string; detail: string; lastDurableRecoveryPoint?: string } | null;
   protectionState: string;
   exposure: string;
 };
