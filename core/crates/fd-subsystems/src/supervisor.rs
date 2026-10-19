@@ -169,7 +169,41 @@ impl Supervisor {
             {
                 tracing::error!(id = adapter.id(), %error, "supervision failed");
             }
+            let state = self
+                .status(adapter.id())
+                .map(|s| s.state)
+                .unwrap_or_default();
+            timer.reset_after(probe_interval(adapter.id(), &state));
         }
+    }
+}
+
+// Healthy data-plane units do not need two D-Bus handshakes/RPC probes per second.
+// Keep startup/backoff responsive and failure detection comfortably below one minute.
+fn probe_interval(id: &str, state: &str) -> Duration {
+    if id == "kopia" {
+        Duration::from_secs(30)
+    } else if matches!(state, "Running" | "Stopped" | "Failed") {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_millis(500)
+    }
+}
+
+#[cfg(test)]
+mod probe_interval_tests {
+    use super::*;
+    #[test]
+    fn stable_units_yield_while_startup_keeps_fast_probes() {
+        for id in ["fd-s3", "rclone", "samba", "nfs", "docker"] {
+            for state in ["Running", "Stopped", "Failed"] {
+                assert_eq!(probe_interval(id, state), Duration::from_secs(5));
+            }
+            for state in ["", "Starting", "Backoff"] {
+                assert_eq!(probe_interval(id, state), Duration::from_millis(500));
+            }
+        }
+        assert_eq!(probe_interval("kopia", "Running"), Duration::from_secs(30));
     }
 }
 
