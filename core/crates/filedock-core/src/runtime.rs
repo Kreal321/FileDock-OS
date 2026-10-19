@@ -38,6 +38,7 @@ pub fn s3_socket(app: &App) -> std::path::PathBuf {
 }
 
 pub async fn configure(app: &App) -> Result<(), Status> {
+    let _configuration = app.connector_config_lock.lock().await;
     let routes_row = app
         .store
         .get(&ResourceRef::singleton(ResourceKind::ConnectorRoutes))
@@ -70,11 +71,8 @@ pub async fn configure(app: &App) -> Result<(), Status> {
             ConnectionDefinition::Bound(def) => def.credentials.clone(),
         };
         let mut targets = std::collections::BTreeSet::new();
-        for use_kind in [
-            RouteUse::OwnedObjectStorage,
-            RouteUse::BackupRepository,
-            RouteUse::CloudMount,
-        ] {
+        let uses = connection_uses(app, &row.resource.id)?;
+        for use_kind in uses {
             if !use_kind.allowed_for_family(&connection.provider_family) {
                 continue;
             }
@@ -101,7 +99,7 @@ pub async fn configure(app: &App) -> Result<(), Status> {
         {
             s3.push(json!({"id": row.resource.id, "endpoint": def.endpoint, "region": def.region, "bucket": def.bucket,
                     "virtual_hosted": def.addressing_style == fd_state::resources::AddressingStyle::Virtual,
-                    "access_key_ref": def.access_key_ref, "secret_key_ref": def.secret_key_ref, "checksums": false}));
+                    "access_key_ref": def.access_key_ref, "secret_key_ref": def.secret_key_ref, "checksums": proven_checksums(&row,"fd-s3"), "storage_class":def.storage_class,"kms_key_id":match &def.server_side_encryption {Some(fd_state::resources::ServerSideEncryption::Kms{key_id})=>Some(key_id),_=>None},"bandwidth_limit":def.bandwidth_limit}));
         }
         if targets.contains("rclone") {
             rclone_connections.push((row.resource.id, connection));
@@ -207,19 +205,56 @@ pub async fn configure(app: &App) -> Result<(), Status> {
     drop(secrets);
     let conf = fd_connectors::rclone::conf::render_conf(&remotes);
     let path = app.config.socket.parent().unwrap().join("rclone.conf");
-    let changed = std::fs::read_to_string(&path).ok().as_deref() != Some(conf.as_str());
+    let previous = std::fs::read_to_string(&path).unwrap_or_default();
+    let changed = previous != conf;
     if changed {
+        if app
+            .supervisor
+            .status("rclone")
+            .is_ok_and(|s| s.state == "Running")
+        {
+            let adapter = fd_connectors::rclone::RcloneAdapter::with_socket(
+                app.config.socket.parent().unwrap().join("rclone.sock"),
+            );
+            for remote in &remotes {
+                let kind = remote
+                    .lines
+                    .iter()
+                    .find(|(k, _)| k == "type")
+                    .map(|(_, v)| v.as_str())
+                    .ok_or_else(|| internal("connection.config_invalid"))?;
+                let parameters = serde_json::Value::Object(
+                    remote
+                        .lines
+                        .iter()
+                        .filter(|(k, _)| k != "type")
+                        .map(|(k, v)| (k.clone(), json!(v)))
+                        .collect(),
+                );
+                adapter
+                    .configure_remote(&remote.name, kind, parameters)
+                    .await
+                    .map_err(internal)?;
+            }
+            for old in previous
+                .lines()
+                .filter_map(|l| l.strip_prefix('[').and_then(|l| l.strip_suffix(']')))
+            {
+                if !remotes.iter().any(|r| r.name == old) {
+                    adapter
+                        .delete_recovery_remote(old)
+                        .await
+                        .map_err(internal)?;
+                }
+            }
+        }
+        // Active session aliases remain in the running daemon; only desired routes persist for reboot.
         write_private(&path, conf.as_bytes()).map_err(internal)?;
     }
-    #[cfg(target_os = "linux")]
-    {
-        if changed && app.supervisor.status("rclone").map_err(internal)?.state == "Running" {
-            fd_subsystems::systemd::Systemd::default()
-                .restart("filedock-rclone.service")
-                .await
-                .map_err(internal)?;
-        }
-    }
+    app.temporary_s3
+        .lock()
+        .await
+        .retain(|_, (_, files)| files.values().all(|p| Path::new(p).is_file()));
     if let Err(error) = crate::extension_runtime::configure_connectors(app).await {
         tracing::warn!(code=%error.message(),"extension connector configuration failed");
     }
@@ -231,6 +266,13 @@ pub async fn configure(app: &App) -> Result<(), Status> {
     {
         return Ok(());
     }
+    if !app
+        .supervisor
+        .status("fd-s3")
+        .is_ok_and(|s| s.state == "Running")
+    {
+        return Ok(());
+    }
     {
         let mut temporary = app.temporary_s3.lock().await;
         temporary.retain(|_, (_, files)| {
@@ -238,7 +280,10 @@ pub async fn configure(app: &App) -> Result<(), Status> {
                 .values()
                 .all(|path| std::path::Path::new(path).is_file())
         });
-        for (row, files) in temporary.values() {
+        for (row, files) in temporary
+            .values()
+            .filter(|(row, _)| row["connector_id"].as_str().unwrap_or("fd-s3") == "fd-s3")
+        {
             s3.push(row.clone());
             secret_files.extend(files.clone());
         }
@@ -264,8 +309,6 @@ pub async fn test_connection(
     app: &App,
     id: &str,
 ) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
-    configure(app).await?;
-    crate::state_runtime::inspect_locations(app).await?;
     let reference = ResourceRef::new(ResourceKind::CloudConnection, id);
     let row = app
         .store
@@ -299,30 +342,31 @@ pub async fn test_connection(
         },
     )
     .map_err(internal)?;
+    require_connector(
+        app,
+        &connector,
+        id,
+        if connection.is_object_storage() {
+            RouteUse::OwnedObjectStorage
+        } else {
+            RouteUse::CloudMount
+        },
+    )?;
+    crate::state_runtime::inspect_locations(app).await?;
     if connector == "rclone" {
         return test_rclone(app, &reference, &connection).await;
     }
-    let connector_socket = if connector == "fd-s3" {
-        s3_socket(app)
-    } else {
-        crate::extension_runtime::socket(app, &connector)
-    };
-    let mut client =
-        ext::cloud_remote_client::CloudRemoteClient::new(channel(&connector_socket).await?);
+    let mut discovery = crate::session_runtime::native(app, &row, &connector).await?;
+    let mut client = ext::cloud_remote_client::CloudRemoteClient::new(discovery.channel.clone());
     let locations = crate::state_runtime::locations(app)?;
     let registered = locations.iter().find(|l| l.connection_id == id);
     let root_prefix = registered
         .map(|l| l.prefix.trim_end_matches('/'))
         .unwrap_or("");
-    let discovery = fd_connectors::object_io::S3Objects {
-        channel: channel(&connector_socket).await?,
-        connection_id: id.into(),
-        prefix: if root_prefix.is_empty() {
-            String::new()
-        } else {
-            format!("{root_prefix}/")
-        },
-        cleanup_directory: None,
+    discovery.prefix = if root_prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{root_prefix}/")
     };
     use fd_connectors::ownership::ObjectIo;
     let owner = discovery
@@ -341,7 +385,7 @@ pub async fn test_connection(
         });
     let result = client
         .probe(ext::ProbeRequest {
-            connection_id: id.into(),
+            connection_id: discovery.connection_id.clone(),
             prefix: format!(
                 "{}{}_filedock/probe/{}/{}",
                 root_prefix,
@@ -353,7 +397,7 @@ pub async fn test_connection(
         })
         .await?
         .into_inner();
-    save_probe(app, &reference, "fd-s3", result)
+    save_probe(app, &reference, &connector, result)
 }
 
 async fn test_rclone(
@@ -361,24 +405,34 @@ async fn test_rclone(
     reference: &ResourceRef,
     connection: &fd_state::resources::CloudConnectionSpec,
 ) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
-    let bucket = match &connection.definition {
-        ConnectionDefinition::S3(s3) => &s3.bucket,
-        _ => "",
-    };
-    let remote = if bucket.is_empty() {
-        reference.id.clone()
+    let lease = crate::session_runtime::rclone(app, connection).await?;
+    let locations = crate::state_runtime::locations(app)?;
+    let registered = locations.iter().find(|l| l.connection_id == reference.id);
+    let remote = if let Some(location) = registered {
+        format!(
+            "{}:{}",
+            lease.cleanup_name.as_ref().unwrap(),
+            location.bucket
+        )
     } else {
-        format!("{}:{}", reference.id, bucket)
+        lease.remote.clone()
     };
-    let adapter = fd_connectors::rclone::adapter::RcloneAdapter::with_socket(
-        app.config.socket.parent().unwrap().join("rclone.sock"),
-    );
-    if !connection.is_object_storage() {
+    let root_prefix = registered
+        .map(|l| format!("{}/", l.prefix.trim_end_matches('/')))
+        .filter(|p| p != "/")
+        .unwrap_or_default();
+    let adapter = &lease.adapter;
+    if !connection.is_object_storage()
+        || (connection.provider_family == "azure-blob" && registered.is_none())
+    {
         adapter.list(&remote, "").await.map_err(internal)?;
+        crate::session_runtime::persist_token(app, connection, &lease).await?;
         return save_probe(app,reference,"rclone",ext::ProbeResult{checks:vec![ext::ProbeCheck{name:"list".into(),ok:true,detail:"Authorization verified; no write probe is performed for this provider family".into()}],write_steps_run:false,..Default::default()});
     }
     // Fail closed on any ownership read error other than a known missing object.
-    let owner = adapter.read(&remote, "_filedock/owner.json").await;
+    let owner = adapter
+        .read(&remote, &format!("{root_prefix}_filedock/owner.json"))
+        .await;
     let read_only = crate::state_runtime::locations(app)?.iter().any(|l| {
         l.connection_id == reference.id && l.role != fd_connectors::ownership::Role::Writer
     }) || match owner {
@@ -393,11 +447,14 @@ async fn test_rclone(
         Err(error) => return Err(internal(error)),
     };
     let prefix = format!(
-        "_filedock/probe/{}/{}",
+        "{root_prefix}_filedock/probe/{}/{}",
         app.appliance_id,
         uuid::Uuid::now_v7()
     );
-    adapter.list(&remote, "").await.map_err(internal)?;
+    adapter
+        .list(&remote, &root_prefix)
+        .await
+        .map_err(internal)?;
     let mut checks = vec![ext::ProbeCheck {
         name: "list".into(),
         ok: true,
@@ -418,6 +475,7 @@ async fn test_rclone(
             detail: String::new(),
         });
     }
+    crate::session_runtime::persist_token(app, connection, &lease).await?;
     save_probe(
         app,
         reference,
@@ -438,9 +496,21 @@ fn save_probe(
 ) -> Result<fd_api::core::v1::ConnectionTestResult, Status> {
     let now = fd_state::db::now_text();
     let stored = fd_connectors::StoredTestResult::from_probe(connector, now.clone(), &probe);
+    let mut status = app
+        .store
+        .get(reference)
+        .map_err(internal)?
+        .and_then(|r| r.status)
+        .unwrap_or(json!({}));
+    status["lastTest"] = json!(stored);
+    if !status["testsByConnector"].is_object() {
+        status["testsByConnector"] = json!({});
+    }
+    status["testsByConnector"][connector] = json!(stored);
     app.store
-        .write_status(reference, &json!({"lastTest": stored}))
+        .write_status(reference, &status)
         .map_err(internal)?;
+    crate::state_runtime::recompute_claim_safety(app)?;
     let at = fd_state::db::parse_timestamp(&now).unwrap();
     Ok(fd_api::core::v1::ConnectionTestResult {
         tested_at: Some(prost_types::Timestamp {
@@ -567,24 +637,23 @@ pub async fn run(app: Arc<App>) {
         }
     }
     let mut interval = tokio::time::interval(Duration::from_secs(5));
+    let mut s3_was_running = false;
     let mut last_probe = std::time::Instant::now() - Duration::from_secs(86400);
     loop {
         interval.tick().await;
-        if app
+        if let Err(error) = configure(&app).await {
+            tracing::debug!(%error, "connector configuration pending");
+        }
+        let s3_running = app
             .supervisor
             .status("fd-s3")
-            .is_ok_and(|s| s.state == "Failed")
-            || app
-                .supervisor
-                .status("rclone")
-                .is_ok_and(|s| s.state == "Failed")
-        {
-            continue;
+            .is_ok_and(|s| s.state == "Running");
+        if s3_running && (!s3_was_running || last_probe.elapsed() >= Duration::from_secs(86400)) {
+            if let Err(error) = crate::sweep_runtime::run(&app).await {
+                tracing::warn!(code=%error.message(),"incomplete upload sweep failed");
+            }
         }
-        if let Err(error) = configure(&app).await {
-            tracing::warn!(%error, "connector configuration pending");
-            continue;
-        }
+        s3_was_running = s3_running;
         if last_probe.elapsed() >= Duration::from_secs(86400) {
             if let Ok(rows) = app
                 .store
@@ -620,4 +689,92 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 fn internal(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
+}
+
+pub fn require_connector(
+    app: &App,
+    id: &str,
+    connection: &str,
+    usage: RouteUse,
+) -> Result<(), Status> {
+    let row = app.subsystems.get(id).map_err(internal)?;
+    let state = app.supervisor.status(id).map_err(internal)?;
+    if fd_connectors::client::require_running(row.as_ref().is_some_and(|r| r.enabled), &state.state)
+        .is_err()
+    {
+        let _=app.alerts.raise(&format!("route:{connection}:{usage:?}"),None,"connector.route_unavailable",fd_alerts::Severity::Critical,&format!("Connector {id} is unavailable for connection {connection}, route {usage:?}. No fallback is used."));
+        return Err(Status::unavailable("connector.unavailable"));
+    }
+    let _ = app.alerts.resolve(
+        &format!("route:{connection}:{usage:?}"),
+        None,
+        "connector.route_unavailable",
+    );
+    Ok(())
+}
+
+/// Materialize credentials only for uses that actually reference a connection.
+pub fn connection_uses(
+    app: &App,
+    id: &str,
+) -> Result<std::collections::BTreeSet<RouteUse>, Status> {
+    use fd_state::resources::{StateDestinationTarget, StorageMode};
+    let mut uses = std::collections::BTreeSet::new();
+    for row in app
+        .store
+        .list(ResourceKind::ManagedFolder, None, usize::MAX / 2)
+        .map_err(internal)?
+    {
+        if let Ok(ResourceSpec::ManagedFolder(folder)) = row.parsed_spec() {
+            if folder.reference.connection_id.as_deref() == Some(id) {
+                uses.insert(if folder.storage_mode == StorageMode::CloudMount {
+                    RouteUse::CloudMount
+                } else {
+                    RouteUse::OwnedObjectStorage
+                });
+            }
+            if folder
+                .reference
+                .backup_destination
+                .as_ref()
+                .is_some_and(|d| d["connectionId"] == id)
+            {
+                uses.insert(RouteUse::BackupRepository);
+            }
+        }
+    }
+    for row in app
+        .store
+        .list(
+            ResourceKind::ApplianceStateDestination,
+            None,
+            usize::MAX / 2,
+        )
+        .map_err(internal)?
+    {
+        if let Ok(ResourceSpec::ApplianceStateDestination(d)) = row.parsed_spec()
+            && matches!(d.target,StateDestinationTarget::ObjectStorage{connection_id,..} if connection_id==id)
+        {
+            uses.insert(RouteUse::OwnedObjectStorage);
+        }
+    }
+    if crate::state_runtime::locations(app)?
+        .iter()
+        .any(|l| l.connection_id == id)
+    {
+        uses.insert(RouteUse::OwnedObjectStorage);
+    }
+    Ok(uses)
+}
+
+pub fn proven_checksums(row: &fd_state::StoredResource, connector: &str) -> bool {
+    row.status
+        .as_ref()
+        .and_then(|s| {
+            s.get("testsByConnector")
+                .and_then(|t| t.get(connector))
+                .or_else(|| s.get("lastTest"))
+        })
+        .and_then(|v| serde_json::from_value::<fd_connectors::StoredTestResult>(v.clone()).ok())
+        .is_some_and(|p| p.connector_id == connector && p.write_steps_run && p.provider_checksums)
 }

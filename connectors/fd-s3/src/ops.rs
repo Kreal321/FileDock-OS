@@ -26,6 +26,11 @@ pub async fn store_for(conn: &RoutedConnection) -> Result<impl ObjectStore, Stat
             max_retries: 4,
             ..Default::default()
         });
+    let builder = if let Some(key) = &conn.kms_key_id {
+        builder.with_sse_kms_encryption(key)
+    } else {
+        builder
+    };
     let builder = if conn.checksums {
         builder.with_checksum_algorithm(Checksum::SHA256)
     } else {
@@ -65,6 +70,17 @@ pub async fn put(
     mode: PutMode,
     checksums: bool,
 ) -> Result<String, Status> {
+    put_with_attributes(store, key, body, mode, checksums, Default::default()).await
+}
+
+pub async fn put_with_attributes(
+    store: &dyn ObjectStore,
+    key: &str,
+    body: Vec<u8>,
+    mode: PutMode,
+    checksums: bool,
+    attributes: object_store::Attributes,
+) -> Result<String, Status> {
     if body.len() > READ_BACK_LIMIT && !checksums {
         return Err(Status::failed_precondition(
             "provider checksums are required for writes above the read-back limit",
@@ -76,7 +92,7 @@ pub async fn put(
                 "conditional multipart writes are unsupported",
             ));
         }
-        return put_multipart(store, key, body, mode).await;
+        return put_multipart(store, key, body, mode, attributes).await;
     }
     let payload = PutPayload::from(body.clone());
     let result = store
@@ -85,6 +101,7 @@ pub async fn put(
             payload,
             PutOptions {
                 mode,
+                attributes,
                 ..Default::default()
             },
         )
@@ -106,9 +123,16 @@ async fn put_multipart(
     key: &str,
     body: Vec<u8>,
     _mode: PutMode,
+    attributes: object_store::Attributes,
 ) -> Result<String, Status> {
     let mut upload = store
-        .put_multipart(&Path::from(key))
+        .put_multipart_opts(
+            &Path::from(key),
+            object_store::PutMultipartOptions {
+                attributes,
+                ..Default::default()
+            },
+        )
         .await
         .map_err(map_obj)?;
     for chunk in body.chunks(PART_SIZE) {
@@ -162,6 +186,41 @@ pub fn put_mode(mode: i32, etag: &str) -> PutMode {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn storage_class_is_forwarded_for_single_and_multipart_uploads() {
+        let store = object_store::memory::InMemory::new();
+        let mut attributes = object_store::Attributes::new();
+        attributes.insert(object_store::Attribute::StorageClass, "STANDARD_IA".into());
+        put_with_attributes(
+            &store,
+            "single",
+            b"single".to_vec(),
+            PutMode::Overwrite,
+            false,
+            attributes.clone(),
+        )
+        .await
+        .unwrap();
+        put_multipart(
+            &store,
+            "multi",
+            b"multipart".to_vec(),
+            PutMode::Overwrite,
+            attributes,
+        )
+        .await
+        .unwrap();
+        for key in ["single", "multi"] {
+            let result = store.get(&Path::from(key)).await.unwrap();
+            assert_eq!(
+                result
+                    .attributes
+                    .get(&object_store::Attribute::StorageClass)
+                    .map(|v| v.as_ref()),
+                Some("STANDARD_IA")
+            );
+        }
+    }
     #[tokio::test]
     async fn create_only_preserves_existing_bytes_and_get_checks_digest() {
         let store = object_store::memory::InMemory::new();

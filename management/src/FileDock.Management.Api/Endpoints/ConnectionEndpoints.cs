@@ -10,11 +10,12 @@ namespace FileDock.Management.Api.Endpoints;
 
 public static class ConnectionEndpoints
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
     public sealed record OAuthStart(string ProviderFamily, JsonElement Config);
     public sealed record OAuthFinish(string FlowId, string RedirectUrl);
     public static void MapConnections(this RouteGroupBuilder api)
     {
-        api.MapGet("/connections", (CoreClient core, HttpContext c) => ObservabilityEndpoints.Run(() => ResourceEndpoints.Page(core, ResourceKind.CloudConnection, c))).WithMetadata(new AccessScope("R"));
+        api.MapGet("/connections", (CoreClient core, HttpContext c) => ObservabilityEndpoints.Run(() => Page(core, c))).WithMetadata(new AccessScope("R"));
         api.MapGet("/connections/options", (CoreClient core, HttpContext c) => ObservabilityEndpoints.Run(async () => { var connectors = await core.Connectors.ListConnectorsAsync(new Filedock.Core.V1.Empty(), ObservabilityEndpoints.Headers(c, false)); return Results.Ok(ResourceEndpoints.Json(connectors)); })).WithMetadata(new AccessScope("R"));
         api.MapPost("/connections", (JsonElement spec, CoreClient core, HttpContext c, AuditWriter audit) => Save("", spec, core, c, audit)).WithMetadata(new AccessScope("F"));
         api.MapPatch("/connections/{id}", (string id, JsonElement spec, CoreClient core, HttpContext c, AuditWriter audit) => Save(id, spec, core, c, audit)).WithMetadata(new AccessScope("F"));
@@ -22,6 +23,20 @@ public static class ConnectionEndpoints
         api.MapPost("/connections/{id}/test", (string id, CoreClient core, HttpContext c, AuditWriter audit) => ObservabilityEndpoints.Run(async () => { var result = await core.Connectors.TestConnectionAsync(new ConnectionRef { ConnectionId = id }, ObservabilityEndpoints.Headers(c, true)); await ObservabilityEndpoints.Audit(c, audit, "connection.tested", id); return Results.Ok(ResourceEndpoints.Json(result)); })).WithMetadata(new AccessScope("F"));
         api.MapPost("/connections/oauth/start", (OAuthStart body, CoreClient core, HttpContext c) => ObservabilityEndpoints.Run(async () => Results.Ok(ResourceEndpoints.Json(await core.Connectors.StartOAuthAsync(new OAuthStartRequest { ProviderFamily = body.ProviderFamily, Config = Struct.Parser.ParseJson(body.Config.ValueKind == JsonValueKind.Undefined ? "{}" : body.Config.GetRawText()) }, ObservabilityEndpoints.Headers(c, true)))))).WithMetadata(new AccessScope("F"));
         api.MapPost("/connections/oauth/finish", (OAuthFinish body, CoreClient core, HttpContext c) => ObservabilityEndpoints.Run(async () => Results.Ok(ResourceEndpoints.Json(await core.Connectors.FinishOAuthAsync(new OAuthFinishRequest { FlowId = body.FlowId, RedirectUrl = body.RedirectUrl }, ObservabilityEndpoints.Headers(c, true)))))).WithMetadata(new AccessScope("F"));
+    }
+    private static async Task<IResult> Page(CoreClient core, HttpContext c)
+    {
+        var p = FileDock.Management.Api.Infrastructure.PageQuery.From(c.Request);
+        var headers = ObservabilityEndpoints.Headers(c, false);
+        var page = await core.Control.ListResourcesAsync(new ListResourcesRequest { Kind = ResourceKind.CloudConnection, Page = new PageRequest { PageSize = (uint)Math.Clamp(p.PageSize, 1, 500), PageToken = p.PageToken ?? "" } }, headers);
+        var routes = await core.Connectors.GetRoutesAsync(new Filedock.Core.V1.Empty(), headers);
+        var items = page.Resources.Select(r => {
+            var view = JsonSerializer.SerializeToNode(ResourceEndpoints.View(r), WebJson)!.AsObject();
+            var family = r.Spec.Fields["providerFamily"].StringValue;
+            var targets = routes.Overrides.Where(x => x.Key.ConnectionId == r.Ref.Id).Concat(routes.Defaults.Where(x => x.Key.Family == family)).GroupBy(x => x.Key.Use).ToDictionary(g => g.Key.ToString(), g => g.First().Target.TargetCase == RouteTarget.TargetOneofCase.BackupEngine ? "backup-engine" : g.First().Target.ConnectorId);
+            view["effectiveConnectors"] = JsonSerializer.SerializeToNode(targets); return view;
+        });
+        return Results.Ok(new { items, nextPageToken = string.IsNullOrEmpty(page.NextPageToken) ? null : page.NextPageToken });
     }
     private static Task<IResult> Save(string id, JsonElement input, CoreClient core, HttpContext c, AuditWriter audit) => ObservabilityEndpoints.Run(async () =>
     {

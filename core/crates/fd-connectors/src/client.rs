@@ -79,3 +79,26 @@ impl CloudRemoteClient {
         Arc::new(Self::pin(session))
     }
 }
+
+/// Refuse unavailable routed targets; callers report the same target and never substitute one.
+pub fn require_running(enabled: bool, state: &str) -> Result<(), &'static str> {
+    if enabled && state == "Running" {
+        Ok(())
+    } else {
+        Err("connector.unavailable")
+    }
+}
+#[cfg(test)]
+mod availability_tests {
+    #[test]
+    fn no_unavailable_state_is_treated_as_running() {
+        for state in ["Failed", "Stopped", "Starting", "Backoff", ""] {
+            assert_eq!(
+                super::require_running(true, state),
+                Err("connector.unavailable")
+            );
+        }
+        assert!(super::require_running(false, "Running").is_err());
+        assert!(super::require_running(true, "Running").is_ok());
+    }
+}

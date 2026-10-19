@@ -204,6 +204,7 @@ pub async fn object_io(
     } else {
         format!("{}/", prefix.trim_end_matches('/'))
     };
+    let _route_guard = app.route_lock.lock().await;
     let row = app
         .store
         .get(&ResourceRef::new(ResourceKind::CloudConnection, id))
@@ -245,6 +246,9 @@ pub async fn object_io(
             RouteTarget::BackupEngine => return Err(error("route.use_not_allowed")),
         }
     };
+    if !builtin {
+        crate::runtime::require_connector(app, &target, id, RouteUse::OwnedObjectStorage)?;
+    }
     let registry = app.subsystems.list().map_err(error)?;
     if !builtin {
         fd_connectors::routes::validate_target(
@@ -259,62 +263,29 @@ pub async fn object_io(
         )
         .map_err(error)?;
     }
-    let declared = registry.iter().find(|r| r.id == target).is_some_and(|r| {
-        r.manifest["cloud"].as_array().is_some_and(|a| {
-            a.iter().any(|c| {
-                c["family"] == connection.provider_family && c["conditionalWrites"] == true
-            })
-        })
-    });
-    let proven = row
-        .status
-        .as_ref()
-        .and_then(|v| v.get("lastTest"))
-        .and_then(|v| {
-            serde_json::from_value::<fd_connectors::test::StoredTestResult>(v.clone()).ok()
-        })
-        .is_some_and(|p| p.connector_id == target && p.proves_conditional());
-    let safety = if declared && proven {
-        ClaimSafety::Conditional
-    } else {
-        ClaimSafety::Basic
-    };
-    if target == "rclone" {
-        return Ok((
-            Arc::new(fd_connectors::object_io::RcloneObjects {
-                adapter: fd_connectors::rclone::adapter::RcloneAdapter::with_socket(
-                    app.config.socket.parent().unwrap().join("rclone.sock"),
-                ),
-                remote: format!("{id}:{bucket}"),
-                prefix,
-                cleanup_name: None,
-            }),
-            target,
-            safety,
-        ));
-    }
+    let safety = fd_connectors::route_change::claim_safety(
+        &row,
+        &RouteTarget::Connector {
+            subsystem_id: target.clone(),
+        },
+        &registry,
+    );
     if let ConnectionDefinition::S3(def) = &connection.definition
         && def.bucket != bucket
     {
         return Err(error("destination.bucket_mismatch"));
     }
-    let socket = if target == "fd-s3" {
-        crate::runtime::s3_socket(app)
-    } else {
-        crate::extension_runtime::socket(app, &target)
-    };
-    let channel = crate::runtime::channel(socket).await?;
-    Ok((
-        Arc::new(fd_connectors::object_io::S3Objects {
-            channel,
-            connection_id: id.into(),
-            prefix,
-            cleanup_directory: None,
-        }),
-        target,
-        safety,
-    ))
+    if target == "rclone" {
+        let mut io = crate::session_runtime::rclone(app, &connection).await?;
+        io.remote = format!("{}:{bucket}", io.cleanup_name.as_ref().unwrap());
+        io.prefix = prefix;
+        return Ok((Arc::new(io), target, safety));
+    }
+    let mut io = crate::session_runtime::native(app, &row, &target).await?;
+    io.prefix = prefix;
+    Ok((Arc::new(io), target, safety))
 }
+
 pub async fn targets(app: &App) -> Result<Vec<CopyTarget>, Status> {
     let mut targets = vec![CopyTarget {
         id: "system".into(),
@@ -547,4 +518,70 @@ pub async fn inspect_locations(app: &App) -> Result<Vec<OwnedLocation>, Status> 
         save_locations(app, &persisted)?;
     }
     Ok(visible)
+}
+
+/// Recompute local claim observations without touching remote ownership or stopping writes.
+pub fn recompute_claim_safety(app: &App) -> Result<(), Status> {
+    let row = app
+        .store
+        .get(&ResourceRef::singleton(ResourceKind::ConnectorRoutes))
+        .map_err(error)?
+        .ok_or_else(|| error("route.missing"))?;
+    let ResourceSpec::ConnectorRoutes(routes) = row.parsed_spec().map_err(|e| error(e.code))?
+    else {
+        return Err(error("route.invalid"));
+    };
+    let connectors = app.subsystems.list().map_err(error)?;
+    let mut all = locations(app)?;
+    for location in &mut all {
+        let Some(row) = app
+            .store
+            .get(&ResourceRef::new(
+                ResourceKind::CloudConnection,
+                &location.connection_id,
+            ))
+            .map_err(error)?
+        else {
+            continue;
+        };
+        let ResourceSpec::CloudConnection(c) = row.parsed_spec().map_err(|e| error(e.code))? else {
+            continue;
+        };
+        let Ok(target) = fd_connectors::routes::resolve(
+            &routes,
+            Some(&c),
+            &c.provider_family,
+            RouteUse::OwnedObjectStorage,
+        ) else {
+            continue;
+        };
+        let next = fd_connectors::route_change::claim_safety(&row, &target, &connectors);
+        if matches!(location.claim_safety, ClaimSafety::Conditional)
+            && matches!(next, ClaimSafety::Basic)
+        {
+            let _=app.alerts.raise(&format!("location:{}",location.id),None,"location.claim_safety_downgraded",fd_alerts::Severity::Warning,"Conditional ownership protection is no longer proven; writes continue using basic verification.");
+        }
+        if matches!(next, ClaimSafety::Conditional) {
+            let _ = app.alerts.resolve(
+                &format!("location:{}", location.id),
+                None,
+                "location.claim_safety_downgraded",
+            );
+        }
+        location.claim_safety = next;
+        location.served_by_connector = target.subsystem_id().unwrap_or("backup-engine").into();
+        location.served_by_third_party =
+            fd_connectors::route_change::third_party(&target, &connectors);
+    }
+    if all
+        .iter()
+        .any(|l| matches!(l.claim_safety, ClaimSafety::Basic))
+    {
+        let _=app.alerts.raise("appliance",None,"location.basic_claim_safety",fd_alerts::Severity::Warning,"An owned location uses basic claim safety; concurrent writers cannot be prevented by conditional writes.");
+    } else {
+        let _ = app
+            .alerts
+            .resolve("appliance", None, "location.basic_claim_safety");
+    }
+    save_locations(app, &all)
 }

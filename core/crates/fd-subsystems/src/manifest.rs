@@ -154,6 +154,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn phase12_connector_requires_explicit_cloud_credentials_approval() {
+        let text = include_str!("../../../../tests/fixtures/sample-connector/manifest.yaml");
+        let manifest = parse_manifest(text).unwrap();
+        assert!(manifest.is_connector());
+        assert!(
+            manifest.raw["permissions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p == "cloud.credentials")
+        );
+        assert_eq!(manifest.raw["cloud"][0]["conditionalWrites"], false);
+        assert!(
+            parse_manifest(&text.replace(
+                "[network.outbound, cloud.credentials]",
+                "[network.outbound]"
+            ))
+            .is_err()
+        );
+    }
+    #[test]
     fn valid_s3_fixture_loads() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/manifests/valid/s3-connector.yaml");

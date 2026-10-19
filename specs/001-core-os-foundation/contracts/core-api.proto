@@ -186,6 +186,7 @@ message SystemStatus {
   google.protobuf.Timestamp last_state_snapshot_at = 6;
   bool state_protection_warning = 7;          // FR-040
   bool notification_channel_missing = 8;      // FR-097 dashboard notice
+  bool basic_claim_safety_warning = 9;        // FR-123 standing warning
 }
 
 message ComponentHealth {

@@ -51,6 +51,12 @@ export const destinations: NavigationDestination[] = [
   ...[
     { id: 'administrators', label: 'Administrators', icon: 'admin', requiredView: 'AdminsPage' },
     { id: 'tokens', label: 'API tokens', icon: 'token', requiredView: 'TokensPage' },
+    {
+      id: 'connectors',
+      label: 'Connectors & routes',
+      icon: 'cloud',
+      requiredView: 'ConnectorsPage',
+    },
     { id: 'network', label: 'Network settings', icon: 'network', requiredView: 'NetworkPage' },
     {
       id: 'notification-channels',

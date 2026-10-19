@@ -44,8 +44,7 @@ public sealed class SessionService(ISessionStore store)
         }
 
         session.LastSeenAt = DateTimeOffset.UtcNow;
-        await store.SaveAsync(cancellationToken);
-        return session;
+        return await store.TouchAsync(session.Id, session.LastSeenAt, cancellationToken) ? session : null;
     }
 
     public async Task SignOutAsync(Session session, CancellationToken cancellationToken = default)

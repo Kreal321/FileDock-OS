@@ -5,6 +5,7 @@ import { Icon } from '../../components/Icon.tsx';
 const descriptions: Record<string, string> = {
   administrators: 'Manage accounts and your password.',
   tokens: 'Connect applications with scoped access.',
+  connectors: 'Choose cloud connectors, defaults, and connection overrides.',
   network: 'Choose local HTTP listener addresses.',
   operations: 'Inspect Core work and operation steps.',
   audit: 'Review administrative changes.',
@@ -18,7 +19,7 @@ const descriptions: Record<string, string> = {
 const groups = [
   {
     title: 'Access and connectivity',
-    ids: ['administrators', 'tokens', 'network', 'notification-channels'],
+    ids: ['administrators', 'tokens', 'network', 'connectors', 'notification-channels'],
   },
   { title: 'Recovery', ids: ['state-protection', 'locations'] },
   {

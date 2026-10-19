@@ -60,6 +60,16 @@ var interruption = new Option<bool>("--acknowledge-interruption");
 var limits = new Command("limits", "Change limits; shrinking can interrupt folder access") {percent,reserve,interruption};
 limits.SetAction(async parse=>await SystemPoolCommand.Limits(parse.GetValue(socket)!,parse.GetValue(percent),parse.GetValue(reserve),parse.GetValue(interruption),parse.GetValue(json)));
 systemPool.Add(limits);root.Add(systemPool);
+var connectors = new Command("connectors", "Inspect cloud connectors");
+var listConnectors = new Command("list", "List connector families, health and routing");
+listConnectors.SetAction(async p => await ConnectorCommands.List(p.GetValue(socket)!, p.GetValue(json))); connectors.Add(listConnectors); root.Add(connectors);
+var routes = new Command("routes", "Inspect connector routing");
+var showRoutes = new Command("show", "Show family defaults and connection overrides");
+showRoutes.SetAction(async p => await ConnectorCommands.Routes(p.GetValue(socket)!, p.GetValue(json))); routes.Add(showRoutes); root.Add(routes);
+var connections = new Command("connections", "Inspect cloud connections");
+var connectionName = new Argument<string>("name");
+var testConnection = new Command("test", "Test a connection by its name") { connectionName };
+testConnection.SetAction(async p => await ConnectorCommands.Test(p.GetValue(socket)!, p.GetValue(connectionName)!, p.GetValue(json))); connections.Add(testConnection); root.Add(connections);
 root.SetAction(parse =>
 {
     if (parse.GetValue(json))

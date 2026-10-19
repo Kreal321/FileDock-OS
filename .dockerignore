@@ -15,3 +15,6 @@ web/playwright-report/
 web/test-results/
 Dockerfile*
 .dockerignore
+
+# Local agent credentials
+AGENTS.local.md

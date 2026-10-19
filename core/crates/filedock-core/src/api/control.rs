@@ -34,6 +34,7 @@ impl CoreControl for CoreControlSvc {
         request: Request<ApplyChangeRequest>,
     ) -> Result<Response<ApplyChangeResponse>, Status> {
         check_metadata(request.metadata(), self.app.config.interface_version, true)?;
+        let _routes = self.app.route_lock.lock().await;
         let actor = actor_of(request.metadata());
         let request_id = request_id_of(request.metadata());
         if crate::storage_runtime::enabled().is_ok()
@@ -45,6 +46,35 @@ impl CoreControl for CoreControlSvc {
         let body = request.into_inner();
         let confirmations = body.confirmations.clone();
         let changes = proto_changes(body)?;
+        for change in &changes {
+            if change.resource().kind == fd_state::ResourceKind::ConnectorRoutes {
+                return Err(Status::failed_precondition("route.use_routing_api"));
+            }
+            if let Change::Upsert { resource, spec, .. } = change
+                && resource.kind == fd_state::ResourceKind::CloudConnection
+            {
+                let old = self
+                    .app
+                    .store
+                    .get(resource)
+                    .map_err(|e| Status::internal(e.to_string()))?
+                    .map(|r| {
+                        r.spec
+                            .get("routeOverrides")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({}))
+                    })
+                    .unwrap_or(serde_json::json!({}));
+                if old
+                    != spec
+                        .get("routeOverrides")
+                        .cloned()
+                        .unwrap_or(serde_json::json!({}))
+                {
+                    return Err(Status::failed_precondition("route.use_routing_api"));
+                }
+            }
+        }
         for change in &changes {
             if let Change::Upsert { resource, spec, .. } = change
                 && resource.kind == fd_state::ResourceKind::CloudConnection

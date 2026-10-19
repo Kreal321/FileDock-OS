@@ -66,12 +66,11 @@ public sealed class EfSessionStore(AppDbContext db) : ISessionStore
     }
 
     public Task<Session?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken cancellationToken = default)
-        => db.Sessions.FirstOrDefaultAsync(s => s.TokenHash == tokenHash, cancellationToken);
+        => db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == tokenHash, cancellationToken);
 
     public async Task DeleteAsync(Session session, CancellationToken cancellationToken = default)
     {
-        db.Sessions.Remove(session);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.Sessions.Where(s => s.Id == session.Id).ExecuteDeleteAsync(cancellationToken);
     }
 
     public async Task DeleteForAdminAsync(Guid administratorId, CancellationToken cancellationToken = default)
@@ -79,8 +78,8 @@ public sealed class EfSessionStore(AppDbContext db) : ISessionStore
         await db.Sessions.Where(s => s.AdministratorId == administratorId).ExecuteDeleteAsync(cancellationToken);
     }
 
-    public Task SaveAsync(CancellationToken cancellationToken = default)
-        => db.SaveChangesAsync(cancellationToken);
+    public async Task<bool> TouchAsync(Guid id, DateTimeOffset at, CancellationToken cancellationToken = default)
+        => await db.Sessions.Where(s => s.Id == id).ExecuteUpdateAsync(update => update.SetProperty(s => s.LastSeenAt, at), cancellationToken) == 1;
 }
 
 public sealed class EfApiTokenStore(AppDbContext db) : IApiTokenStore

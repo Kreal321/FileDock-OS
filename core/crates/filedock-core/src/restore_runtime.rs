@@ -682,7 +682,7 @@ pub async fn temporary_source(
         files.insert(format!("{id}/{name}"), file.to_string_lossy().to_string());
     }
     let channel = crate::runtime::channel(crate::runtime::s3_socket(app)).await?;
-    let config = json!({"id":id,"endpoint":endpoint,"region":definition["region"].as_str().unwrap_or("us-east-1"),"bucket":target.bucket,"virtual_hosted":definition["addressingStyle"]=="Virtual","access_key_ref":format!("{id}/accessKey"),"secret_key_ref":format!("{id}/secretKey"),"checksums":false});
+    let config = json!({"id":id,"endpoint":endpoint,"region":definition["region"].as_str().unwrap_or("us-east-1"),"bucket":target.bucket,"virtual_hosted":definition["addressingStyle"]=="Virtual","access_key_ref":format!("{id}/accessKey"),"secret_key_ref":format!("{id}/secretKey"),"checksums":false,"storage_class":definition["storageClass"],"kms_key_id":definition["serverSideEncryption"]["kms"]["keyId"].as_str().or_else(||definition["serverSideEncryption"]["keyId"].as_str()),"bandwidth_limit":definition["bandwidthLimit"]});
     app.temporary_s3
         .lock()
         .await

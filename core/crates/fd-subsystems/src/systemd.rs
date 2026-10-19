@@ -65,15 +65,21 @@ impl Systemd {
             let conn = zbus::Connection::system()
                 .await
                 .map_err(|e| AdapterError::Failed(e.to_string()))?;
-            conn.call_method(
-                Some("org.freedesktop.systemd1"),
-                "/org/freedesktop/systemd1",
-                Some("org.freedesktop.systemd1.Manager"),
-                "ResetFailedUnit",
-                &(unit,),
-            )
-            .await
-            .map_err(|e| AdapterError::Failed(e.to_string()))?;
+            let result = conn
+                .call_method(
+                    Some("org.freedesktop.systemd1"),
+                    "/org/freedesktop/systemd1",
+                    Some("org.freedesktop.systemd1.Manager"),
+                    "ResetFailedUnit",
+                    &(unit,),
+                )
+                .await;
+            if let Err(e) = result {
+                if !matches!(&e,zbus::Error::MethodError(name,_,_) if name.as_str()=="org.freedesktop.systemd1.NoSuchUnit" || name.as_str()=="org.freedesktop.systemd1.UnitNotLoaded")
+                {
+                    return Err(AdapterError::Failed(e.to_string()));
+                }
+            }
             Ok(())
         }
         #[cfg(not(target_os = "linux"))]

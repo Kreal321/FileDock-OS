@@ -943,7 +943,7 @@ native connector is hardened for control.
 
 **Independent Test**: Run quickstart "Cloud connectors and routing" steps 1–13 (SC-023 to SC-026).
 
-- [ ] T164 [US10] Implement PreviewRouteChange in `core/crates/fd-connectors/src/route_change.rs` (FR-115, FR-118, FR-119, FR-123). For family defaults and per-connection overrides, it computes:
+- [X] T164 [US10] Implement PreviewRouteChange in `core/crates/fd-connectors/src/route_change.rs` (FR-115, FR-118, FR-119, FR-123). For family defaults and per-connection overrides, it computes:
   - the affected connections, folders, and owned locations, with the claim safety each would have;
   - lost features;
   - newly receiving credential recipients;
@@ -957,21 +957,21 @@ native connector is hardened for control.
   - committed as one ApplyChange, advancing the routes generation;
   - affected connectors reconfigured, with secret files removed for connections no longer routed to them (FR-119).
 - [ ] T166 [US10] Implement ListConnectors, SetConnectorEnabled (`connector.in_use` while routed, built-ins never removable), GetRoutes, PreviewRouteChange, and ApplyRouteChange in `core/crates/filedock-core/src/api/connectors.rs` (FR-112, FR-113, FR-121)
-- [ ] T167 [US10] Implement connector failure handling in `core/crates/fd-connectors/src/client.rs` (FR-120): when the routed connector isn't Running, the session fails with `connector.unavailable` and raises `connector.route_unavailable` naming the connector and route. There is never a fallback to another connector
+- [X] T167 [US10] Implement connector failure handling in `core/crates/fd-connectors/src/client.rs` (FR-120): when the routed connector isn't Running, the session fails with `connector.unavailable` and raises `connector.route_unavailable` naming the connector and route. There is never a fallback to another connector
 - [ ] T168 [US10] Implement claim-safety recomputation in `core/crates/fd-connectors/src/ownership.rs` (FR-123, research R12):
   - recomputed after each connection test, daily probe, and route change;
   - a probe that finds a downgrade raises a warning alert and keeps writing;
   - the dashboard warning `location.basic_claim_safety` while any location is basic.
-- [ ] T169 [US10] Support third-party connectors in `core/crates/fd-subsystems/src/lifecycle.rs` and `core/crates/fd-subsystems/src/sandbox.rs` (FR-112, FR-119):
+- [X] T169 [US10] Support third-party connectors in `core/crates/fd-subsystems/src/lifecycle.rs` and `core/crates/fd-subsystems/src/sandbox.rs` (FR-112, FR-119):
   - the manifest `cloud` section is required, with `connectionSchema` per non-S3 family;
   - `cloud.credentials` is shown at approval;
   - installing changes no routes;
   - routing owned object storage to a third-party connector requires its separate acknowledgement.
-- [ ] T170 [P] [US10] Implement per-connection storage controls in `connectors/fd-s3/src/ops.rs` and `connectors/fd-s3/src/throttle.rs` (FR-117): storage class, SSE-KMS through `with_sse_kms_encryption`, and the bandwidth-limit token bucket
-- [ ] T171 [P] [US10] Implement incomplete-upload cleanup in `connectors/fd-s3/src/sweep.rs` and `core/crates/fd-connectors/src/sweep.rs` (FR-117, research R23, Principle V):
+- [X] T170 [P] [US10] Implement per-connection storage controls in `connectors/fd-s3/src/ops.rs` and `connectors/fd-s3/src/throttle.rs` (FR-117): storage class, SSE-KMS through `with_sse_kms_encryption`, and the bandwidth-limit token bucket
+- [X] T171 [P] [US10] Implement incomplete-upload cleanup in `connectors/fd-s3/src/sweep.rs` and `core/crates/fd-connectors/src/sweep.rs` (FR-117, research R23, Principle V):
   - the AbortIncompleteUploads RPC in `connectors/fd-s3/src/sweep.rs`, which aborts uploads under the given prefix older than the given age;
   - the Core-driven sweep in `core/crates/fd-connectors/src/sweep.rs`, at connector start and once a day, for uploads older than 24 hours. It covers only this appliance's probe key and owned locations where it is the Writer. Each location is swept inside a write session that passed the ownership check. Recovery-reader and Ownership-lost locations are never swept.
-- [ ] T172 [US10] Spike: confirm whether the pinned object_store version supports a per-request storage class and listing incomplete uploads. Record the result in `connectors/fd-s3/SPIKE.md`. Implement any gap with hand-signed SigV4 requests (`aws-sigv4`) in `connectors/fd-s3/src/sigv4.rs` (research R23)
+- [X] T172 [US10] Spike: confirm whether the pinned object_store version supports a per-request storage class and listing incomplete uploads. Record the result in `connectors/fd-s3/SPIKE.md`. Implement any gap with hand-signed SigV4 requests (`aws-sigv4`) in `connectors/fd-s3/src/sigv4.rs` (research R23)
 - [ ] T173 [US10] Implement `GET /connectors`, `PATCH /connectors/{id}`, `GET /connector-routes`, `POST /connector-routes/preview`, and `PUT /connector-routes`, plus `routeOverrides` and the effective connector per use in connection listings, in `management/src/FileDock.Management.Api/Endpoints/ConnectorEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs`
 - [ ] T174 [US10] Implement `filedockctl connectors list`, `filedockctl routes show`, and `filedockctl connections test <name>` in `management/src/FileDock.Management.Cli/Commands/ConnectorCommands.cs`
 - [ ] T175 [P] [US10] Build the connectors and routes page in `web/src/features/connectors/`:

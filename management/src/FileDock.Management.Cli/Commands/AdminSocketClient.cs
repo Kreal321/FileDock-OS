@@ -4,7 +4,8 @@ namespace FileDock.Management.Cli.Commands;
 
 internal static class AdminSocketClient
 {
-    public static async Task<int> PostAsync(string socketPath, string path, object? body, bool json)
+    private static readonly System.Text.Json.JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
+    public static async Task<int> PostAsync(string socketPath, string path, object? body, bool json, bool showResult = false)
     {
         using var handler = new SocketsHttpHandler
         {
@@ -19,7 +20,13 @@ internal static class AdminSocketClient
         using var response = body is null ? await http.PostAsync(path, null) : await http.PostAsJsonAsync(path, body);
         var result = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode) { Console.Error.WriteLine(result); return 1; }
-        Console.WriteLine(json ? result : "Completed successfully.");
+        if (json) { Console.WriteLine(result); }
+        else if (showResult)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(result);
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(document.RootElement, PrettyJson));
+        }
+        else { Console.WriteLine("Completed successfully."); }
         return 0;
     }
 }

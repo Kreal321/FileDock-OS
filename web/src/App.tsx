@@ -13,6 +13,7 @@ import { OperationDetailPage } from './features/operations/OperationDetailPage.t
 import { PoolsPage } from './features/pools/PoolsPage.tsx';
 import { AppsPage } from './features/apps/AppsPage.tsx';
 import { SharesPage } from './features/shares/SharesPage.tsx';
+import { ConnectorsPage } from './features/connectors/ConnectorsPage.tsx';
 import { ConnectionsPage } from './features/connections/ConnectionsPage.tsx';
 import { FoldersPage } from './features/folders/FoldersPage.tsx';
 import { LogsPage } from './features/logs/LogsPage.tsx';
@@ -108,6 +109,10 @@ function Shell() {
             return <AppsPage canMutate={canMutate} connected={connected && browserConnected} />;
           case 'shares':
             return <SharesPage canMutate={canMutate} connected={connected && browserConnected} />;
+          case 'connectors':
+            return (
+              <ConnectorsPage canMutate={canMutate} connected={connected && browserConnected} />
+            );
           case 'connections':
             return (
               <ConnectionsPage canMutate={canMutate} connected={connected && browserConnected} />

@@ -63,6 +63,12 @@ pub fn materialize(
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
+            // Session-owned subdirectories have their own lifetime and Drop cleanup.
+            if entry.file_type()?.is_dir()
+                && (name.starts_with("session-") || name.starts_with("restore-"))
+            {
+                continue;
+            }
             if !keep.contains(&name) {
                 fs::remove_file(entry.path())?;
             }
@@ -121,5 +127,18 @@ mod tests {
         assert_ne!(fs::metadata(&key_path).unwrap().ino(), inode);
         assert!(!root.join("fd-s3/connection__1__secret-key").exists());
         assert!(root.join("fd-s3/connection__1__access-key").exists());
+    }
+    #[test]
+    fn route_cleanup_preserves_active_session_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SecretStore::open(dir.path().join("s.enc"), dir.path().join("k")).unwrap();
+        let root = dir.path().join("run");
+        let session = root.join("fd-s3/session-test");
+        fs::create_dir_all(&session).unwrap();
+        fs::write(session.join("access"), b"active").unwrap();
+        fs::write(root.join("fd-s3/obsolete"), b"obsolete").unwrap();
+        materialize(&store, &root, "fd-s3", &[]).unwrap();
+        assert!(session.join("access").is_file());
+        assert!(!root.join("fd-s3/obsolete").exists());
     }
 }

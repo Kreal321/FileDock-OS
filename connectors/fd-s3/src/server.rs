@@ -16,7 +16,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 use crate::config::{Config, RoutedConnection};
 use crate::integrity::Hasher;
-use crate::ops::{delete, get, put, put_mode, stat, store_for};
+use crate::ops::{delete, get, put_mode, put_with_attributes, stat, store_for};
 use crate::probe;
 use futures::TryStreamExt;
 use object_store::ObjectStore;
@@ -48,8 +48,9 @@ pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         let mut client = ext::core_bridge_client::CoreBridgeClient::new(channel);
         let mut request = Request::new(ext::RegisterRequest {
-            subsystem_id: "fd-s3".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
+            subsystem_id: std::env::var("FD_EXTENSION_ID").unwrap_or_else(|_| "fd-s3".into()),
+            version: std::env::var("FD_EXTENSION_VERSION")
+                .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").into()),
             socket_path: config.socket.to_string_lossy().into_owned(),
             capabilities: vec!["cloud.remote".into()],
         });
@@ -74,9 +75,10 @@ pub async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 impl Subsystem for App {
     async fn describe(&self, _: Request<Empty>) -> Result<Response<Description>, Status> {
         Ok(Response::new(Description {
-            subsystem_id: "fd-s3".into(),
+            subsystem_id: std::env::var("FD_EXTENSION_ID").unwrap_or_else(|_| "fd-s3".into()),
             name: "Native S3 connector".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
+            version: std::env::var("FD_EXTENSION_VERSION")
+                .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").into()),
             capabilities: vec!["cloud.remote".into()],
         }))
     }
@@ -100,8 +102,17 @@ impl Subsystem for App {
             .and_then(|v| v.as_array())
             .ok_or_else(|| Status::invalid_argument("connections required"))?;
         let mut config = self.config.lock().await;
-        let mut connections = std::collections::BTreeMap::new();
-        for row in rows {
+        let mut connections: std::collections::BTreeMap<String, RoutedConnection> =
+            std::collections::BTreeMap::new();
+        for input in rows {
+            // The sample extension consumes the generic cloud connection envelope.
+            let flattened;
+            let row = if let Some(def) = input.get("spec").and_then(|s| s.get("definition")) {
+                flattened = serde_json::json!({"id":input["id"],"endpoint":def["endpoint"],"region":def["region"],"bucket":def["bucket"],"virtual_hosted":def["addressingStyle"]=="Virtual","access_key_ref":def["accessKeyRef"],"secret_key_ref":def["secretKeyRef"],"storage_class":def["storageClass"],"bandwidth_limit":def["bandwidthLimit"],"checksums":false});
+                &flattened
+            } else {
+                input
+            };
             let text = |key: &str| {
                 row.get(key)
                     .and_then(|v| v.as_str())
@@ -128,8 +139,36 @@ impl Subsystem for App {
                 }
                 Ok(actual)
             };
+            let bandwidth_limit = row
+                .get("bandwidth_limit")
+                .and_then(|v| v.as_u64())
+                .filter(|n| *n > 0);
+            let id = text("id")?;
+            let throttle_key = row
+                .get("source_connection")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&id)
+                .to_owned();
+            let throttle = config
+                .connections
+                .values()
+                .chain(connections.values())
+                .find(|c| c.throttle_key == throttle_key && c.bandwidth_limit == bandwidth_limit)
+                .and_then(|c| c.throttle.clone())
+                .or_else(|| bandwidth_limit.map(crate::throttle::TokenBucket::new));
             let connection = RoutedConnection {
-                id: text("id")?,
+                id,
+                throttle_key,
+                storage_class: row
+                    .get("storage_class")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                kms_key_id: row
+                    .get("kms_key_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                bandwidth_limit,
+                throttle,
                 endpoint: text("endpoint")?,
                 region: text("region")?,
                 bucket: text("bucket")?,
@@ -196,9 +235,15 @@ impl CloudRemote for App {
         let req = request.into_inner();
         let conn = connection(&self.config, &req.connection_id).await?;
         let store = store_for(&conn).await?;
-        Ok(Response::new(
-            probe::run(&store, &req, conn.checksums).await,
-        ))
+        let mut result = probe::run(&store, &req, conn.checksums).await;
+        if !req.read_only
+            && ["write", "read", "verify"]
+                .iter()
+                .all(|name| result.checks.iter().any(|c| c.name == *name && c.ok))
+        {
+            result.provider_checksums = probe::provider_checksums(&conn, &req.prefix).await;
+        }
+        Ok(Response::new(result))
     }
 
     async fn stat(&self, request: Request<ObjectRef>) -> Result<Response<ObjectInfo>, Status> {
@@ -252,6 +297,9 @@ impl CloudRemote for App {
         let store = store_for(&conn).await?;
         let expected = (!req.expected_sha256.is_empty()).then_some(req.expected_sha256.as_str());
         let (data, digest) = get(&store, &r.key, expected).await?;
+        if let Some(bucket) = &conn.throttle {
+            bucket.acquire(data.len()).await;
+        }
         let verified = expected.is_none_or(|exp| exp == digest);
         let (tx, rx) = tokio::sync::mpsc::channel(4);
         tokio::spawn(async move {
@@ -307,12 +355,20 @@ impl CloudRemote for App {
             .ok_or_else(|| Status::invalid_argument("ref"))?;
         let conn = connection(&self.config, &r.connection_id).await?;
         let store = store_for(&conn).await?;
-        let etag = put(
+        if let Some(bucket) = &conn.throttle {
+            bucket.acquire(body.len()).await;
+        }
+        let mut attributes = object_store::Attributes::new();
+        if let Some(class) = &conn.storage_class {
+            attributes.insert(object_store::Attribute::StorageClass, class.clone().into());
+        }
+        let etag = put_with_attributes(
             &store,
             &r.key,
             body,
             put_mode(header.mode, &header.if_match_etag),
             conn.checksums,
+            attributes,
         )
         .await?;
         Ok(Response::new(PutObjectResult {
@@ -343,8 +399,16 @@ impl CloudRemote for App {
         &self,
         request: Request<ext::AbortIncompleteUploadsRequest>,
     ) -> Result<Response<ext::AbortIncompleteUploadsResult>, Status> {
-        let _ = request;
-        Ok(Response::new(ext::AbortIncompleteUploadsResult::default()))
+        let request = request.into_inner();
+        let conn = connection(&self.config, &request.connection_id).await?;
+        let aborted = crate::sweep::abort(
+            &conn,
+            &request.prefix,
+            request.older_than_hours,
+            request.root_owner_checked,
+        )
+        .await?;
+        Ok(Response::new(ext::AbortIncompleteUploadsResult { aborted }))
     }
 }
 

@@ -294,6 +294,33 @@ pub async fn plan(app: &App, spec: &Value, rotate: bool) -> Result<Runtime, Stat
             }
         }
     }
+    if permissions.contains("cloud.credentials") {
+        for (lease, _) in app
+            .temporary_s3
+            .lock()
+            .await
+            .values()
+            .filter(|(row, files)| {
+                row["connector_id"] == id && files.values().all(|p| Path::new(p).is_file())
+            })
+        {
+            if let Ok(fd_state::resources::ResourceSpec::CloudConnection(c)) =
+                fd_state::resources::ResourceSpec::parse(
+                    fd_state::ResourceKind::CloudConnection,
+                    &lease["spec"],
+                )
+            {
+                match c.definition {
+                    fd_state::resources::ConnectionDefinition::S3(s) => {
+                        refs.extend([s.access_key_ref, s.secret_key_ref])
+                    }
+                    fd_state::resources::ConnectionDefinition::Bound(b) => {
+                        refs.extend(b.credentials)
+                    }
+                }
+            }
+        }
+    }
     refs.sort();
     refs.dedup();
     let materialized =
@@ -901,7 +928,7 @@ impl SubsystemAdapter for ExtensionAdapter {
     }
 }
 pub fn routed_to(app: &App, row: &StoredResource, id: &str) -> Result<bool, Status> {
-    use fd_state::resources::{ResourceSpec, RouteTarget, RouteUse};
+    use fd_state::resources::{ResourceSpec, RouteTarget};
     let Some(routes) = app
         .store
         .get(&fd_state::ResourceRef::singleton(
@@ -921,14 +948,10 @@ pub fn routed_to(app: &App, row: &StoredResource, id: &str) -> Result<bool, Stat
     else {
         return Ok(false);
     };
-    Ok([
-        RouteUse::OwnedObjectStorage,
-        RouteUse::BackupRepository,
-        RouteUse::CloudMount,
-    ]
-    .into_iter()
-    .any(|use_kind| {
-        use_kind.allowed_for_family(&connection.provider_family)
+    Ok(crate::runtime::connection_uses(app, &row.resource.id)?
+        .into_iter()
+        .any(|use_kind| {
+            use_kind.allowed_for_family(&connection.provider_family)
             && fd_connectors::routes::resolve(
                 &routes,
                 Some(&connection),
@@ -938,7 +961,7 @@ pub fn routed_to(app: &App, row: &StoredResource, id: &str) -> Result<bool, Stat
             .is_ok_and(
                 |target| matches!(target,RouteTarget::Connector{subsystem_id}if subsystem_id==id),
             )
-    }))
+        }))
 }
 pub async fn configure_connectors(app: &App) -> Result<(), Status> {
     for extension in rows(app, ResourceKind::Extension)? {
@@ -958,7 +981,7 @@ pub async fn configure_connectors(app: &App) -> Result<(), Status> {
             {
                 return Ok::<(), Status>(());
             }
-            let connections = rows(app, ResourceKind::CloudConnection)?
+            let mut connections = rows(app, ResourceKind::CloudConnection)?
                 .into_iter()
                 .filter_map(|row| match routed_to(app, &row, id) {
                     Ok(true) => Some(Ok(json!({"id":row.resource.id,"spec":row.spec}))),
@@ -966,6 +989,17 @@ pub async fn configure_connectors(app: &App) -> Result<(), Status> {
                     Err(e) => Some(Err(e)),
                 })
                 .collect::<Result<Vec<_>, Status>>()?;
+            for (lease, files) in app
+                .temporary_s3
+                .lock()
+                .await
+                .values()
+                .filter(|(row, _)| row["connector_id"] == id)
+            {
+                if files.values().all(|p| Path::new(p).is_file()) {
+                    connections.push(json!({"id":lease["id"],"spec":lease["spec"]}));
+                }
+            }
             let runtime = plan(app, &extension.spec, false).await?;
             // New credential files stay inside the mounted per-extension tmpfs directory.
             for file in runtime.secrets.values() {

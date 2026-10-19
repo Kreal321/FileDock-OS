@@ -44,6 +44,8 @@ type TemporaryS3Connections = std::collections::BTreeMap<
 
 pub struct App {
     pub storage_lock: Mutex<()>,
+    pub route_lock: Mutex<()>,
+    pub connector_config_lock: Mutex<()>,
     pub oauth_flows: Mutex<std::collections::BTreeMap<String, crate::oauth_runtime::Flow>>,
     pub config: Config,
     pub state_engine: Mutex<fd_appstate::engine::Engine>,
@@ -106,6 +108,8 @@ pub async fn serve(
     ));
     let app = Arc::new(App {
         storage_lock: Mutex::new(()),
+        route_lock: Mutex::new(()),
+        connector_config_lock: Mutex::new(()),
         oauth_flows: Mutex::new(std::collections::BTreeMap::new()),
         state_engine: Mutex::new(fd_appstate::engine::Engine::new(
             store.db().clone(),

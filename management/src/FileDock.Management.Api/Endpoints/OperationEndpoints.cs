@@ -26,7 +26,7 @@ public static class OperationEndpoints
             try
             {
                 var operation = await core.ReconcileAllAsync(context.User.Identity?.Name ?? "unknown", context.TraceIdentifier, ct);
-                await audit.WriteAsync(context.Items["fd.token"] is not null ? "ApiToken" : "Administrator", context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown", context.User.Identity?.Name ?? "unknown", "operation.started", operation.Id, "Succeeded", new { operation.Kind }, CancellationToken.None);
+                await audit.WriteAsync(context.Items["fd.token"] is not null ? "ApiToken" : "Administrator", context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown", context.User.Identity?.Name ?? "unknown", "operation.started", operation.Id, "Succeeded", new { operation.Kind }, cancellationToken: CancellationToken.None);
                 return Results.Accepted($"/api/v1/operations/{operation.Id}", new { operationId = operation.Id });
             }
             catch (RpcException error) { return Problem(error); }

@@ -21,6 +21,24 @@ impl S3Objects {
 }
 #[async_trait]
 impl ObjectIo for S3Objects {
+    async fn abort_incomplete(
+        &self,
+        prefix: &str,
+        hours: u32,
+        root_owner_checked: bool,
+    ) -> Result<u32> {
+        let response = ext::cloud_remote_client::CloudRemoteClient::new(self.channel.clone())
+            .abort_incomplete_uploads(ext::AbortIncompleteUploadsRequest {
+                connection_id: self.connection_id.clone(),
+                prefix: self.key(prefix),
+                older_than_hours: hours,
+                root_owner_checked,
+            })
+            .await
+            .map_err(unavailable)?
+            .into_inner();
+        Ok(response.aborted)
+    }
     async fn read(&self, key: &str) -> Result<Option<ObjectData>> {
         let mut client = ext::cloud_remote_client::CloudRemoteClient::new(self.channel.clone());
         let response = client

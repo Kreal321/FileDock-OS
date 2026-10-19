@@ -14,12 +14,13 @@ public sealed partial class AuditWriter(IAuditStore store, ILogger<AuditWriter> 
         string target,
         string result,
         object? detail = null,
+        Guid? auditEntryId = null,
         CancellationToken cancellationToken = default)
     {
         await store.AddAsync(
             new AuditEntry
             {
-                Id = Guid.CreateVersion7(),
+                Id = auditEntryId ?? Guid.CreateVersion7(),
                 At = DateTimeOffset.UtcNow,
                 ActorKind = actorKind,
                 ActorId = actorId,

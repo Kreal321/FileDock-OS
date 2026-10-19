@@ -40,7 +40,9 @@ impl StoredTestResult {
 
     /// Claim safety treats a not-tested result as not proven.
     pub fn proves_conditional(&self) -> bool {
-        self.conditional_create == Some(true) && self.conditional_replace == Some(true)
+        self.write_steps_run
+            && self.conditional_create == Some(true)
+            && self.conditional_replace == Some(true)
     }
 }
 

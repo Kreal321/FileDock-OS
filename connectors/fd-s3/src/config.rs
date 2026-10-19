@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RoutedConnection {
     pub id: String,
+    #[serde(default)]
+    pub throttle_key: String,
     pub endpoint: String,
     pub region: String,
     pub bucket: String,
@@ -13,6 +15,14 @@ pub struct RoutedConnection {
     pub access_key_file: PathBuf,
     pub secret_key_file: PathBuf,
     pub checksums: bool,
+    #[serde(default)]
+    pub storage_class: Option<String>,
+    #[serde(default)]
+    pub kms_key_id: Option<String>,
+    #[serde(default)]
+    pub bandwidth_limit: Option<u64>,
+    #[serde(skip)]
+    pub throttle: Option<std::sync::Arc<crate::throttle::TokenBucket>>,
 }
 
 #[derive(Clone, Debug)]
@@ -27,7 +37,8 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             socket: PathBuf::from(
-                std::env::var_os("FD_S3_SOCKET")
+                std::env::var_os("FD_EXTENSION_SOCKET")
+                    .or_else(|| std::env::var_os("FD_S3_SOCKET"))
                     .unwrap_or_else(|| "/run/filedock/fd-s3.sock".into()),
             ),
             core_socket: PathBuf::from(
@@ -36,6 +47,15 @@ impl Config {
             ),
             secrets_dir: PathBuf::from(
                 std::env::var_os("FD_SECRETS_RUN")
+                    .or_else(|| {
+                        std::env::var_os("FD_EXTENSION_SOCKET").map(|p| {
+                            PathBuf::from(p)
+                                .parent()
+                                .unwrap()
+                                .join("secrets")
+                                .into_os_string()
+                        })
+                    })
                     .unwrap_or_else(|| "/run/filedock/secrets/fd-s3".into()),
             ),
             connections: BTreeMap::new(),

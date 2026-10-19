@@ -59,6 +59,30 @@ impl RcloneAdapter {
         Ok(value)
     }
 
+    pub async fn configure_remote(
+        &self,
+        name: &str,
+        kind: &str,
+        parameters: Value,
+    ) -> Result<(), String> {
+        self.call("config/create",json!({"name":name,"type":kind,"parameters":parameters,"opt":{"nonInteractive":true,"obscure":true,"noOutput":true}})).await?;
+        Ok(())
+    }
+    pub async fn pin_remote(&self, source: &str, name: &str) -> Result<(), String> {
+        let mut values = self.call("config/get", json!({"name":source})).await?;
+        let kind = values
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or("connection.config_invalid")?
+            .to_owned();
+        values
+            .as_object_mut()
+            .ok_or("connection.config_invalid")?
+            .remove("type");
+        // config/get returns already-obscured passwords; do not obscure them a second time.
+        self.call("config/create",json!({"name":name,"type":kind,"parameters":values,"opt":{"nonInteractive":true,"obscure":false,"noOutput":true}})).await?;
+        Ok(())
+    }
     pub async fn create_azure_recovery_remote(
         &self,
         name: &str,

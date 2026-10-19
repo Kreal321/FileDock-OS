@@ -10,7 +10,8 @@ public sealed record SystemStatusDto(
     string ApplianceName,
     IReadOnlyList<ComponentHealthDto> Components,
     bool StateProtectionWarning,
-    bool NotificationChannelMissing);
+    bool NotificationChannelMissing,
+    bool BasicClaimSafetyWarning = false);
 
 public interface ICoreGateway
 {

@@ -5,6 +5,7 @@ export type Resource = {
   generation: number;
   spec: Record<string, unknown>;
   status?: Record<string, unknown>;
+  effectiveConnectors?: Record<string, string>;
 };
 export type PageProps = { canMutate?: boolean; connected?: boolean };
 export function useResourceAction(canMutate: boolean, connected: boolean, keys: string[]) {

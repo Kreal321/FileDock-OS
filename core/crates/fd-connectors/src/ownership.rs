@@ -27,6 +27,16 @@ pub trait ObjectIo: Send + Sync {
     async fn list(&self, prefix: &str) -> Result<Vec<String>>;
     async fn put(&self, key: &str, bytes: &[u8], condition: WriteCondition) -> Result<String>;
     async fn delete(&self, key: &str) -> Result<()>;
+    async fn abort_incomplete(
+        &self,
+        _prefix: &str,
+        _hours: u32,
+        _root_owner_checked: bool,
+    ) -> Result<u32> {
+        Err(OwnershipError::Refused(
+            "connector.sweep_unsupported".into(),
+        ))
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

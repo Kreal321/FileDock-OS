@@ -39,6 +39,9 @@ public static class SystemEndpoints
             components.RemoveAll(c => c.Id == "core");
             components.Insert(0, new ComponentHealthDto("core", "FileDock Core", monitor.Current.State, monitor.Current.Detail));
         }
+        var notices = new List<string>();
+        if (status.NotificationChannelMissing) { notices.AddRange(_missingChannelNotice); }
+        if (status.BasicClaimSafetyWarning) { notices.Add("location.basic_claim_safety: One or more owned locations use basic claim safety. Conditional ownership claims are not enforced by their connector."); }
         return Results.Ok(new
         {
             interfaceVersion = status.InterfaceVersion,
@@ -47,7 +50,8 @@ public static class SystemEndpoints
             components,
             stateProtectionWarning = status.StateProtectionWarning,
             notificationChannelMissing = status.NotificationChannelMissing,
-            notices = status.NotificationChannelMissing ? _missingChannelNotice : Array.Empty<string>(),
+            basicClaimSafetyWarning = status.BasicClaimSafetyWarning,
+            notices,
         });
     }
 }

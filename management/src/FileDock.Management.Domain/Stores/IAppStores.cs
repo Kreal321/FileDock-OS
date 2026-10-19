@@ -23,7 +23,7 @@ public interface ISessionStore
     Task<Session?> FindByTokenHashAsync(byte[] tokenHash, CancellationToken cancellationToken = default);
     Task DeleteAsync(Session session, CancellationToken cancellationToken = default);
     Task DeleteForAdminAsync(Guid administratorId, CancellationToken cancellationToken = default);
-    Task SaveAsync(CancellationToken cancellationToken = default);
+    Task<bool> TouchAsync(Guid id, DateTimeOffset at, CancellationToken cancellationToken = default);
 }
 
 public interface IApiTokenStore

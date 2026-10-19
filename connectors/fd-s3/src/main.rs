@@ -8,6 +8,9 @@ mod probe;
 #[cfg(test)]
 mod retry;
 mod server;
+mod sigv4;
+mod sweep;
+mod throttle;
 
 use tracing_subscriber::EnvFilter;
 

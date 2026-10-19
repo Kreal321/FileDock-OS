@@ -206,6 +206,7 @@ message AbortIncompleteUploadsRequest {
   string connection_id = 1;
   string prefix = 2;
   uint32 older_than_hours = 3;
+  bool root_owner_checked = 4; // Core checked the Writer session; permits an owned bucket root.
 }
 
 message AbortIncompleteUploadsResult { uint32 aborted = 1; }

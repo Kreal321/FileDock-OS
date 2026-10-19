@@ -140,6 +140,7 @@ api.MapStorage();
 api.MapShares();
 api.MapApps();
 api.MapConnections();
+api.MapConnectors();
 api.MapGet("/system/core-health", (CoreHealthMonitor monitor) => Results.Ok(monitor.Current)).WithMetadata(new AccessScope("R"));
 app.MapHub<EventsHub>("/hubs/events");
 AdminSocketEndpoints.Map(app);

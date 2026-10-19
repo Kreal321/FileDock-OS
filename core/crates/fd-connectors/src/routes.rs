@@ -68,6 +68,13 @@ pub fn validate_target(
                     "the backup engine is not registered",
                 )));
             };
+            if !engine.enabled {
+                return Err(RouteError::Invalid(ValidationIssue::error(
+                    "route.connector_disabled",
+                    "target",
+                    "the backup engine is disabled",
+                )));
+            }
             let families = engine
                 .manifest
                 .get("cloud")

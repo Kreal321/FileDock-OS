@@ -10,6 +10,7 @@ name = "filedock-core"
 path = "src/main.rs"
 
 [dependencies]
+tempfile.workspace = true
 fd-alerts.workspace = true
 async-trait.workspace = true
 jsonschema.workspace = true
@@ -43,5 +44,4 @@ hyper-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 tokio.workspace = true

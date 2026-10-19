@@ -89,6 +89,13 @@ pub async fn get_system_status(
             .ok()
             .and_then(|v| v["warning"].as_bool())
             .unwrap_or(true),
+        basic_claim_safety_warning: crate::state_runtime::locations(app)
+            .map(|locations| {
+                locations
+                    .iter()
+                    .any(|l| matches!(l.claim_safety, fd_connectors::ownership::ClaimSafety::Basic))
+            })
+            .unwrap_or(false),
         notification_channel_missing: crate::notification_runtime::channels(app)
             .map(|c| c.is_empty())
             .unwrap_or(true),

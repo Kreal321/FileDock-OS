@@ -113,7 +113,8 @@ public sealed class CoreClient : ICoreGateway, ICoreEventSource, IOperationGatew
             status.ApplianceName,
             components,
             status.StateProtectionWarning,
-            status.NotificationChannelMissing);
+            status.NotificationChannelMissing,
+            status.BasicClaimSafetyWarning);
     }
 
     public async IAsyncEnumerable<CoreEventDto> StreamEventsAsync(ulong afterSeq, Action connected, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)

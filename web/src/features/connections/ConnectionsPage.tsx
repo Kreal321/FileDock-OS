@@ -52,6 +52,9 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
   const [name, setName] = useState('');
   const [family, setFamily] = useState('s3-compatible');
   const [endpoint, setEndpoint] = useState('');
+  const [storageClass, setStorageClass] = useState('');
+  const [kmsKey, setKmsKey] = useState('');
+  const [bandwidth, setBandwidth] = useState('');
   const [region, setRegion] = useState('us-east-1');
   const [bucket, setBucket] = useState('');
   const [addressing, setAddressing] = useState('Path');
@@ -86,6 +89,10 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
     const def = (row?.spec.definition ?? {}) as Record<string, unknown>;
     setEndpoint(String(def.endpoint ?? ''));
     setRegion(String(def.region ?? 'us-east-1'));
+    setStorageClass(String(def.storageClass ?? ''));
+    const encryption = def.serverSideEncryption as { kms?: { keyId?: string } } | undefined;
+    setKmsKey(encryption?.kms?.keyId ?? '');
+    setBandwidth(def.bandwidthLimit === undefined ? '' : String(def.bandwidthLimit));
     setBucket(String(def.bucket ?? ''));
     setAddressing(String(def.addressingStyle ?? 'Path'));
     setConfig(JSON.stringify(def.config ?? {}, null, 2));
@@ -134,11 +141,17 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
   function save() {
     void action.act(() => {
       if (ownerUnavailable) throw new Error('The connection schema owner is unavailable.');
+      if (bandwidth && (!Number.isSafeInteger(Number(bandwidth)) || Number(bandwidth) < 1))
+        throw new Error('Bandwidth limit must be a positive whole number.');
       const old = (editing?.spec.definition ?? {}) as Record<string, unknown>;
       const definition =
         family === 's3-compatible'
           ? {
+              ...old,
               type: 's3',
+              storageClass: storageClass || undefined,
+              serverSideEncryption: kmsKey ? { kms: { keyId: kmsKey } } : undefined,
+              bandwidthLimit: bandwidth ? Number(bandwidth) : undefined,
               endpoint,
               region,
               bucket,
@@ -174,6 +187,7 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
           </Button>
         }
       />
+      <a href="#/settings/connectors">Manage connectors & routes</a>
       {action.error && editing === undefined && !removing ? (
         <p role="alert">{action.error}</p>
       ) : null}
@@ -195,7 +209,7 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
         {connections.data?.items.length ? (
           <DataTable
             label="Cloud connections"
-            headers={['Connection', 'Provider', 'Last observation', 'Actions']}
+            headers={['Connection', 'Provider', 'Routed connectors', 'Last observation', 'Actions']}
           >
             {connections.data.items.map((r) => (
               <tr key={r.id}>
@@ -204,9 +218,26 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
                 </td>
                 <td>{String(r.spec.providerFamily)}</td>
                 <td>
+                  {Object.entries(r.effectiveConnectors ?? {}).map(([use, id]) => (
+                    <p key={use}>
+                      <strong>{id}</strong>
+                      <span className="caption muted">
+                        {' '}
+                        · {use.replace(/([a-z])([A-Z])/g, '$1 $2')}
+                      </span>
+                    </p>
+                  ))}
+                  {r.spec.routeOverrides ? (
+                    <a href="#/settings/connectors">Connection override</a>
+                  ) : null}
+                </td>
+                <td>
                   {r.status?.lastTest
                     ? String(
-                        (r.status.lastTest as { connectorId?: string }).connectorId ?? 'Tested',
+                        (r.status.lastTest as { connectorId?: string; connector_id?: string })
+                          .connectorId ??
+                          (r.status.lastTest as { connector_id?: string }).connector_id ??
+                          'Tested',
                       )
                     : 'Not tested'}
                 </td>
@@ -314,6 +345,31 @@ export function ConnectionsPage({ canMutate = true, connected = true }: PageProp
                 value={secretKey}
                 onChange={(e) => setSecretKey(e.target.value)}
               />
+              <details>
+                <summary>Native S3 storage controls</summary>
+                <div className="stack">
+                  <Field
+                    label="Storage class"
+                    value={storageClass}
+                    onChange={(e) => setStorageClass(e.target.value)}
+                    hint="Optional provider storage class, such as STANDARD_IA."
+                  />
+                  <Field
+                    label="SSE-KMS key ID"
+                    value={kmsKey}
+                    onChange={(e) => setKmsKey(e.target.value)}
+                    hint="Leave empty to use the provider default encryption policy."
+                  />
+                  <Field
+                    label="Bandwidth limit (bytes per second)"
+                    type="number"
+                    min="1"
+                    value={bandwidth}
+                    onChange={(e) => setBandwidth(e.target.value)}
+                    hint="Leave empty for no configured limit. Applies to the native S3 connector."
+                  />
+                </div>
+              </details>
               <p className="muted">Static keys only. Role/session credentials are not supported.</p>
             </>
           ) : (

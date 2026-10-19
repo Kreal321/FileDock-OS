@@ -1,0 +1,17 @@
+schemaVersion: 1
+id: sample-connector
+name: Sample basic S3 connector
+version: 1.0.0
+class: extension
+capabilities: [cloud.remote]
+runtime:
+  type: native-process
+  executable: ./sample
+health: {type: grpc, intervalSeconds: 5, startupGraceSeconds: 5}
+permissions: [network.outbound, cloud.credentials]
+cloud:
+  - family: s3-compatible
+    capabilities: [cloud.remote]
+    conditionalWrites: false
+    providerChecksums: false
+compatibility: {appliance: ">=0.1.0 <0.2.0", extensionProtocol: "1"}

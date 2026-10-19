@@ -175,3 +175,41 @@ async fn nonempty_foreign_basic_and_recent_claims_are_refused() {
         .is_err()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn simultaneous_conditional_claims_have_one_owner_in_100_runs() {
+    for _ in 0..100 {
+        let io = Arc::new(Memory::default());
+        let a = uuid::Uuid::new_v4().to_string();
+        let b = uuid::Uuid::new_v4().to_string();
+        let (a, b) = tokio::join!(
+            claim(io.as_ref(), &a, "a", ClaimSafety::Conditional, false),
+            claim(io.as_ref(), &b, "b", ClaimSafety::Conditional, false)
+        );
+        assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    }
+}
+#[tokio::test]
+async fn upload_sweep_refuses_readers_lost_roles_and_stale_owners() {
+    let io = Arc::new(Memory::default());
+    let id = uuid::Uuid::new_v4().to_string();
+    let owner = claim(io.as_ref(), &id, "a", ClaimSafety::Conditional, false)
+        .await
+        .unwrap();
+    for role in [Role::RecoveryReader, Role::OwnershipLost] {
+        let session = WriterSession {
+            io: io.clone(),
+            location: location(&owner, role),
+        };
+        let before = *io.writes.lock().unwrap();
+        assert!(fd_connectors::sweep::owned(&session).await.is_err());
+        assert_eq!(before, *io.writes.lock().unwrap());
+    }
+    let mut stale = location(&owner, Role::Writer);
+    stale.generation += 1;
+    let session = WriterSession {
+        io,
+        location: stale,
+    };
+    assert!(fd_connectors::sweep::owned(&session).await.is_err());
+}

@@ -38,6 +38,15 @@ public static class AdminSocketEndpoints
                     detail: detail);
             }
         });
+        admin.MapPost("/connectors", (CoreClient core) => ObservabilityEndpoints.Run(async () => Results.Ok(ResourceEndpoints.Json(await core.Connectors.ListConnectorsAsync(new Filedock.Core.V1.Empty(), CoreClient.Metadata("Console", "connectors.list", false))))));
+        admin.MapPost("/connector-routes", (CoreClient core) => ObservabilityEndpoints.Run(async () => Results.Ok(ConnectorEndpoints.Routes(await core.Connectors.GetRoutesAsync(new Filedock.Core.V1.Empty(), CoreClient.Metadata("Console", "routes.show", false))))));
+        admin.MapPost("/connections/test", async (ConnectionTestInput input, CoreClient core, AuditWriter audit) => await ObservabilityEndpoints.Run(async () => {
+            string? id = null; var cursor = "";
+            do { var page = await core.Control.ListResourcesAsync(new Filedock.Core.V1.ListResourcesRequest { Kind = Filedock.Core.V1.ResourceKind.CloudConnection, Page = new Filedock.Core.V1.PageRequest { PageSize = 500, PageToken = cursor } }, CoreClient.Metadata("Console", "connections.test", false)); id ??= page.Resources.FirstOrDefault(r => r.Spec.Fields.TryGetValue("name", out var value) && value.StringValue == input.Name)?.Ref.Id; cursor = page.NextPageToken; } while (cursor.Length > 0 && id is null);
+            if (id is null) { return Results.Problem(statusCode: 404, detail: "connection.not_found"); }
+            var result = await core.Connectors.TestConnectionAsync(new Filedock.Core.V1.ConnectionRef { ConnectionId = id }, CoreClient.Metadata("Console", "connections.test", true));
+            await audit.WriteAsync("Console", "root", "root", "connection.tested", id, "Succeeded"); return Results.Ok(ResourceEndpoints.Json(result));
+        }));
         admin.MapRecoveryConsole();
         admin.MapPost("/diagnostics", async (FileDock.Management.Core.CoreClient core, AuditWriter audit, HttpContext context) => await ObservabilityEndpoints.Run(async () => { var data = await ObservabilityEndpoints.Bundle(core, FileDock.Management.Core.CoreClient.Metadata("Console", "diagnostics", true), context.RequestAborted); await audit.WriteAsync("Console", "root", "root", "diagnostics.exported", "appliance", "Succeeded"); return Results.File(data, "application/zstd", "filedock-diagnostics.tar.zst"); }));
         admin.MapPost("/reset-password", async (ConsolePassword body, AdminService admins, IAdminStore store, SessionService sessions, AuditWriter audit) =>
@@ -97,3 +106,5 @@ public static class AdminSocketEndpoints
 }
 
 public sealed record ConsolePassword(string? Username, string? Password);
+
+public sealed record ConnectionTestInput(string Name);

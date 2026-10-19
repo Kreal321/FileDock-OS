@@ -56,10 +56,11 @@ test: test-core test-management test-web test-contracts
 test-core:
 	$(CARGO) nextest run --workspace --no-tests=pass
 
-# Microsoft.Testing.Platform runner (global.json). Exit code 8 means zero tests ran, which is
-# expected until the test projects have tests.
+# The xUnit executable runners discover the actual suites. The solution-level MTP
+# command does not discover these projects; do not turn zero tests into success.
 test-management:
-	$(DOTNET) test --solution $(MGMT_SLN) --ignore-exit-code 8
+	$(DOTNET) run --project management/tests/FileDock.Management.ApiTests -- -noLogo -reporter quiet
+	$(DOTNET) run --project management/tests/FileDock.Management.UnitTests -- -noLogo -reporter quiet
 
 test-web:
 	$(PNPM) -C web test
