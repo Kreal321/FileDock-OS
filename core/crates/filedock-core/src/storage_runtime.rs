@@ -399,7 +399,18 @@ pub async fn run(app: Arc<App>) {
             {
                 let copy = polling.clone();
                 let _ = tokio::task::spawn_blocking(move || {
-                    for disk in fd_storage::disks::discover().unwrap_or_default() {
+                    let Ok(disks) = fd_storage::disks::discover() else {
+                        return;
+                    };
+                    let system_serials: Vec<_> = disks
+                        .iter()
+                        .filter(|d| d.is_system_disk)
+                        .map(|d| d.serial.clone())
+                        .collect();
+                    let _ = copy.store.db().with(|c| {
+                        fd_state::db::put_setting(c, "disk.system_serials", &json!(system_serials))
+                    });
+                    for disk in disks {
                         let health =
                             fd_storage::disks::smart(&disk.device_path).unwrap_or("Unknown".into());
                         let _ = copy.store.db().with(|c| {
@@ -478,15 +489,14 @@ fn monitor(app: &App, tick: u64) -> Result<()> {
         }
         if row.spec["kind"] == "System"
             && observation.is_ok()
-            && fd_storage::disks::discover()?
-                .iter()
-                .filter(|d| d.is_system_disk)
-                .any(|d| {
-                    matches!(
-                        smart.get(&d.serial).map(String::as_str),
-                        Some("Warning" | "Failing")
-                    )
-                })
+            && system_disk_degraded(
+                &smart,
+                &app.store
+                    .db()
+                    .with(|c| fd_state::db::get_setting(c, "disk.system_serials"))
+                    .map_err(err)?
+                    .unwrap_or(json!([])),
+            )
         {
             status["state"] = json!("Degraded");
         }
@@ -758,4 +768,40 @@ fn quiesce(app: &App, pool: &str) -> Result<()> {
         fd_storage::run("systemctl", &["stop", &unit])?;
     }
     Ok(())
+}
+
+// Disk identity is refreshed by the SMART inventory worker on startup, device events
+// and its periodic scan. The two-second reserve/mount checks must not spawn lsblk.
+fn system_disk_degraded(
+    smart: &std::collections::BTreeMap<String, String>,
+    serials: &Value,
+) -> bool {
+    serials
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .any(|serial| {
+            matches!(
+                smart.get(serial).map(String::as_str),
+                Some("Warning" | "Failing")
+            )
+        })
+}
+
+#[cfg(test)]
+mod cached_disk_health_tests {
+    use super::*;
+    #[test]
+    fn only_known_system_disks_affect_system_pool_smart_health() {
+        let smart = std::collections::BTreeMap::from([
+            ("os".into(), "Healthy".into()),
+            ("data".into(), "Failing".into()),
+        ]);
+        assert!(!system_disk_degraded(&smart, &json!(["os"])));
+        assert!(system_disk_degraded(&smart, &json!(["data"])));
+        assert!(!system_disk_degraded(&smart, &json!([])));
+        assert!(!system_disk_degraded(&smart, &Value::Null));
+        assert!(!system_disk_degraded(&smart, &json!(["missing"])));
+    }
 }
