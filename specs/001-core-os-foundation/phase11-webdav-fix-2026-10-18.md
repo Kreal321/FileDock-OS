@@ -44,16 +44,28 @@ All checks below passed against the installed release, with no cache-expiry wait
 - Offline Docker fixture starts and reads the System Pool canary.
 - All eight dashboard components Healthy before reboot.
 
-## Reboot verification in progress
+## Reboot follow-up and cleanup
 
-A full VM reboot was initiated after these checks. SSH and Management HTTP have not yet
-returned at the original address. PVE console output/current guest IP was requested to diagnose
-this separately; reboot recovery is **not passed**. No speculative boot repair has been applied.
+The reboot completed; DHCP changed the address to `.25`, explaining the lost connection.
+The user subsequently requested static addressing at `192.168.68.104/24`. The guest now uses
+ifupdown static configuration on ens18 with gateway/DNS `192.168.68.1`. SSH reconnected at
+`.104` after reboot. The departing DHCP client cleared resolv.conf on shutdown; static DNS
+was restored after DHCP had stopped. A further reboot retained the static IP, gateway and DNS,
+and GitHub name resolution succeeded. Agent access/testing instructions are in `AGENTS.md`,
+with user-requested credentials kept only in the ignored, mode-0600 `AGENTS.local.md`.
 
-The disposable folder, share accounts, Compose fixture and root-only test state are retained
-pending reconnection and cleanup. Scripts/state are under
-`/var/tmp/filedock-phase11-20261018-retest`. Original resource lists were empty; original
-System Pool limits were 50% / 100 GB reserve and were not changed in this run.
+After reboot, the entire WebDAV freshness regression passed again and the Docker container
+read the original System Pool canary. However, native S3 and rclone connector services were
+inactive and their supervisor states Failed, detail `subsystem start failed or timed out`.
+Restarting Core did not clear terminal failure. Starting the packaged connector units through
+systemd restored both connectors and all eight components became Healthy. Full unattended
+connector reboot recovery remains a separate finding; it is **not passed**.
+
+The disposable folder, share accounts, Compose fixture/image, bind and export resources were
+removed; baseline resource lists restored. NFS remained active. Original System Pool limits
+were 50% / 100 GB reserve and were not changed in this run. Temporary API cookies and share
+authentication files were removed and the API session signed out. Redacted results and helper
+scripts remain under `/var/tmp/filedock-phase11-20261018-retest`.
 
 Additional data-disk fault/fill tests and real-provider OAuth still require the environments
 and credentials described in `phase11-testing.md`.

@@ -41,6 +41,9 @@ __pycache__/
 /.tmp/
 /.ci-cache/
 
+# Local agent connection details and test VM credentials
+/AGENTS.local.md
+
 # Debian packaging artifacts
 *.deb
 *.buildinfo
