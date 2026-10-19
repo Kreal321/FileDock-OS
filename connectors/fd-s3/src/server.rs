@@ -139,10 +139,7 @@ impl Subsystem for App {
                 }
                 Ok(actual)
             };
-            let bandwidth_limit = row
-                .get("bandwidth_limit")
-                .and_then(|v| v.as_u64())
-                .filter(|n| *n > 0);
+            let bandwidth_limit = row.get("bandwidth_limit").and_then(positive_u64);
             let id = text("id")?;
             let throttle_key = row
                 .get("source_connection")
@@ -442,5 +439,32 @@ fn proto_json(value: &prost_types::Value) -> serde_json::Value {
         Some(Kind::NumberValue(v)) => serde_json::json!(v),
         Some(Kind::BoolValue(v)) => serde_json::json!(v),
         _ => serde_json::Value::Null,
+    }
+}
+
+// google.protobuf.Struct transports JSON numbers as doubles, including integral limits.
+fn positive_u64(value: &serde_json::Value) -> Option<u64> {
+    value.as_u64().filter(|n| *n > 0).or_else(|| {
+        value
+            .as_f64()
+            .filter(|n| n.is_finite() && *n > 0.0 && n.fract() == 0.0 && *n < u64::MAX as f64)
+            .map(|n| n as u64)
+    })
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn accepts_integral_protobuf_numbers_for_bandwidth_limits() {
+        for value in [serde_json::json!(65536), serde_json::json!(65536.0)] {
+            assert_eq!(super::positive_u64(&value), Some(65536));
+        }
+        for value in [
+            serde_json::json!(0.0),
+            serde_json::json!(-1.0),
+            serde_json::json!(1.5),
+            serde_json::json!("65536"),
+        ] {
+            assert_eq!(super::positive_u64(&value), None);
+        }
     }
 }

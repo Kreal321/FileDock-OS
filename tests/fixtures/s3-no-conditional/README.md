@@ -14,3 +14,9 @@ an isolated test network. Do not use real provider credentials or real data.
 
 The proxy supports ordinary SigV4 header-signed requests and HTTP chunk framing.
 AWS signed streaming payload encoding and presigned URLs are outside this fixture.
+
+For incomplete-upload acceptance, `holdPart: true` holds a successful part response
+for at most 30 seconds; `GET /__fault` reports `partSeen`. Kill only the disposable
+upload process, then clear `holdPart`. `ageMultipart: true` reports test uploads as
+25 hours old in listing responses, so the production 24-hour sweep can be exercised
+without changing the VM clock or weakening its age guard. Always reset these flags.

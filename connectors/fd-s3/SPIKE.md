@@ -50,3 +50,7 @@ multipart uploads and calculates per-part checksum headers. AWS documents the
 checksum mismatch rejection and multipart requirements in
 [Checking object integrity for data uploads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html).
 Live MinIO/proxy validation of this path is still required.
+
+Live MinIO acceptance (official `RELEASE.2025-10-15T17-29-55Z`) returns
+HTTP400 `XAmzContentChecksumMismatch` for the invalid SHA256 challenge. Treat
+that checksum-specific code like `BadDigest`; generic rejection still proves nothing.

@@ -176,8 +176,12 @@ fn checksum_error(bytes: &[u8]) -> bool {
         #[serde(rename = "Code")]
         code: String,
     }
-    quick_xml::de::from_reader::<_, Error>(bytes)
-        .is_ok_and(|e| matches!(e.code.as_str(), "BadDigest" | "XAmzContentSHA256Mismatch"))
+    quick_xml::de::from_reader::<_, Error>(bytes).is_ok_and(|e| {
+        matches!(
+            e.code.as_str(),
+            "BadDigest" | "XAmzContentSHA256Mismatch" | "XAmzContentChecksumMismatch"
+        )
+    })
 }
 
 fn check(name: &str, ok: bool) -> ProbeCheck {
@@ -203,6 +207,9 @@ mod tests {
     #[test]
     fn checksum_support_requires_a_checksum_specific_rejection() {
         assert!(checksum_error(b"<Error><Code>BadDigest</Code></Error>"));
+        assert!(checksum_error(
+            b"<Error><Code>XAmzContentChecksumMismatch</Code></Error>"
+        ));
         assert!(!checksum_error(b"<Error><Code>AccessDenied</Code></Error>"));
         assert!(!checksum_error(b"garbage"));
     }
