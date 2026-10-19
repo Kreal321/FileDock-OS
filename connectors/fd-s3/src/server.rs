@@ -302,26 +302,14 @@ impl CloudRemote for App {
             bucket.acquire(data.len()).await;
         }
         let verified = expected.is_none_or(|exp| exp == digest);
-        let (tx, rx) = tokio::sync::mpsc::channel(4);
-        tokio::spawn(async move {
-            let _ = tx
-                .send(Ok(GetObjectChunk {
-                    part: Some(ext::get_object_chunk::Part::Data(data)),
-                }))
-                .await;
-            let _ = tx
-                .send(Ok(GetObjectChunk {
-                    part: Some(ext::get_object_chunk::Part::Trailer(GetObjectTrailer {
-                        sha256: digest,
-                        verified,
-                        etag,
-                    })),
-                }))
-                .await;
-        });
-        Ok(Response::new(Box::pin(
-            tokio_stream::wrappers::ReceiverStream::new(rx),
-        )))
+        Ok(Response::new(Box::pin(get_stream(
+            data,
+            GetObjectTrailer {
+                sha256: digest,
+                verified,
+                etag,
+            },
+        ))))
     }
 
     async fn put(
@@ -413,6 +401,33 @@ impl CloudRemote for App {
     }
 }
 
+// Keep each message below gRPC's default 4MiB decoding limit, including package reads.
+fn get_stream(
+    data: Vec<u8>,
+    trailer: GetObjectTrailer,
+) -> tokio_stream::wrappers::ReceiverStream<Result<GetObjectChunk, Status>> {
+    let (tx, rx) = tokio::sync::mpsc::channel(4);
+    tokio::spawn(async move {
+        for bytes in data.chunks(65536) {
+            if tx
+                .send(Ok(GetObjectChunk {
+                    part: Some(ext::get_object_chunk::Part::Data(bytes.to_vec())),
+                }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        let _ = tx
+            .send(Ok(GetObjectChunk {
+                part: Some(ext::get_object_chunk::Part::Trailer(trailer)),
+            }))
+            .await;
+    });
+    tokio_stream::wrappers::ReceiverStream::new(rx)
+}
+
 async fn connection(config: &Mutex<Config>, id: &str) -> Result<RoutedConnection, Status> {
     config
         .lock()
@@ -457,6 +472,39 @@ fn positive_u64(value: &serde_json::Value) -> Option<u64> {
 }
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn package_reads_stream_small_messages_and_end_with_the_original_trailer() {
+        use tokio_stream::StreamExt;
+        let expected = 5 * 1024 * 1024 + 3;
+        let mut stream = super::get_stream(
+            vec![7; expected],
+            super::GetObjectTrailer {
+                sha256: "digest".into(),
+                verified: true,
+                etag: "etag".into(),
+            },
+        );
+        let mut size = 0;
+        let mut trailer_seen = false;
+        while let Some(chunk) = stream.next().await {
+            match chunk.unwrap().part.unwrap() {
+                super::ext::get_object_chunk::Part::Data(data) => {
+                    assert!(!trailer_seen);
+                    assert!(data.len() <= 65536);
+                    size += data.len();
+                }
+                super::ext::get_object_chunk::Part::Trailer(t) => {
+                    assert!(!trailer_seen);
+                    trailer_seen = true;
+                    assert!(t.verified);
+                    assert_eq!(t.etag, "etag");
+                    assert_eq!(t.sha256, "digest");
+                }
+            }
+        }
+        assert_eq!(size, expected);
+        assert!(trailer_seen);
+    }
     #[tokio::test]
     async fn extension_activation_accepts_empty_initial_configuration() {
         let app = super::App {
