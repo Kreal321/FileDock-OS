@@ -93,6 +93,8 @@ def test_protocol_rules_container_bind_and_control_plane_independence(vm_factory
         wait(lambda:bool(next(r for r in api.get(f"/folders/{f['id']}/exports").raise_for_status().json()['items'] if r['id']==dav['id']).get('status',{}).get('endpoints')))
         dav=next(r for r in api.get(f"/folders/{f['id']}/exports").raise_for_status().json()['items'] if r['id']==dav['id']);port=next(e['port'] for e in dav['status']['endpoints'] if e['access']=='read-write')
         readport=next(e['port'] for e in dav['status']['endpoints'] if e['access']=='read')
+        # Warm the independent reader VFS before another process changes this directory.
+        vm.sudo(f'curl --fail --user reader:reader-only -X PROPFIND http://127.0.0.1:{readport}/')
         vm.sudo(f"printf webdav-canary >/var/tmp/fd-upload; curl --fail --user acceptance:acceptance-only -T /var/tmp/fd-upload http://127.0.0.1:{port}/webdav-canary")
         assert vm.sudo(f'cat {shlex.quote(path)}/webdav-canary').stdout=='webdav-canary'
         assert vm.sudo(f'curl -s -o /dev/null -w %{{http_code}} http://127.0.0.1:{port}/webdav-canary').stdout=='401'
@@ -132,6 +134,15 @@ subprocess.run(['docker','build','-q','-t','filedock-acceptance-local',str(root)
             with smbclient.open_file(unc+'smb-canary',mode='wb') as stream:stream.write(b'smb-canary')
         finally:smbclient.reset_connection_cache()
         assert vm.sudo(f'cat {shlex.quote(path)}/smb-canary').stdout=='smb-canary'
+        assert vm.sudo(f'curl --fail --user reader:reader-only http://127.0.0.1:{readport}/smb-canary').stdout=='smb-canary'
+        vm.sudo(f'mv {shlex.quote(path)}/smb-canary {shlex.quote(path)}/smb-renamed')
+        assert vm.sudo(f'curl -s -o /dev/null -w %{{http_code}} --user reader:reader-only http://127.0.0.1:{readport}/smb-canary').stdout=='404'
+        assert vm.sudo(f'curl --fail --user reader:reader-only http://127.0.0.1:{readport}/smb-renamed').stdout=='smb-canary'
+        vm.sudo(f'mv {shlex.quote(path)}/smb-renamed {shlex.quote(path)}/smb-canary')
+        vm.sudo(f'printf temporary >{shlex.quote(path)}/webdav-delete-canary')
+        assert vm.sudo(f'curl --fail --user reader:reader-only http://127.0.0.1:{readport}/webdav-delete-canary').stdout=='temporary'
+        vm.sudo(f'rm {shlex.quote(path)}/webdav-delete-canary')
+        assert vm.sudo(f'curl -s -o /dev/null -w %{{http_code}} --user reader:reader-only http://127.0.0.1:{readport}/webdav-delete-canary').stdout=='404'
         export(api,f['id'],'smb',[{'principal':'user:acceptance','access':'read'}])
         smbclient.register_session(vm.ip,username='acceptance',password='acceptance-only')
         try:

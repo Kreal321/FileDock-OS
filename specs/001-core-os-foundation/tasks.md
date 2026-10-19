@@ -1227,4 +1227,6 @@ See [phase11-fixes-2026-10-18.md](./phase11-fixes-2026-10-18.md) for implementat
 
 - [X] T279 Disable directory caching for local WebDAV exports so separate roles and other
   protocols observe file creation, rename and deletion promptly. Reconcile existing transient
-  units to the desired cache policy after upgrades. Installed release verification is pending.
+  units to the desired cache policy after upgrades. Installed release freshness checks pass;
+  see [phase11-webdav-fix-2026-10-18.md](./phase11-webdav-fix-2026-10-18.md) for upgrade
+  evidence and the separate pending reboot investigation.
