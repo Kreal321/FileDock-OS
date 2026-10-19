@@ -353,20 +353,12 @@ pub async fn targets(app: &App) -> Result<Vec<CopyTarget>, Status> {
                         l.connection_id == connection_id && l.bucket == bucket && l.prefix == prefix
                     })
                     .ok_or_else(|| error("location.not_claimed"))?;
-                let resolved = tokio::time::timeout(
-                    std::time::Duration::from_secs(1),
+                let (available, backend) = remote_copy_backend(
+                    &location,
+                    app.config.state_spool.join("unavailable"),
                     object_io(app, &connection_id, &bucket, &prefix, false),
                 )
-                .await
-                .unwrap_or_else(|_| Err(error("connector.unavailable")));
-                let available = location.role == Role::Writer && resolved.is_ok();
-                let backend = match resolved {
-                    Ok((io, _, _)) => Backend::Remote(Arc::new(WriterSession {
-                        io,
-                        location: location.clone(),
-                    })),
-                    Err(_) => Backend::Local(app.config.state_spool.join("unavailable")),
-                };
+                .await;
                 targets.push(CopyTarget {
                     id: location.id.clone(),
                     kind: CopyKind::RemoteObjectStorage,
@@ -380,6 +372,26 @@ pub async fn targets(app: &App) -> Result<Vec<CopyTarget>, Status> {
     }
     Ok(targets)
 }
+// Session construction waits for the route lock and connector configuration. A short
+// wall-clock timeout here would misclassify a healthy connector during an atomic route
+// change. Provider RPCs have their own deadlines; write_copy bounds delivery separately.
+async fn remote_copy_backend(
+    location: &OwnedLocation,
+    unavailable: PathBuf,
+    session: impl std::future::Future<Output = Result<(Arc<dyn ObjectIo>, String, ClaimSafety), Status>>,
+) -> (bool, Backend) {
+    let resolved = session.await;
+    let available = location.role == Role::Writer && resolved.is_ok();
+    let backend = match resolved {
+        Ok((io, _, _)) => Backend::Remote(Arc::new(WriterSession {
+            io,
+            location: location.clone(),
+        })),
+        Err(_) => Backend::Local(unavailable),
+    };
+    (available, backend)
+}
+
 pub async fn snapshot(app: &App, force: bool) -> Result<bool, Status> {
     let _guard = app.restore_lock.lock().await;
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), inspect_locations(app)).await;
@@ -584,4 +596,77 @@ pub fn recompute_claim_safety(app: &App) -> Result<(), Status> {
             .resolve("appliance", None, "location.basic_claim_safety");
     }
     save_locations(app, &all)
+}
+
+#[cfg(test)]
+mod copy_session_tests {
+    use super::*;
+
+    fn location(role: Role) -> OwnedLocation {
+        OwnedLocation {
+            id: "test-location".into(),
+            connection_id: "test-connection".into(),
+            bucket: "test-bucket".into(),
+            prefix: "state".into(),
+            purpose: "ApplianceState".into(),
+            owner_appliance_id: "test-owner".into(),
+            generation: 1,
+            last_write_at: String::new(),
+            role,
+            served_by_connector: "fd-s3".into(),
+            served_by_third_party: false,
+            claim_safety: ClaimSafety::Conditional,
+        }
+    }
+
+    fn io() -> Arc<dyn ObjectIo> {
+        Arc::new(fd_connectors::object_io::S3Objects {
+            // No network I/O: this check exercises session readiness, not provider operations.
+            channel: tonic::transport::Endpoint::from_static("http://localhost").connect_lazy(),
+            connection_id: "test-connection".into(),
+            prefix: String::new(),
+            cleanup_directory: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn route_contention_does_not_make_a_healthy_copy_unavailable() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let held = lock.clone().lock_owned().await;
+        let waiter = lock.clone();
+        let session = async move {
+            let _guard = waiter.lock().await;
+            Ok((io(), "fd-s3".into(), ClaimSafety::Conditional))
+        };
+        let copy = tokio::spawn(async move {
+            remote_copy_backend(&location(Role::Writer), "/unused".into(), session).await
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        assert!(
+            !copy.is_finished(),
+            "route lock contention is not connector failure"
+        );
+        drop(held);
+        let (available, backend) = copy.await.unwrap();
+        assert!(available);
+        assert!(matches!(backend, Backend::Remote(_)));
+    }
+
+    #[tokio::test]
+    async fn unavailable_connector_and_nonwriter_stay_unavailable() {
+        let (available, backend) =
+            remote_copy_backend(&location(Role::Writer), "/unused".into(), async {
+                Err(Status::unavailable("connector.unavailable"))
+            })
+            .await;
+        assert!(!available);
+        assert!(matches!(backend, Backend::Local(_)));
+        for role in [Role::RecoveryReader, Role::OwnershipLost] {
+            let (available, _) = remote_copy_backend(&location(role), "/unused".into(), async {
+                Ok((io(), "fd-s3".into(), ClaimSafety::Conditional))
+            })
+            .await;
+            assert!(!available);
+        }
+    }
 }
