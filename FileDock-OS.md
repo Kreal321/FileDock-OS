@@ -1891,8 +1891,8 @@ Protection is a separate observation, not a promise implied by the mode's name.
 | Hybrid Backup | Local pool | Verified incremental snapshots protect data to the latest durable recovery point. Later local changes may be lost. |
 | Tiered Storage | Local hot tier and owned cloud tier | Verified cloud objects and durable tier metadata can be recovered. Hot data not yet migrated may be lost. |
 
-Only Hybrid Backup asks for **Data Importance**: Critical, Important, Normal or Rebuildable.
-Critical defaults to a 5-minute backup interval, Important to 15 minutes, Normal to 1 hour;
+Only Hybrid Backup asks for **Data Importance**: Critical, Important or Rebuildable.
+Critical defaults to a 5-minute backup interval and Important to 15 minutes;
 Rebuildable defaults to backup disabled. Administrators can change policies explicitly.
 Subfolders inherit their managed folder's mode; an importance override does not change it.
 Temporary subfolder contents are the only user data eligible for automatic pressure cleanup.

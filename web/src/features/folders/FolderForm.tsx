@@ -1,3 +1,4 @@
+import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
 import { Button } from '../../components/Button.tsx';
@@ -353,6 +354,10 @@ export function FolderForm({
       {mode === 'HybridBackup' ? (
         <Panel className="stack">
           <h2>4. Data Importance</h2>
+          <RecoveryPoint
+            label="Latest durable folder-data recovery point"
+            at={folder?.status?.lastDurableRecoveryPoint}
+          />
           <Select
             label="Data importance"
             required

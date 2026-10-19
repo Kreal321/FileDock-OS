@@ -1,3 +1,4 @@
+import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
@@ -334,6 +335,11 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
                 {Object.entries(s.dataBindings)
                   .map(([name, id]) => `${name}: ${id}`)
                   .join(', ')}
+                {/* The subsystem DTO reports policy, not a durable backup observation. */}
+                <RecoveryPoint
+                  label="Latest durable bound-data recovery point"
+                  cached={Boolean(q.error)}
+                />
               </Notice>
             )}
             {s.dependentFolders.length > 0 && (

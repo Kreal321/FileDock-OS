@@ -45,7 +45,15 @@ test('protection status surfaces retain the durable-recovery observation', () =>
     'features/dashboard/DashboardPage.tsx',
     'features/recovery/StateProtectionPage.tsx',
     'features/folders/FoldersPage.tsx',
+    'features/folders/FolderForm.tsx',
+    'features/extensions/ExtensionsPage.tsx',
   ]) {
     expect(readFileSync(resolve('src', path), 'utf8'), path).toContain('<RecoveryPoint');
   }
+});
+
+test('restore reports identify the actual recovered configuration point', () => {
+  const source = readFileSync(resolve('src/features/restore/RestoreReport.tsx'), 'utf8');
+  expect(source).toContain('snapshotTakenAt');
+  expect(source).toContain('Recovered snapshot:');
 });
