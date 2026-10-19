@@ -62,6 +62,7 @@ class Proxy(http.server.BaseHTTPRequestHandler):
             query=urllib.parse.parse_qs(urllib.parse.urlsplit(path).query,keep_blank_values=True)
             if fault['ageMultipart'] and self.command=='GET' and 'uploads' in query and response.status==200:
                 xml=ET.fromstring(data)
+                if xml.tag.startswith('{'):ET.register_namespace('',xml.tag[1:].split('}',1)[0])
                 for node in xml.iter():
                     if node.tag.rsplit('}',1)[-1]=='Initiated':node.text=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(hours=25)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
                 data=ET.tostring(xml)

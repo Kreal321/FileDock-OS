@@ -76,10 +76,9 @@ pub async fn run(app: &App) -> Result<(), Status> {
             }
             if let Some(prefix) =
                 fd_connectors::sweep::probe_prefix(&state_runtime::appliance_id(app))
+                && let Err(e) = discovery.abort_incomplete(&prefix, 24, false).await
             {
-                if let Err(e) = discovery.abort_incomplete(&prefix, 24, false).await {
-                    tracing::warn!(connection=%row.resource.id,code=%e,"probe upload sweep failed");
-                }
+                tracing::warn!(connection=%row.resource.id,code=%e,"probe upload sweep failed");
             }
         }
     }

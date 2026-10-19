@@ -41,8 +41,9 @@ pub async fn abort(
     let mut count = 0;
     let mut marker = String::new();
     let mut upload_marker = String::new();
+    let mut listing_prefix = prefix.to_owned();
     loop {
-        let mut query = vec![("uploads", ""), ("prefix", prefix)];
+        let mut query = vec![("uploads", ""), ("prefix", listing_prefix.as_str())];
         if !marker.is_empty() {
             query.push(("key-marker", &marker));
             query.push(("upload-id-marker", &upload_marker));
@@ -50,6 +51,17 @@ pub async fn abort(
         let bytes = sigv4::request(conn, "GET", None, &query).await?;
         let page: Listing = quick_xml::de::from_reader(bytes.as_slice())
             .map_err(|_| Status::data_loss("sweep.response_invalid"))?;
+        // MinIO's pinned implementation may treat a nonempty multipart prefix as
+        // an exact object key. Retry an empty first page with a read-only bucket
+        // listing; every abort still checks the original authorized prefix and age.
+        if !listing_prefix.is_empty()
+            && marker.is_empty()
+            && !page.is_truncated
+            && page.uploads.is_empty()
+        {
+            listing_prefix.clear();
+            continue;
+        }
         for upload in page.uploads.iter().filter(|u| eligible(prefix, u, cutoff)) {
             sigv4::request(
                 conn,

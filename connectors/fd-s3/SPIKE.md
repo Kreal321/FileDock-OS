@@ -54,3 +54,10 @@ Live MinIO/proxy validation of this path is still required.
 Live MinIO acceptance (official `RELEASE.2025-10-15T17-29-55Z`) returns
 HTTP400 `XAmzContentChecksumMismatch` for the invalid SHA256 challenge. Treat
 that checksum-specific code like `BadDigest`; generic rejection still proves nothing.
+
+The pinned MinIO multipart implementation indexes nonempty prefixes as exact object
+keys (`cmd/erasure-multipart.go:ListMultipartUploads`). A fresh live check returned
+three uploads for the bucket and zero for `state/` although all keys began with it.
+The sweep retries an empty first page with a read-only bucket listing, then applies
+the original prefix and 24-hour filter locally before every abort. Restricted bucket
+listing permissions fail closed; this does not grant a wider write/abort scope.

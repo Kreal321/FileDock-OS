@@ -652,10 +652,9 @@ pub async fn run(app: Arc<App>) {
         if s3_running
             && socket_epoch.is_some()
             && (swept_socket != socket_epoch || last_probe.elapsed() >= Duration::from_secs(86400))
+            && let Err(error) = crate::sweep_runtime::run(&app).await
         {
-            if let Err(error) = crate::sweep_runtime::run(&app).await {
-                tracing::warn!(code=%error.message(),"incomplete upload sweep failed");
-            }
+            tracing::warn!(code=%error.message(),"incomplete upload sweep failed");
         }
         if s3_running {
             swept_socket = socket_epoch;

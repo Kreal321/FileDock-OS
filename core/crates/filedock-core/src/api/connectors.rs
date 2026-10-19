@@ -217,10 +217,10 @@ impl Connectors for ConnectorsSvc {
             })?;
         crate::state_runtime::recompute_claim_safety(&self.app)?;
         let _=self.app.events.emit("connector.routes_changed",None,serde_json::json!({"generation":route_row.generation+1,"auditEntryId":audit_id,"basicAcknowledged":r.acknowledged_basic_claim_safety,"thirdPartyAcknowledged":r.acknowledged_third_party_owned_storage}));
-        if crate::storage_runtime::enabled().is_ok() {
-            if let Err(e) = crate::runtime::configure(&self.app).await {
-                tracing::warn!(code=%e.message(),"route configuration pending");
-            }
+        if crate::storage_runtime::enabled().is_ok()
+            && let Err(e) = crate::runtime::configure(&self.app).await
+        {
+            tracing::warn!(code=%e.message(),"route configuration pending");
         }
         for id in &preview.impact.mounts {
             self.app

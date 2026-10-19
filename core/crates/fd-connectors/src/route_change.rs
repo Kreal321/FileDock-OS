@@ -38,184 +38,6 @@ pub struct Preview {
     pub impact: Impact,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    fn connector(id: &str, enabled: bool, conditional: bool, class: &str) -> SubsystemRecord {
-        SubsystemRecord {
-            id: id.into(),
-            class: class.into(),
-            enabled,
-            state: "Running".into(),
-            version: "1".into(),
-            manifest: json!({"cloud":[{"family":"s3-compatible","capabilities":["cloud.remote"],"conditionalWrites":conditional,"providerChecksums":conditional}]}),
-        }
-    }
-    fn connection(id: &str, overrides: serde_json::Value) -> StoredResource {
-        StoredResource {
-            resource: fd_state::ResourceRef::new(fd_state::ResourceKind::CloudConnection, id),
-            generation: 1,
-            spec: json!({"name":id,"providerFamily":"s3-compatible","definition":{"type":"s3","endpoint":"https://example.invalid","region":"us-east-1","bucket":"test","addressingStyle":"Path","accessKeyRef":"access","secretKeyRef":"secret"},"routeOverrides":overrides}),
-            status: None,
-            deleted: false,
-            change_seq: 1,
-            created_at: "now".into(),
-            updated_at: "now".into(),
-        }
-    }
-    #[test]
-    fn family_change_preserves_overrides_and_only_new_recipients_are_reported() {
-        let first = connection("first", json!({}));
-        let second = connection(
-            "second",
-            json!({"ownedObjectStorage":{"type":"connector","subsystem_id":"fd-s3"}}),
-        );
-        let records = [
-            connector("fd-s3", true, true, "BuiltIn"),
-            connector("other", true, false, "Extension"),
-        ];
-        let p = preview(
-            &ConnectorRoutesSpec::seeded(),
-            &[first, second],
-            &[],
-            &[],
-            &records,
-            &[Change {
-                family: "s3-compatible".into(),
-                use_kind: RouteUse::OwnedObjectStorage,
-                connection_id: String::new(),
-                target: Some(RouteTarget::Connector {
-                    subsystem_id: "other".into(),
-                }),
-            }],
-        );
-        assert!(p.impact.issues.is_empty());
-        assert_eq!(p.impact.connections, BTreeSet::from(["first".into()]));
-        assert_eq!(
-            p.impact.recipients["other"],
-            BTreeSet::from(["first".into()])
-        );
-        assert_eq!(
-            routes::resolve(
-                &p.routes,
-                Some(&p.connections["second"]),
-                "s3-compatible",
-                RouteUse::OwnedObjectStorage
-            )
-            .unwrap(),
-            RouteTarget::Connector {
-                subsystem_id: "fd-s3".into()
-            }
-        );
-    }
-    #[test]
-    fn removing_override_previews_inherited_target_without_changing_other_connections() {
-        let first = connection(
-            "first",
-            json!({"ownedObjectStorage":{"type":"connector","subsystem_id":"other"}}),
-        );
-        let second = connection("second", json!({}));
-        let p = preview(
-            &ConnectorRoutesSpec::seeded(),
-            &[first, second],
-            &[],
-            &[],
-            &[
-                connector("fd-s3", true, true, "BuiltIn"),
-                connector("other", true, false, "Extension"),
-            ],
-            &[Change {
-                family: "s3-compatible".into(),
-                use_kind: RouteUse::OwnedObjectStorage,
-                connection_id: "first".into(),
-                target: None,
-            }],
-        );
-        assert!(p.impact.issues.is_empty());
-        assert_eq!(p.impact.connections, BTreeSet::from(["first".into()]));
-        assert!(p.connections["first"].route_overrides.is_empty());
-    }
-    #[test]
-    fn disabled_and_mount_incapable_targets_are_refused() {
-        for (enabled, usage, code) in [
-            (
-                false,
-                RouteUse::OwnedObjectStorage,
-                "route.connector_disabled",
-            ),
-            (true, RouteUse::CloudMount, "route.connector_incapable"),
-        ] {
-            let p = preview(
-                &ConnectorRoutesSpec::seeded(),
-                &[],
-                &[],
-                &[],
-                &[connector("other", enabled, false, "Extension")],
-                &[Change {
-                    family: "s3-compatible".into(),
-                    use_kind: usage,
-                    connection_id: String::new(),
-                    target: Some(RouteTarget::Connector {
-                        subsystem_id: "other".into(),
-                    }),
-                }],
-            );
-            assert!(p.impact.issues.iter().any(|i| i.code == code));
-        }
-    }
-    #[test]
-    fn third_party_owned_routes_require_separate_acknowledgements() {
-        let original = ConnectorRoutesSpec::seeded();
-        let p = preview(
-            &original,
-            &[],
-            &[],
-            &[],
-            &[connector("other", true, false, "Extension")],
-            &[Change {
-                family: "s3-compatible".into(),
-                use_kind: RouteUse::OwnedObjectStorage,
-                connection_id: String::new(),
-                target: Some(RouteTarget::Connector {
-                    subsystem_id: "other".into(),
-                }),
-            }],
-        );
-        assert!(p.impact.basic_ack && p.impact.third_party_ack);
-        assert_eq!(original, ConnectorRoutesSpec::seeded());
-    }
-    #[test]
-    fn null_default_and_duplicate_changes_are_refused() {
-        let c = Change {
-            family: "s3-compatible".into(),
-            use_kind: RouteUse::OwnedObjectStorage,
-            connection_id: String::new(),
-            target: None,
-        };
-        let p = preview(
-            &ConnectorRoutesSpec::seeded(),
-            &[],
-            &[],
-            &[],
-            &[],
-            &[c.clone(), c],
-        );
-        assert!(
-            p.impact
-                .issues
-                .iter()
-                .any(|i| i.code == "route.default_required")
-        );
-        assert!(
-            p.impact
-                .issues
-                .iter()
-                .any(|i| i.code == "route.change_duplicate")
-        );
-    }
-}
-
 pub fn preview(
     original: &ConnectorRoutesSpec,
     rows: &[StoredResource],
@@ -477,5 +299,183 @@ pub fn claim_safety(
         ClaimSafety::Conditional
     } else {
         ClaimSafety::Basic
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    fn connector(id: &str, enabled: bool, conditional: bool, class: &str) -> SubsystemRecord {
+        SubsystemRecord {
+            id: id.into(),
+            class: class.into(),
+            enabled,
+            state: "Running".into(),
+            version: "1".into(),
+            manifest: json!({"cloud":[{"family":"s3-compatible","capabilities":["cloud.remote"],"conditionalWrites":conditional,"providerChecksums":conditional}]}),
+        }
+    }
+    fn connection(id: &str, overrides: serde_json::Value) -> StoredResource {
+        StoredResource {
+            resource: fd_state::ResourceRef::new(fd_state::ResourceKind::CloudConnection, id),
+            generation: 1,
+            spec: json!({"name":id,"providerFamily":"s3-compatible","definition":{"type":"s3","endpoint":"https://example.invalid","region":"us-east-1","bucket":"test","addressingStyle":"Path","accessKeyRef":"access","secretKeyRef":"secret"},"routeOverrides":overrides}),
+            status: None,
+            deleted: false,
+            change_seq: 1,
+            created_at: "now".into(),
+            updated_at: "now".into(),
+        }
+    }
+    #[test]
+    fn family_change_preserves_overrides_and_only_new_recipients_are_reported() {
+        let first = connection("first", json!({}));
+        let second = connection(
+            "second",
+            json!({"ownedObjectStorage":{"type":"connector","subsystem_id":"fd-s3"}}),
+        );
+        let records = [
+            connector("fd-s3", true, true, "BuiltIn"),
+            connector("other", true, false, "Extension"),
+        ];
+        let p = preview(
+            &ConnectorRoutesSpec::seeded(),
+            &[first, second],
+            &[],
+            &[],
+            &records,
+            &[Change {
+                family: "s3-compatible".into(),
+                use_kind: RouteUse::OwnedObjectStorage,
+                connection_id: String::new(),
+                target: Some(RouteTarget::Connector {
+                    subsystem_id: "other".into(),
+                }),
+            }],
+        );
+        assert!(p.impact.issues.is_empty());
+        assert_eq!(p.impact.connections, BTreeSet::from(["first".into()]));
+        assert_eq!(
+            p.impact.recipients["other"],
+            BTreeSet::from(["first".into()])
+        );
+        assert_eq!(
+            routes::resolve(
+                &p.routes,
+                Some(&p.connections["second"]),
+                "s3-compatible",
+                RouteUse::OwnedObjectStorage
+            )
+            .unwrap(),
+            RouteTarget::Connector {
+                subsystem_id: "fd-s3".into()
+            }
+        );
+    }
+    #[test]
+    fn removing_override_previews_inherited_target_without_changing_other_connections() {
+        let first = connection(
+            "first",
+            json!({"ownedObjectStorage":{"type":"connector","subsystem_id":"other"}}),
+        );
+        let second = connection("second", json!({}));
+        let p = preview(
+            &ConnectorRoutesSpec::seeded(),
+            &[first, second],
+            &[],
+            &[],
+            &[
+                connector("fd-s3", true, true, "BuiltIn"),
+                connector("other", true, false, "Extension"),
+            ],
+            &[Change {
+                family: "s3-compatible".into(),
+                use_kind: RouteUse::OwnedObjectStorage,
+                connection_id: "first".into(),
+                target: None,
+            }],
+        );
+        assert!(p.impact.issues.is_empty());
+        assert_eq!(p.impact.connections, BTreeSet::from(["first".into()]));
+        assert!(p.connections["first"].route_overrides.is_empty());
+    }
+    #[test]
+    fn disabled_and_mount_incapable_targets_are_refused() {
+        for (enabled, usage, code) in [
+            (
+                false,
+                RouteUse::OwnedObjectStorage,
+                "route.connector_disabled",
+            ),
+            (true, RouteUse::CloudMount, "route.connector_incapable"),
+        ] {
+            let p = preview(
+                &ConnectorRoutesSpec::seeded(),
+                &[],
+                &[],
+                &[],
+                &[connector("other", enabled, false, "Extension")],
+                &[Change {
+                    family: "s3-compatible".into(),
+                    use_kind: usage,
+                    connection_id: String::new(),
+                    target: Some(RouteTarget::Connector {
+                        subsystem_id: "other".into(),
+                    }),
+                }],
+            );
+            assert!(p.impact.issues.iter().any(|i| i.code == code));
+        }
+    }
+    #[test]
+    fn third_party_owned_routes_require_separate_acknowledgements() {
+        let original = ConnectorRoutesSpec::seeded();
+        let p = preview(
+            &original,
+            &[],
+            &[],
+            &[],
+            &[connector("other", true, false, "Extension")],
+            &[Change {
+                family: "s3-compatible".into(),
+                use_kind: RouteUse::OwnedObjectStorage,
+                connection_id: String::new(),
+                target: Some(RouteTarget::Connector {
+                    subsystem_id: "other".into(),
+                }),
+            }],
+        );
+        assert!(p.impact.basic_ack && p.impact.third_party_ack);
+        assert_eq!(original, ConnectorRoutesSpec::seeded());
+    }
+    #[test]
+    fn null_default_and_duplicate_changes_are_refused() {
+        let c = Change {
+            family: "s3-compatible".into(),
+            use_kind: RouteUse::OwnedObjectStorage,
+            connection_id: String::new(),
+            target: None,
+        };
+        let p = preview(
+            &ConnectorRoutesSpec::seeded(),
+            &[],
+            &[],
+            &[],
+            &[],
+            &[c.clone(), c],
+        );
+        assert!(
+            p.impact
+                .issues
+                .iter()
+                .any(|i| i.code == "route.default_required")
+        );
+        assert!(
+            p.impact
+                .issues
+                .iter()
+                .any(|i| i.code == "route.change_duplicate")
+        );
     }
 }
