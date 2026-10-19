@@ -8,6 +8,7 @@ Missing external fixtures are explicit skips, never successful acceptance eviden
 import concurrent.futures
 import json
 import os
+import time
 from pathlib import Path
 import uuid
 import boto3
@@ -72,7 +73,9 @@ def test_ten_switches_during_twenty_snapshots(installed_vm,cloud):
         initial=objects(client,bucket)
         immutable={k:v for k,v in initial.items() if k.endswith(('.fdstate','.fdpkg'))}
         def copies():
-            for _ in range(20):snapshot(appliance)
+            for _ in range(20):
+                snapshot(appliance)
+                time.sleep(2)
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             pending=pool.submit(copies)
             for i in range(10):
@@ -85,6 +88,7 @@ def test_ten_switches_during_twenty_snapshots(installed_vm,cloud):
                     assert preview['requiresBasicClaimAck'] and 'conditional_writes' in preview['lostFeatures']
                     assert api.put('/connector-routes',json=payload).status_code==422
                 api.put('/connector-routes',json={**payload,'acknowledgedBasicClaimSafety':True}).raise_for_status()
+                time.sleep(1)
             pending.result(timeout=600)
         final=objects(client,bucket)
         assert all(final.get(k)==v for k,v in immutable.items()),'An existing immutable object changed or disappeared'
@@ -138,9 +142,18 @@ def test_third_party_install_changes_no_routes_and_needs_two_acknowledgements(in
         assert api.get('/connector-routes').raise_for_status().json()==before
         assert route(api,'sample-connector',c['id'],False).status_code==422
         route(api,'sample-connector',c['id']).raise_for_status()
+        wait(lambda:api.post('/connections/'+c['id']+'/test',json={}).status_code==200)
         snapshot(appliance)
         locations=api.get('/locations').raise_for_status().json()['locations']
         assert any(l['servedByConnector']=='sample-connector' and l['servedByThirdParty'] for l in locations)
+        assert api.patch('/connectors/sample-connector',json={'enabled':False}).status_code==409
+        route(api,None,c['id']).raise_for_status()
+        # Re-read the encrypted extension package through native S3 (>4 MiB in release builds).
+        snapshot(appliance)
+        disabled=api.patch('/connectors/sample-connector',json={'enabled':False}).raise_for_status().json()
+        assert not disabled.get('enabled',False)  # protobuf JSON omits false scalars
+        assert api.patch('/connectors/sample-connector',json={'enabled':True}).raise_for_status().json()['enabled']
+        wait(lambda:any(x['subsystemId']=='sample-connector' and x['state']=='Running' for x in api.get('/connectors').raise_for_status().json()['connectors']))
     finally:api.close()
 
 def test_stopped_routed_connector_fails_without_fallback(installed_vm,cloud):
@@ -153,3 +166,58 @@ def test_stopped_routed_connector_fails_without_fallback(installed_vm,cloud):
         alerts=api.get('/alerts').raise_for_status().json()['items'];assert any(a['kind']=='connector.route_unavailable' and 'fd-s3' in a['message'] for a in alerts)
     finally:
         installed_vm.sudo('systemctl unmask --runtime filedock-s3.service; systemctl start filedock-s3.service');api.close()
+
+
+def test_backup_only_credentials_are_not_sent_to_cloud_connectors(installed_vm, cloud):
+    endpoint,access,secret,_,bucket=cloud
+    appliance=setup(installed_vm);api=appliance.api
+    try:
+        mode=next(m for m in api.get('/folders/options').raise_for_status().json()['modes'] if m['id']=='HybridBackup')
+        if not mode['enabled']:
+            pytest.skip('Live backup-reference materialization needs the Hybrid Backup provider: '+', '.join(mode['missingCapabilities']))
+        c=connection(api,endpoint,bucket,access,secret,'backup-only')
+        api.post('/folders',json={'identity':{'name':'backup-only'},'storageMode':'HybridBackup','reference':{'poolId':'00000000-0000-7000-8000-000000000001','relativePath':'/backup-only','backupDestination':{'connectionId':c['id'],'remotePath':bucket+'/backup'}},'dataImportance':'Rebuildable','access':[],'advanced':{}}).raise_for_status()
+        references=[c['spec']['definition']['accessKeyRef'],c['spec']['definition']['secretKeyRef']]
+        import shlex
+        def scoped():
+            command=' && '.join('test -f '+shlex.quote('/run/filedock/secrets/backup-engine/'+r.replace('/','__'))+' && test ! -e '+shlex.quote('/run/filedock/secrets/fd-s3/'+r.replace('/','__'))+' && test ! -e '+shlex.quote('/run/filedock/secrets/rclone/'+r.replace('/','__')) for r in references)
+            return installed_vm.sudo(command,check=False).returncode==0
+        wait(scoped)
+    finally:api.close()
+
+def test_azurite_basic_destination(installed_vm):
+    endpoint=os.environ.get('FD_E2E_AZURE_ENDPOINT','');container=os.environ.get('FD_E2E_AZURE_CONTAINER','')
+    if not endpoint or not container:pytest.skip('A disposable Azurite account/container is required.')
+    appliance=setup(installed_vm);api=appliance.api
+    try:
+        reference='connection/'+str(uuid.uuid4())+'/credentials'
+        api.put('/secrets/'+reference,json={'value':json.dumps({'account':os.environ['FD_E2E_AZURE_ACCOUNT'],'key':os.environ['FD_E2E_AZURE_KEY']}),'consumers':['rclone']}).raise_for_status()
+        c=api.post('/connections',json={'name':'azurite','providerFamily':'azure-blob','definition':{'type':'bound','connectorId':'rclone','config':{'account':os.environ['FD_E2E_AZURE_ACCOUNT'],'endpoint':endpoint},'credentials':[reference]}}).raise_for_status().json()
+        assert api.post('/connections/'+c['id']+'/test',json={}).raise_for_status().json()['connectorId']=='rclone'
+        prefix='phase12-'+uuid.uuid4().hex
+        assert destination(api,c['id'],container,prefix,False).status_code==422
+        destination(api,c['id'],container,prefix,True).raise_for_status();snapshot(appliance)
+        assert any(l['connectionId']==c['id'] and l['servedByConnector']=='rclone' and l['claimSafety']=='Basic' for l in api.get('/locations').raise_for_status().json()['locations'])
+        assert api.get('/system/status').raise_for_status().json()['basicClaimSafetyWarning']
+    finally:api.close()
+
+
+def test_drive_stub_lists_only_through_installed_rclone(installed_vm):
+    if os.environ.get('FD_E2E_DRIVE_STUB')!='1':
+        pytest.skip('Provision the loopback Drive stub, test CA and temporary rclone proxy first.')
+    appliance=setup(installed_vm);api=appliance.api
+    def trace():
+        return json.loads(installed_vm.sudo('curl --fail --silent http://127.0.0.1:19405/__count').stdout)
+    try:
+        before=trace()['requests']
+        pid=installed_vm.sudo('systemctl show filedock-rclone.service -p MainPID --value').stdout.strip()
+        reference='connection/'+str(uuid.uuid4())+'/credentials'
+        token=json.dumps({'access_token':'phase12-synthetic-token','token_type':'Bearer','expiry':'2099-01-01T00:00:00Z'})
+        api.put('/secrets/'+reference,json={'value':json.dumps({'token':token}),'consumers':['rclone']}).raise_for_status()
+        c=api.post('/connections',json={'name':'drive-stub','providerFamily':'google-drive','definition':{'type':'bound','connectorId':'rclone','config':{'scope':'drive.readonly','root_folder_id':'root'},'credentials':[reference]}}).raise_for_status().json()
+        for _ in range(20):
+            probe=api.post('/connections/'+c['id']+'/test',json={}).raise_for_status().json()
+            assert probe['connectorId']=='rclone' and all(check['ok'] for check in probe['checks'])
+        result=trace();assert result['requests']-before==20
+        assert all(['rclone',pid] in row for row in result['peers'][before:])
+    finally:api.close()

@@ -20,3 +20,14 @@ for at most 30 seconds; `GET /__fault` reports `partSeen`. Kill only the disposa
 upload process, then clear `holdPart`. `ageMultipart: true` reports test uploads as
 25 hours old in listing responses, so the production 24-hour sweep can be exercised
 without changing the VM clock or weakening its age guard. Always reset these flags.
+
+## Optional process attribution mode
+
+`FD_S3_PRESERVE_CONDITIONS=1` forwards conditional headers when re-signing requests;
+default behavior still removes them for Basic claim testing. `FD_S3_TRACE_PROCESS=1`
+uses Linux `ss` to record peer process names/PIDs for up to 10,000 requests, without
+logging credentials. `POST /__trace` resets the trace and `GET /__trace` returns it.
+These controls are unauthenticated fixture endpoints: keep the proxy on loopback in a
+disposable test environment. For a native-only snapshot window, compare every recorded
+peer to the installed `filedock-s3` unit MainPID. Reset before the window and avoid direct
+SDK or control calls through this proxy while measuring.

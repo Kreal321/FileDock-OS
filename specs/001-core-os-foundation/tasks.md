@@ -950,15 +950,15 @@ native connector is hardened for control.
   - mounts that will restart;
   - the required acknowledgements;
   - validation issues.
-- [ ] T165 [US10] Implement ApplyRouteChange in `core/crates/fd-connectors/src/route_change.rs`:
+- [X] T165 [US10] Implement ApplyRouteChange in `core/crates/fd-connectors/src/route_change.rs`:
   - `expected_generation`;
   - `route.ack_required`, `route.connector_incapable`, `route.connector_disabled`, and `route.use_not_allowed`;
   - acknowledgements recorded in ConnectorRoutes and audited;
   - committed as one ApplyChange, advancing the routes generation;
   - affected connectors reconfigured, with secret files removed for connections no longer routed to them (FR-119).
-- [ ] T166 [US10] Implement ListConnectors, SetConnectorEnabled (`connector.in_use` while routed, built-ins never removable), GetRoutes, PreviewRouteChange, and ApplyRouteChange in `core/crates/filedock-core/src/api/connectors.rs` (FR-112, FR-113, FR-121)
+- [X] T166 [US10] Implement ListConnectors, SetConnectorEnabled (`connector.in_use` while routed, built-ins never removable), GetRoutes, PreviewRouteChange, and ApplyRouteChange in `core/crates/filedock-core/src/api/connectors.rs` (FR-112, FR-113, FR-121)
 - [X] T167 [US10] Implement connector failure handling in `core/crates/fd-connectors/src/client.rs` (FR-120): when the routed connector isn't Running, the session fails with `connector.unavailable` and raises `connector.route_unavailable` naming the connector and route. There is never a fallback to another connector
-- [ ] T168 [US10] Implement claim-safety recomputation in `core/crates/fd-connectors/src/ownership.rs` (FR-123, research R12):
+- [X] T168 [US10] Implement claim-safety recomputation in `core/crates/fd-connectors/src/ownership.rs` (FR-123, research R12):
   - recomputed after each connection test, daily probe, and route change;
   - a probe that finds a downgrade raises a warning alert and keeps writing;
   - the dashboard warning `location.basic_claim_safety` while any location is basic.
@@ -972,14 +972,14 @@ native connector is hardened for control.
   - the AbortIncompleteUploads RPC in `connectors/fd-s3/src/sweep.rs`, which aborts uploads under the given prefix older than the given age;
   - the Core-driven sweep in `core/crates/fd-connectors/src/sweep.rs`, at connector start and once a day, for uploads older than 24 hours. It covers only this appliance's probe key and owned locations where it is the Writer. Each location is swept inside a write session that passed the ownership check. Recovery-reader and Ownership-lost locations are never swept.
 - [X] T172 [US10] Spike: confirm whether the pinned object_store version supports a per-request storage class and listing incomplete uploads. Record the result in `connectors/fd-s3/SPIKE.md`. Implement any gap with hand-signed SigV4 requests (`aws-sigv4`) in `connectors/fd-s3/src/sigv4.rs` (research R23)
-- [ ] T173 [US10] Implement `GET /connectors`, `PATCH /connectors/{id}`, `GET /connector-routes`, `POST /connector-routes/preview`, and `PUT /connector-routes`, plus `routeOverrides` and the effective connector per use in connection listings, in `management/src/FileDock.Management.Api/Endpoints/ConnectorEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs`
-- [ ] T174 [US10] Implement `filedockctl connectors list`, `filedockctl routes show`, and `filedockctl connections test <name>` in `management/src/FileDock.Management.Cli/Commands/ConnectorCommands.cs`
-- [ ] T175 [P] [US10] Build the connectors and routes page in `web/src/features/connectors/`:
+- [X] T173 [US10] Implement `GET /connectors`, `PATCH /connectors/{id}`, `GET /connector-routes`, `POST /connector-routes/preview`, and `PUT /connector-routes`, plus `routeOverrides` and the effective connector per use in connection listings, in `management/src/FileDock.Management.Api/Endpoints/ConnectorEndpoints.cs` and `management/src/FileDock.Management.Api/Endpoints/ConnectionEndpoints.cs`
+- [X] T174 [US10] Implement `filedockctl connectors list`, `filedockctl routes show`, and `filedockctl connections test <name>` in `management/src/FileDock.Management.Cli/Commands/ConnectorCommands.cs`
+- [X] T175 [P] [US10] Build the connectors and routes page in `web/src/features/connectors/`:
   - the connector list with enable and disable;
   - the route table with family defaults and per-connection overrides;
   - a preview dialog listing the impact and the required acknowledgements;
   - badges for third-party connectors and basic claim safety.
-- [ ] T176 [P] [US10] Create the test fixtures `tests/fixtures/s3-no-conditional/` and `tests/fixtures/sample-connector/` (FR-117, FR-119):
+- [X] T176 [P] [US10] Create the test fixtures `tests/fixtures/s3-no-conditional/` and `tests/fixtures/sample-connector/` (FR-117, FR-119):
   - `tests/fixtures/s3-no-conditional/`, an S3 proxy in front of MinIO that ignores conditional headers and can flip or truncate bytes on request;
   - `tests/fixtures/sample-connector/`, built to `sample-connector.fdext`, which declares `s3-compatible` with `cloud.remote`, no conditional writes, and `cloud.credentials`.
 - [ ] T177 [US10] Write the acceptance test `tests/e2e/test_connectors.py`, covering quickstart "Cloud connectors and routing" steps 1–13 and US10 scenarios 1–9 (SC-023 to SC-026):
@@ -996,7 +996,10 @@ native connector is hardened for control.
   - Azurite as basic;
   - restoring routes and acknowledgements.
 
-**Checkpoint**: All user stories are complete.
+**Phase 12 validation checkpoint (2026-10-19)**: T164–T176 implemented. T177 remains
+open; the whole independent test has not passed. See
+[Phase 12 PVE evidence](phase12-pve-testing-2026-10-19.md) for deployed commits,
+passed checks and the remaining two-VM/provider/recovery acceptance gaps.
 
 ---
 

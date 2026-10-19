@@ -4,9 +4,12 @@ Never expose this server outside a disposable test network. /__fault accepts
 {upload: flip|truncate|none, download: flip|truncate|none} and is unauthenticated.
 Upstream credentials come from environment variables, never URL arguments.
 """
-import datetime,hashlib,hmac,http.client,http.server,json,os,ssl,threading,time,urllib.parse,xml.etree.ElementTree as ET
+import re,subprocess,datetime,hashlib,hmac,http.client,http.server,json,os,ssl,threading,time,urllib.parse,xml.etree.ElementTree as ET
 UPSTREAM=urllib.parse.urlsplit(os.environ.get('FD_S3_UPSTREAM','https://127.0.0.1:9000'))
 ACCESS=os.environ['FD_S3_ACCESS_KEY'];SECRET=os.environ['FD_S3_SECRET_KEY'];REGION=os.environ.get('FD_S3_REGION','us-east-1')
+PRESERVE_CONDITIONS=os.environ.get('FD_S3_PRESERVE_CONDITIONS')=='1'
+TRACE_PROCESS=os.environ.get('FD_S3_TRACE_PROCESS')=='1'
+TRACE=[]
 FAULT={'upload':'none','download':'none','ageMultipart':False,'holdPart':False};LOCK=threading.Lock();PART_SEEN=threading.Event()
 def mutate(data,mode):
     if not data:return data
@@ -16,7 +19,9 @@ def mutate(data,mode):
 
 def sign(method,path,headers,body):
     now=datetime.datetime.now(datetime.timezone.utc);date=now.strftime('%Y%m%d');stamp=now.strftime('%Y%m%dT%H%M%SZ')
-    headers={k.lower():v for k,v in headers.items() if k.lower() not in ('authorization','host','if-match','if-none-match','x-amz-date','x-amz-security-token','transfer-encoding','connection','content-length','expect')}
+    excluded={'authorization','host','x-amz-date','x-amz-security-token','transfer-encoding','connection','content-length','expect'}
+    if not PRESERVE_CONDITIONS:excluded.update(('if-match','if-none-match'))
+    headers={k.lower():v for k,v in headers.items() if k.lower() not in excluded}
     headers.update(host=UPSTREAM.netloc,**{'x-amz-date':stamp,'x-amz-content-sha256':hashlib.sha256(body).hexdigest()})
     parsed=urllib.parse.urlsplit(path)
     query=sorted((urllib.parse.quote(k,safe='-_.~'),urllib.parse.quote(v,safe='-_.~')) for k,v in urllib.parse.parse_qsl(parsed.query,keep_blank_values=True) if not k.lower().startswith('x-amz-'))
@@ -43,6 +48,16 @@ class Proxy(http.server.BaseHTTPRequestHandler):
         return self.rfile.read(int(self.headers.get('Content-Length','0')))
     def handle_request(self):
         body=self.body()
+        if self.path=='/__trace':
+            with LOCK:
+                if self.command=='POST':TRACE.clear()
+                data=json.dumps({'requests':len(TRACE),'peers':TRACE}).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+        if TRACE_PROCESS:
+            sockets=subprocess.check_output(['ss','-tnpH','sport','=',':'+str(self.client_address[1])],text=True)
+            processes=re.findall(r'\("([^"]+)",pid=(\d+)',sockets)
+            with LOCK:
+                if len(TRACE)<10000:TRACE.append(processes)
         if self.path=='/__fault':
             if self.command=='POST':
                 try:

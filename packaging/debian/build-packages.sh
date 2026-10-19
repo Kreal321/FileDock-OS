@@ -151,3 +151,5 @@ install -m 0755 "$ROOT/target/release/examples/phase12-live" "$DIST/test-fixture
 FD_S3_FIXTURE_BINARY="$ROOT/target/release/fd-s3" bash "$ROOT/tests/fixtures/sample-connector/build.sh" "$DIST/test-fixtures/phase12"
 mkdir -p "$DIST/test-fixtures/phase12/s3-no-conditional"
 cp "$ROOT/tests/fixtures/s3-no-conditional/proxy.py" "$ROOT/tests/fixtures/s3-no-conditional/README.md" "$DIST/test-fixtures/phase12/s3-no-conditional/"
+mkdir -p "$DIST/test-fixtures/phase12/google-drive-stub"
+cp "$ROOT/tests/fixtures/google-drive-stub/server.py" "$ROOT/tests/fixtures/google-drive-stub/README.md" "$DIST/test-fixtures/phase12/google-drive-stub/"
