@@ -300,10 +300,9 @@ install_bundle_packages() (
 )
 
 configure_services() {
-  # /run is tmpfs: preserve Management's socket-directory access across reboots.
-  install -d -m 0755 /etc/tmpfiles.d
-  printf 'd /run/filedock 0770 root filedock-mgmt -\n' > /etc/tmpfiles.d/filedock.conf
-  systemd-tmpfiles --create /etc/tmpfiles.d/filedock.conf
+  # Use the packaged rule, also applied by dpkg and at boot. Do not shadow it in /etc.
+  systemd-sysusers /usr/lib/sysusers.d/filedock.conf
+  systemd-tmpfiles --create /usr/lib/tmpfiles.d/filedock.conf
   chown root:filedock-mgmt /run/filedock
   chmod 0770 /run/filedock
   chown filedock-mgmt:filedock-mgmt /var/lib/filedock-management

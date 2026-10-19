@@ -1,0 +1,10 @@
+[Unit]
+Description=Prepare FileDock runtime directory
+DefaultDependencies=no
+After=systemd-sysusers.service systemd-tmpfiles-setup.service
+Before=filedock-core.socket filedock-extensions.socket filedock-core.service filedock-management.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -d -o root -g filedock-mgmt -m 0770 /run/filedock
+RemainAfterExit=yes

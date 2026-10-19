@@ -62,6 +62,10 @@ install_bin "$pkg_core/usr/lib/filedock/fd-extension-launcher" "$ROOT/target/rel
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.service" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-core.socket" "$pkg_core/lib/systemd/system/"
 install -m 0644 "$ROOT/packaging/systemd/filedock-extensions.socket" "$pkg_core/lib/systemd/system/"
+install -m 0644 "$ROOT/packaging/systemd/filedock-runtime.service" "$pkg_core/lib/systemd/system/"
+install -m 0755 "$ROOT/packaging/debian/filedock-core.postinst" "$pkg_core/DEBIAN/postinst"
+mkdir -p "$pkg_core/usr/lib/sysusers.d"
+install -m 0644 "$ROOT/packaging/systemd/filedock-sysusers.conf" "$pkg_core/usr/lib/sysusers.d/filedock.conf"
 
 mkdir -p "$pkg_core/usr/lib/tmpfiles.d"
 install -m 0644 "$ROOT/packaging/systemd/filedock.conf" "$pkg_core/usr/lib/tmpfiles.d/"

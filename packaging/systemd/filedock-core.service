@@ -1,13 +1,14 @@
 [Unit]
 Description=FileDock Core Service
-After=network-online.target filedock-core.socket
-Requires=filedock-core.socket
+After=network-online.target filedock-core.socket filedock-runtime.service
+Requires=filedock-core.socket filedock-runtime.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
 Group=root
+ExecStartPre=/usr/bin/install -d -o root -g filedock-mgmt -m 0770 /run/filedock
 ExecStart=/usr/lib/filedock/filedock-core
 Restart=on-failure
 RestartSec=2

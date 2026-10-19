@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = configure ]; then
+    systemd-sysusers /usr/lib/sysusers.d/filedock.conf
+    # Remove only the exact installer-owned override; local administrator rules stay intact.
+    override=/etc/tmpfiles.d/filedock.conf
+    if [ -f "$override" ] && [ "$(cat "$override")" = 'd /run/filedock 0770 root filedock-mgmt -' ]; then
+        rm -f "$override"
+    fi
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/filedock.conf
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+    fi
+fi

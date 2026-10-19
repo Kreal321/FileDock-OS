@@ -1,11 +1,14 @@
 [Unit]
 Description=FileDock extension protocol socket
+Requires=filedock-runtime.service
+After=filedock-runtime.service
 
 [Socket]
 ListenStream=/run/filedock/extensions.sock
 SocketUser=root
 SocketGroup=root
 SocketMode=0660
+DirectoryMode=0770
 RemoveOnStop=yes
 
 [Install]

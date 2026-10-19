@@ -1,11 +1,14 @@
 [Unit]
 Description=FileDock Core gRPC socket
+Requires=filedock-runtime.service
+After=filedock-runtime.service
 
 [Socket]
 ListenStream=/run/filedock/core.sock
 SocketUser=root
 SocketGroup=filedock-mgmt
 SocketMode=0660
+DirectoryMode=0770
 RemoveOnStop=yes
 
 [Install]

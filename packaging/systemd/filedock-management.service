@@ -1,6 +1,7 @@
 [Unit]
 Description=FileDock Management Service
-After=network-online.target filedock-core.socket
+After=network-online.target filedock-core.socket filedock-runtime.service
+Requires=filedock-runtime.service
 Wants=network-online.target filedock-core.socket
 
 [Service]
@@ -9,6 +10,7 @@ User=filedock-mgmt
 Group=filedock-mgmt
 WorkingDirectory=/usr/lib/filedock/management
 EnvironmentFile=/etc/filedock/management.env
+ExecStartPre=+/usr/bin/install -d -o root -g filedock-mgmt -m 0770 /run/filedock
 ExecStart=/usr/lib/filedock/filedock-management
 Restart=on-failure
 RestartSec=2
