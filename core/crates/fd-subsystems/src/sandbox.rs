@@ -188,14 +188,17 @@ impl Sandbox {
             ),
         ]);
         props.insert("InaccessiblePaths".into(),"-/var/lib/filedock/secrets.enc -/var/lib/filedock/keys -/var/lib/filedock/recovery-keys.enc -/var/lib/filedock/extensions/packages -/var/lib/filedock-core -/var/lib/filedock-management -/var/backups/filedock -/storage -/mnt/filedock/pools -/run/filedock/core.sock -/run/docker.sock -/etc/filedock".into());
-        props.insert(
-            "BindPaths".into(),
-            self.bindings
-                .iter()
-                .map(|b| format!("{}:{}", b.source, b.target))
-                .collect::<Vec<_>>()
-                .join(" "),
-        );
+        // systemd-run rejects an empty transient BindPaths value as a relative source.
+        if !self.bindings.is_empty() {
+            props.insert(
+                "BindPaths".into(),
+                self.bindings
+                    .iter()
+                    .map(|b| format!("{}:{}", b.source, b.target))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
         if !self.devices.is_empty() {
             props.insert(
                 "DeviceAllow".into(),
@@ -246,5 +249,24 @@ impl Sandbox {
         Ok(
             json!({"User":user,"Env":[format!("FD_EXTENSION_TOKEN_FILE={runtime}/token"),"FD_CORE_SOCKET=/run/filedock/extensions.sock",format!("FD_EXTENSION_SOCKET={runtime}/subsystem.sock")],"HostConfig":{"ReadonlyRootfs":true,"CapDrop":["ALL"],"CapAdd":if self.mount{vec!["SYS_ADMIN"]}else{vec![]},"SecurityOpt":["no-new-privileges:true"],"NetworkMode":if self.outbound{"bridge"}else{"none"},"Mounts":mounts,"Tmpfs":{"/tmp":"rw,nosuid,nodev,size=64m"},"PortBindings":bindings,"Devices":self.devices.iter().map(|d|json!({"PathOnHost":d,"PathInContainer":d,"CgroupPermissions":"rw"})).collect::<Vec<_>>(),"RestartPolicy":{"Name":"no"}}}),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn connector_without_folder_bindings_omits_empty_transient_bind_paths() {
+        let policy = Sandbox {
+            bindings: vec![],
+            outbound: true,
+            listen: vec![],
+            devices: vec![],
+            mount: false,
+        };
+        let props = policy.systemd("fixture", "/run/filedock-fixture");
+        assert!(!props.contains_key("BindPaths"));
+        assert_eq!(props["CapabilityBoundingSet"], "");
+        assert_eq!(props["ReadWritePaths"], "/run/filedock-fixture");
     }
 }
