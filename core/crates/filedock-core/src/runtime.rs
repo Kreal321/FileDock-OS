@@ -637,7 +637,7 @@ pub async fn run(app: Arc<App>) {
         }
     }
     let mut interval = tokio::time::interval(Duration::from_secs(5));
-    let mut s3_was_running = false;
+    let mut swept_socket = None;
     let mut last_probe = std::time::Instant::now() - Duration::from_secs(86400);
     loop {
         interval.tick().await;
@@ -648,12 +648,18 @@ pub async fn run(app: Arc<App>) {
             .supervisor
             .status("fd-s3")
             .is_ok_and(|s| s.state == "Running");
-        if s3_running && (!s3_was_running || last_probe.elapsed() >= Duration::from_secs(86400)) {
+        let socket_epoch = socket_epoch(&s3_socket(&app));
+        if s3_running
+            && socket_epoch.is_some()
+            && (swept_socket != socket_epoch || last_probe.elapsed() >= Duration::from_secs(86400))
+        {
             if let Err(error) = crate::sweep_runtime::run(&app).await {
                 tracing::warn!(code=%error.message(),"incomplete upload sweep failed");
             }
         }
-        s3_was_running = s3_running;
+        if s3_running {
+            swept_socket = socket_epoch;
+        }
         if last_probe.elapsed() >= Duration::from_secs(86400) {
             if let Ok(rows) = app
                 .store
@@ -777,4 +783,32 @@ pub fn proven_checksums(row: &fd_state::StoredResource, connector: &str) -> bool
         })
         .and_then(|v| serde_json::from_value::<fd_connectors::StoredTestResult>(v.clone()).ok())
         .is_some_and(|p| p.connector_id == connector && p.write_steps_run && p.provider_checksums)
+}
+
+// A restart can begin and end between five-second polls. Socket creation identifies
+// the actual native process even when both sampled supervisor states are Running.
+fn socket_epoch(path: &std::path::Path) -> Option<(u64, u64, i64, i64)> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let metadata = std::fs::metadata(path).ok()?;
+    metadata.file_type().is_socket().then_some((
+        metadata.dev(),
+        metadata.ino(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+    ))
+}
+#[cfg(test)]
+mod socket_epoch_tests {
+    #[test]
+    fn detects_a_restart_between_running_samples() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connector.sock");
+        let first = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let initial = super::socket_epoch(&path).unwrap();
+        assert_eq!(super::socket_epoch(&path), Some(initial));
+        drop(first);
+        std::fs::remove_file(&path).unwrap();
+        let _second = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert_ne!(super::socket_epoch(&path), Some(initial));
+    }
 }
