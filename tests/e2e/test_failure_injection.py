@@ -53,7 +53,7 @@ def test_each_runtime_restart_preserves_committed_configuration(installed_vm):
             installed_vm.sudo('systemctl restart '+unit)
             wait(lambda:healthy(api),timeout=180)
             integrity(installed_vm)
-            row=api.get('/connections/'+canary['id']).raise_for_status().json()
+            row=next(r for r in api.get('/connections').raise_for_status().json()['items'] if r['id']==canary['id'])
             assert row['generation']==canary['generation'] and row['spec']==canary['spec']
             snapshot(a)
         # Kopia is a supervised adapter, not an independently enabled systemd unit.
@@ -86,7 +86,7 @@ def test_power_cut_during_configuration_writes_is_atomic(installed_vm):
             installed_vm.wait_for_ssh(timeout=180);wait(lambda:healthy(api),timeout=180)
             integrity(installed_vm)
             for expected in acknowledged:
-                row=api.get('/connections/'+expected['id']).raise_for_status().json()
+                row=next(r for r in api.get('/connections').raise_for_status().json()['items'] if r['id']==expected['id'])
                 assert row['spec']==expected['spec'] and row['generation']==expected['generation']
             snapshot(a)
         assert acknowledged,'No acknowledged writes were exercised; inconclusive power-cut run'

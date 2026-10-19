@@ -34,3 +34,34 @@ it('names missing capabilities and disables changes when mutation is unavailable
     screen.getByText(/Data kept only on this appliance has no off-appliance copy/),
   ).toBeInTheDocument();
 });
+
+it('shows the actual provider mode observation as the durable folder-data point', () => {
+  render(
+    <FolderForm
+      options={options}
+      canMutate
+      onSaved={vi.fn()}
+      onCancel={vi.fn()}
+      folder={{
+        id: 'fixture',
+        generation: 1,
+        identity: { name: 'important', fileDockPath: '/storage/important' },
+        storageMode: 'HybridBackup',
+        reference: { poolId: 'fixture', relativePath: '/important' },
+        dataImportance: 'Important',
+        access: [],
+        advanced: {},
+        protectionState: 'Protected',
+        exposure: '',
+        status: {
+          state: 'Ready',
+          detail: '',
+          modeObservation: { lastDurableRecoveryPoint: '2026-10-19T12:00:00Z' },
+        },
+      }}
+    />,
+  );
+  expect(
+    screen.getByText(/Latest durable folder-data recovery point/).querySelector('time'),
+  ).toHaveAttribute('datetime', '2026-10-19T12:00:00Z');
+});

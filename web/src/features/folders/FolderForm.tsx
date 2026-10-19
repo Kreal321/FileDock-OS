@@ -22,7 +22,11 @@ export type Folder = {
   dataImportance: string | null;
   access: string[];
   advanced: Record<string, unknown>;
-  status?: { state: string; detail: string; lastDurableRecoveryPoint?: string } | null;
+  status?: {
+    state: string;
+    detail: string;
+    modeObservation?: { lastDurableRecoveryPoint?: string };
+  } | null;
   protectionState: string;
   exposure: string;
 };
@@ -356,7 +360,7 @@ export function FolderForm({
           <h2>4. Data Importance</h2>
           <RecoveryPoint
             label="Latest durable folder-data recovery point"
-            at={folder?.status?.lastDurableRecoveryPoint}
+            at={folder?.status?.modeObservation?.lastDurableRecoveryPoint}
           />
           <Select
             label="Data importance"

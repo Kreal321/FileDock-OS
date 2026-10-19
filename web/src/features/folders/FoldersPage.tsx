@@ -133,7 +133,7 @@ export function FoldersPage({
                     <p>{f.exposure}</p>
                     <RecoveryPoint
                       label="Durable folder-data recovery point"
-                      at={f.status?.lastDurableRecoveryPoint}
+                      at={f.status?.modeObservation?.lastDurableRecoveryPoint}
                       cached={!connected || Boolean(q.error)}
                     />
                   </td>
