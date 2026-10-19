@@ -49,7 +49,17 @@ pub async fn get(
     key: &str,
     expected_sha256: Option<&str>,
 ) -> Result<(Vec<u8>, String), Status> {
+    let (bytes, digest, _) = get_with_metadata(store, key, expected_sha256).await?;
+    Ok((bytes, digest))
+}
+
+pub async fn get_with_metadata(
+    store: &dyn ObjectStore,
+    key: &str,
+    expected_sha256: Option<&str>,
+) -> Result<(Vec<u8>, String, String), Status> {
     let result = store.get(&Path::from(key)).await.map_err(map_obj)?;
+    let etag = result.meta.e_tag.clone().unwrap_or_default();
     let bytes = result
         .bytes()
         .await
@@ -60,7 +70,7 @@ pub async fn get(
     {
         return Err(Status::data_loss("checksum mismatch"));
     }
-    Ok((bytes.to_vec(), digest))
+    Ok((bytes.to_vec(), digest, etag))
 }
 
 pub async fn put(
@@ -243,6 +253,25 @@ mod tests {
                 .unwrap()
                 .0,
             b"original"
+        );
+        let (_, _, etag) = get_with_metadata(&store, "key", None).await.unwrap();
+        assert!(
+            !etag.is_empty(),
+            "Get must retain the ETag used by ownership If-Match"
+        );
+        put(
+            &store,
+            "key",
+            b"updated".to_vec(),
+            put_mode(3, &etag),
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(
+            put(&store, "key", b"stale".to_vec(), put_mode(3, &etag), false)
+                .await
+                .is_err()
         );
         assert_eq!(
             get(&store, "key", Some(&sha256_hex(b"wrong")))

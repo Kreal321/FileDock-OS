@@ -16,7 +16,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 use crate::config::{Config, RoutedConnection};
 use crate::integrity::Hasher;
-use crate::ops::{delete, get, put_mode, put_with_attributes, stat, store_for};
+use crate::ops::{delete, get_with_metadata, put_mode, put_with_attributes, stat, store_for};
 use crate::probe;
 use futures::TryStreamExt;
 use object_store::ObjectStore;
@@ -296,7 +296,7 @@ impl CloudRemote for App {
         let conn = connection(&self.config, &r.connection_id).await?;
         let store = store_for(&conn).await?;
         let expected = (!req.expected_sha256.is_empty()).then_some(req.expected_sha256.as_str());
-        let (data, digest) = get(&store, &r.key, expected).await?;
+        let (data, digest, etag) = get_with_metadata(&store, &r.key, expected).await?;
         if let Some(bucket) = &conn.throttle {
             bucket.acquire(data.len()).await;
         }
@@ -313,7 +313,7 @@ impl CloudRemote for App {
                     part: Some(ext::get_object_chunk::Part::Trailer(GetObjectTrailer {
                         sha256: digest,
                         verified,
-                        etag: String::new(),
+                        etag,
                     })),
                 }))
                 .await;

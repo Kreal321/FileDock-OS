@@ -146,6 +146,8 @@ printf '%s\n' "$VERSION" > "$DIST/RELEASE_VERSION"
 
 # Include connector-routing fixtures in the downloadable bundle.
 mkdir -p "$DIST/test-fixtures/phase12"
+cargo build --release --locked -p fd-connectors --example phase12-live
+install -m 0755 "$ROOT/target/release/examples/phase12-live" "$DIST/test-fixtures/phase12/phase12-live"
 FD_S3_FIXTURE_BINARY="$ROOT/target/release/fd-s3" bash "$ROOT/tests/fixtures/sample-connector/build.sh" "$DIST/test-fixtures/phase12"
 mkdir -p "$DIST/test-fixtures/phase12/s3-no-conditional"
 cp "$ROOT/tests/fixtures/s3-no-conditional/proxy.py" "$ROOT/tests/fixtures/s3-no-conditional/README.md" "$DIST/test-fixtures/phase12/s3-no-conditional/"
