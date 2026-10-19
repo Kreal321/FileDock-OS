@@ -172,6 +172,14 @@ impl ObjectIo for RcloneObjects {
         let key = format!("{}{}", self.prefix, key);
         match self.adapter.stat(&self.remote, &key).await {
             Ok(stat) => {
+                // rclone returns HTTP200 with item:null for a missing blob (Azurite).
+                // Do not attempt a copy of that blob and turn absence into unavailability.
+                if stat.get("item") == Some(&serde_json::Value::Null) {
+                    return Ok(None);
+                }
+                if !stat.get("item").is_some_and(serde_json::Value::is_object) {
+                    return Err(unavailable("stat response invalid"));
+                }
                 if stat["item"]["Size"].as_u64().unwrap_or(0) > MAX as u64 {
                     return Err(unavailable("limit"));
                 }
@@ -235,5 +243,40 @@ impl Drop for RcloneObjects {
                 let _ = adapter.delete_recovery_remote(&name).await;
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[tokio::test]
+    async fn missing_rclone_stat_is_absent_but_invalid_response_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("rc.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let task = tokio::spawn(async move {
+            for body in [r#"{"item":null}"#, "{}"] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0u8; 4096];
+                let count = stream.read(&mut request).await.unwrap();
+                assert!(String::from_utf8_lossy(&request[..count]).contains("/operations/stat"));
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let io = RcloneObjects {
+            adapter: crate::rclone::adapter::RcloneAdapter::with_socket(socket),
+            remote: "fixture:bucket".into(),
+            prefix: String::new(),
+            cleanup_name: None,
+        };
+        assert!(io.read("_filedock/owner.json").await.unwrap().is_none());
+        assert!(io.read("_filedock/owner.json").await.is_err());
+        task.await.unwrap();
     }
 }
