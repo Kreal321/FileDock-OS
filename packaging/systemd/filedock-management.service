@@ -11,6 +11,8 @@ Group=filedock-mgmt
 WorkingDirectory=/usr/lib/filedock/management
 EnvironmentFile=/etc/filedock/management.env
 ExecStartPre=+/usr/bin/install -d -o root -g filedock-mgmt -m 0770 /run/filedock
+# The preceding process may have been unable to unlink its socket during a permission fault.
+ExecStartPre=/usr/bin/rm -f /run/filedock/management-admin.sock
 ExecStart=/usr/lib/filedock/filedock-management
 Restart=on-failure
 RestartSec=2

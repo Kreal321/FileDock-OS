@@ -43,6 +43,29 @@ filedock-bootstrap --update --yes
 
 Successful installations retain release provenance in `/etc/filedock/BUILD.txt`, `/etc/filedock/RELEASE_VERSION`, and (when using the bootstrap) `/etc/filedock/release.json`. The bootstrap record is written only after the bundled installer succeeds. Manual bundle installations also install the updater and record the included build identity.
 
+## Runtime directory ownership
+
+`/run` is temporary and is recreated on reboot. The supported lifecycle recreates
+`/run/filedock` as `root:filedock-mgmt`, mode `0770`:
+
+- The Core package ships the management account definition and complete vendor tmpfiles rule.
+- Its `postinst configure` applies them on fresh package installation, upgrade and reconfigure.
+- Boot applies the tmpfiles rule; sockets and services also require `filedock-runtime.service`
+  to finish preparing the directory before they start.
+- Core and Management check ownership again before every service start/restart.
+- Management removes its own stale admin socket before starting, after systemd has stopped
+  the previous process; it does not remove Core or connector sockets.
+- The bundled installer uses the packaged rule for install/update/repair. It does not write
+  a partial `/etc/tmpfiles.d/filedock.conf` that masks the vendor's other directory rules.
+
+The exact one-line override created by the earlier installer is removed during package
+configuration. Other local administrator overrides are preserved. Credential directories
+under `/run/filedock/secrets` remain root-only, mode `0700`.
+
+An isolated Debian regression is available as `tests/integration/runtime_directory.sh`;
+run it as root from a repository checkout. It creates accounts and directories only under
+a temporary root and checks fresh creation, wrong-permission repair and an empty runtime tree.
+
 ## Publishing
 
 The existing **Offline bundle release** workflow publishes:
