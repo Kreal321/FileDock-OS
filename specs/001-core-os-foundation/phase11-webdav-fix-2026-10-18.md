@@ -61,6 +61,13 @@ Restarting Core did not clear terminal failure. Starting the packaged connector 
 systemd restored both connectors and all eight components became Healthy. Full unattended
 connector reboot recovery remains a separate finding; it is **not passed**.
 
+A further reboot exposed Management's admin-socket bind failure: `/run/filedock` was recreated
+as root:root 0755. A persistent tmpfiles rule now creates it as root:filedock-mgmt 0770.
+Applying that rule and restarting Management restored the listener. The installer now writes
+the same rule so new installations retain the required access across reboot.
+Another full reboot verified the rule: directory root:filedock-mgmt 0770, Management active,
+UI HTTP 200, static .104 retained and DNS resolution working before any manual service repair.
+
 The disposable folder, share accounts, Compose fixture/image, bind and export resources were
 removed; baseline resource lists restored. NFS remained active. Original System Pool limits
 were 50% / 100 GB reserve and were not changed in this run. Temporary API cookies and share
