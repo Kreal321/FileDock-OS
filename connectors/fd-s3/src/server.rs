@@ -97,10 +97,14 @@ impl Subsystem for App {
             .as_ref()
             .map(struct_json)
             .ok_or_else(|| Status::invalid_argument("config required"))?;
-        let rows = value
-            .get("connections")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| Status::invalid_argument("connections required"))?;
+        // Extension activation first sends its empty user configuration. Routed
+        // connections arrive in a subsequent Core configuration after installation.
+        let empty = Vec::new();
+        let rows = match value.get("connections") {
+            None if value.as_object().is_some_and(|v| v.is_empty()) => &empty,
+            Some(serde_json::Value::Array(rows)) => rows,
+            _ => return Err(Status::invalid_argument("connections required")),
+        };
         let mut config = self.config.lock().await;
         let mut connections: std::collections::BTreeMap<String, RoutedConnection> =
             std::collections::BTreeMap::new();
@@ -453,6 +457,22 @@ fn positive_u64(value: &serde_json::Value) -> Option<u64> {
 }
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn extension_activation_accepts_empty_initial_configuration() {
+        let app = super::App {
+            config: std::sync::Arc::new(tokio::sync::Mutex::new(super::Config::from_env())),
+        };
+        let response = super::Subsystem::configure(
+            &app,
+            tonic::Request::new(super::ConfigureRequest {
+                config: Some(prost_types::Struct::default()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(response.into_inner().accepted);
+    }
     #[test]
     fn accepts_integral_protobuf_numbers_for_bandwidth_limits() {
         for value in [serde_json::json!(65536), serde_json::json!(65536.0)] {
