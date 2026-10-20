@@ -516,33 +516,13 @@ fn monitor(app: &App, tick: u64) -> Result<()> {
         }
         if row.spec["kind"] == "System"
             && observation.is_ok()
-            && fd_storage::run(
-                "findmnt",
-                &[
-                    "--mountpoint",
-                    target.to_str().unwrap(),
-                    "-n",
-                    "-o",
-                    "OPTIONS",
-                ],
-            )
-            .is_ok_and(|s| s.split(',').any(|o| o == "ro"))
+            && fd_storage::pool::health::mount_readonly(&target).is_ok_and(|ro| ro)
         {
             status["state"] = json!("FullReserve");
         }
         if row.spec["kind"] != "System"
             && observation.is_ok()
-            && fd_storage::run(
-                "findmnt",
-                &[
-                    "--mountpoint",
-                    target.to_str().unwrap(),
-                    "-n",
-                    "-o",
-                    "OPTIONS",
-                ],
-            )
-            .is_ok_and(|s| s.split(',').any(|o| o == "ro"))
+            && fd_storage::pool::health::mount_readonly(&target).is_ok_and(|ro| ro)
         {
             status["state"] = json!("Failed");
             status["detail"] = json!("Data filesystem is read-only, possibly after an I/O error");
