@@ -90,3 +90,15 @@ on phone. Never truncate the backing entry or squeeze metadata into vertical let
 Activity: meaningful appliance lifecycle/configuration/health/protection events, not file access or
 an audit replacement. Coalesce adjacent identical legacy events into a count/time range without
 removing data or combining distinct changes. Emit protection events only when protection changes.
+
+## Durable recovery observation — Phase 13
+
+Reuse `RecoveryPoint` for dashboard configuration coverage, each recovery copy and
+folder-data protection. 12 px / 400 / muted caption with a semantic `<time dateTime>`; flows
+within its parent so timestamps wrap at phone widths. Label configuration versus
+folder-data recovery explicitly. A missing/invalid date says “Not reported — recovery
+coverage is unverified”; stale/offline observations are marked Cached. It never infers
+Health from an absent point, or uses a configuration timestamp as a folder-data backup.
+Keep the existing 4 px rhythm and quiet surfaces; show the timestamp once per copy.
+Desktop 1440 px and phone 360 px evidence is in `assets/phase13/` under feature 001. The larger
+recovery/editor layout migration remains T252–T255, not part of this copy refinement.

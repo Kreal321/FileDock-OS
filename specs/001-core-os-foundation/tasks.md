@@ -1007,13 +1007,15 @@ passed checks and the remaining two-VM/provider/recovery acceptance gaps.
 
 **Purpose**: Footprint, priority, copy, documentation, and full validation
 
-- [ ] T178 [P] Add drop-ins that run snapshot uploads and SMART polling at low CPU and I/O priority (`Nice=10`, `IOSchedulingClass=idle`) in `packaging/systemd/` (Constitution II)
-- [ ] T179 [P] Write the idle-footprint test `tests/e2e/test_idle_footprint.py`: the two services together use under 512 MB RAM and under 2% of one core on the minimum hardware (SC-009)
-- [ ] T180 [P] Write a UI copy check in `web/tests/copy.test.ts`: no screen promises zero downtime or zero data loss, and every protection view shows the latest durable recovery point (SC-017, FR-095)
-- [ ] T181 [P] Generate `/api/v1/openapi.json` from the endpoints, and add a test comparing its routes and error codes with `contracts/management-api.md`, in `management/tests/FileDock.Management.ApiTests/OpenApiContractTests.cs`
-- [ ] T182 [P] Update `FileDock-OS.md` to replace the section 50 durability classes with Storage Mode and Data Importance, and to describe the cloud connectors and routes (spec Assumptions)
-- [ ] T183 Write the baseline failure-injection suite `tests/e2e/test_failure_injection.py`: restart both services, the container runtime, and each subsystem (including both connectors), and cut power during a configuration change, with 0 corrupted records (SC-010)
+- [X] T178 [P] Add drop-ins that run snapshot uploads and SMART polling at low CPU and I/O priority (`Nice=10`, `IOSchedulingClass=idle`) in `packaging/systemd/` (Constitution II)
+- [X] T179 [P] Write the idle-footprint test `tests/e2e/test_idle_footprint.py`: the two services together use under 512 MB RAM and under 2% of one core on the minimum hardware (SC-009)
+- [X] T180 [P] Write a UI copy check in `web/tests/copy.test.ts`: no screen promises zero downtime or zero data loss, and every protection view shows the latest durable recovery point (SC-017, FR-095)
+- [X] T181 [P] Generate `/api/v1/openapi.json` from the endpoints, and add a test comparing its routes and error codes with `contracts/management-api.md`, in `management/tests/FileDock.Management.ApiTests/OpenApiContractTests.cs`
+- [X] T182 [P] Update `FileDock-OS.md` to replace the section 50 durability classes with Storage Mode and Data Importance, and to describe the cloud connectors and routes (spec Assumptions)
+- [X] T183 Write the baseline failure-injection suite `tests/e2e/test_failure_injection.py`: restart both services, the container runtime, and each subsystem (including both connectors), and cut power during a configuration change, with 0 corrupted records (SC-010)
 - [ ] T184 Run the complete quickstart.md validation on fresh VMs, and record the results in `specs/001-core-os-foundation/checklists/validation.md`
+
+Phase 13 implementation and focused validation: [dated PVE report](phase13-pve-testing-2026-10-19.md). T179 marks the test implementation, not minimum-hardware acceptance; T183 marks the suite implementation and installed restart checks, not an executed hypervisor power-cut result. T184 and the other unchecked tasks remain open; see [missing features and testing](missing-features-and-testing.md).
 
 ---
 
