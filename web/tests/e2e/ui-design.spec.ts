@@ -92,6 +92,8 @@ async function appliance(
   };
 }
 async function capture(page: import('@playwright/test').Page, name: string, liveExpected = true) {
+  // These routes use bounded synthetic API replies; settle them before deterministic captures.
+  await page.waitForLoadState('networkidle');
   await page.evaluate(() => document.fonts.ready);
   if (liveExpected && !(await page.locator('.auth-layout').count()))
     await expect(page.getByText(/Live connection unavailable/)).toHaveCount(0);

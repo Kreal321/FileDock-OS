@@ -1,6 +1,22 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { addonAppliance } from '../fixtures/addon-appliance.ts';
 import { destinations, resolveRoute } from '../../src/navigation/destinations.ts';
+async function captureAddon(page: Page, info: TestInfo, name: string) {
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.fonts.ready);
+  if (process.env.FD_UI_CAPTURE_ONLY === '1')
+    await page.screenshot({
+      path: info.outputPath(name),
+      fullPage: true,
+      mask: [page.locator('[data-secret]')],
+    });
+  else
+    await expect(page).toHaveScreenshot(name, {
+      fullPage: true,
+      animations: 'disabled',
+      mask: [page.locator('[data-secret]')],
+    });
+}
 for (const entry of destinations)
   test(`direct entry ${entry.hashRoute}`, async ({ page }) => {
     await addonAppliance(page);
@@ -53,7 +69,7 @@ for (const width of [1440, 360])
       expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(4);
     }
     await page.evaluate(() => document.fonts.ready);
-    await page.screenshot({ path: info.outputPath(`events-${width}.png`), fullPage: true });
+    await captureAddon(page, info, `events-${width}.png`);
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: 'Log details' });
     await expect(dialog).toBeVisible();
@@ -62,7 +78,7 @@ for (const width of [1440, 360])
     expect(Math.abs(box.y + box.height / 2 - 500)).toBeLessThanOrEqual(1);
     expect(box.x).toBeGreaterThanOrEqual(16);
     expect(box.height).toBeLessThanOrEqual(968);
-    await page.screenshot({ path: info.outputPath(`dialog-${width}.png`), fullPage: true });
+    await captureAddon(page, info, `dialog-${width}.png`);
     await dialog.press('Escape');
     await expect(trigger).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
@@ -105,7 +121,7 @@ test('six folder sections and long package review are full pages', async ({ page
   await expect(page.locator('form details')).toHaveCount(0);
   await page.getByLabel('Name', { exact: true }).fill('Media archive');
   await expect(page.getByLabel('FileDock Path')).toHaveValue('/storage/media-archive');
-  await page.screenshot({ path: info.outputPath('folder-editor.png'), fullPage: true });
+  await captureAddon(page, info, 'folder-editor.png');
   page.once('dialog', (d) => d.accept());
   await page.evaluate(() => {
     location.hash = '#/extensions/package';
@@ -219,5 +235,35 @@ test('mobile tables keep readable headers and status labels inside a scrolling r
     expect(metrics.headerHeight).toBeLessThanOrEqual(60);
     expect(metrics.badges.every((height) => height <= 44)).toBe(true);
     expect(metrics.page).toBeLessThanOrEqual(metrics.viewport);
+  }
+});
+test('large event tables scroll within the record region with paging still reachable', async ({
+  page,
+}) => {
+  await addonAppliance(page);
+  await page.route('**/api/v1/logs?*', (route) =>
+    route.fulfill({
+      json: {
+        items: Array.from({ length: 100 }, (_, i) => ({
+          at: '2026-10-20T12:00:00Z',
+          source: 'filedock-core.service',
+          severity: 'Info',
+          message: `Synthetic job ${i} finished`,
+        })),
+        nextPageToken: 'next',
+      },
+    }),
+  );
+  for (const width of [1440, 360]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/#/settings/logs');
+    const table = page.getByRole('region', { name: 'Journal entries' });
+    await expect(table).toBeVisible();
+    expect(await table.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeInViewport();
+    await table.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(page.getByRole('columnheader', { name: 'Time', exact: true })).toBeInViewport();
   }
 });

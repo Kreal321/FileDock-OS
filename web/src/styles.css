@@ -1266,3 +1266,21 @@ th[data-align='actions'] {
   overflow-wrap: normal;
   max-width: none;
 }
+
+/* Keep long record sets inside their reading region, with controls reachable below. */
+.events-page .table-region,
+.events-page .activity-list {
+  max-height: max(160px, calc(100dvh - 400px));
+  overflow: auto;
+}
+.table-region thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+@media (max-width: 640px) {
+  .events-page .table-region,
+  .events-page .activity-list {
+    max-height: max(160px, calc(100dvh - 520px));
+  }
+}
