@@ -663,10 +663,13 @@ label {
 }
 table {
   width: 100%;
+  min-width: calc(var(--table-column-count, 1) * var(--table-column-min));
   border-collapse: collapse;
   font-size: 14px;
 }
 th {
+  white-space: nowrap;
+  overflow-wrap: normal;
   text-align: left;
   font-weight: 600;
   color: var(--muted);
@@ -1256,4 +1259,10 @@ th[data-align='actions'] {
   padding: 0;
   margin: 0;
   min-width: 0;
+}
+
+.table-region .badge {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  max-width: none;
 }

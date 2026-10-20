@@ -30,7 +30,7 @@ export function DataTable({
   );
   return (
     <div className="table-region" role="region" aria-label={label} tabIndex={0}>
-      <table>
+      <table style={{ '--table-column-count': columns.length } as CSSProperties}>
         <caption className="sr-only">{label}</caption>
         <colgroup>
           {columns.map((c) => (

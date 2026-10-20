@@ -194,3 +194,30 @@ test('a delayed one-time token cannot reappear after session expiry', async ({ p
   await expect(page.getByText('SYNTHETIC-LATE-TOKEN')).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+test('mobile tables keep readable headers and status labels inside a scrolling region', async ({
+  page,
+}) => {
+  await addonAppliance(page);
+  await page.setViewportSize({ width: 360, height: 1000 });
+  for (const entry of ['administrators', 'audit', 'operations']) {
+    await page.goto(`/#/settings/${entry}`);
+    const table = page.locator('main table').first();
+    await expect(table).toBeVisible();
+    const metrics = await table.evaluate((el) => ({
+      table: el.getBoundingClientRect().width,
+      region: el.parentElement!.clientWidth,
+      headerHeight: Math.max(
+        ...Array.from(el.querySelectorAll('th')).map((th) => th.getBoundingClientRect().height),
+      ),
+      badges: Array.from(el.querySelectorAll('.badge')).map(
+        (b) => b.getBoundingClientRect().height,
+      ),
+      page: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+    }));
+    expect(metrics.table).toBeGreaterThan(metrics.region);
+    expect(metrics.headerHeight).toBeLessThanOrEqual(60);
+    expect(metrics.badges.every((height) => height <= 44)).toBe(true);
+    expect(metrics.page).toBeLessThanOrEqual(metrics.viewport);
+  }
+});
