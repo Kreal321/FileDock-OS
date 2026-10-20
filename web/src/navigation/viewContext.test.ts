@@ -49,3 +49,14 @@ test('paging history is scoped to type and applied filters and clears with the s
   clearViewContexts();
   expect(previousPageCursor('logs', { ...filters, pageToken: 'second' })).toBeUndefined();
 });
+test('private references work on HTTP without secure-context randomUUID', () => {
+  const original = globalThis.crypto;
+  vi.stubGlobal('crypto', { getRandomValues: original.getRandomValues.bind(original) });
+  try {
+    const id = saveViewContext('logs', { source: 'private' });
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(readViewContext(id, 'logs')).toEqual({ source: 'private' });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

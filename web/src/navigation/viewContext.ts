@@ -3,7 +3,10 @@ export type RecordType = 'activity' | 'logs' | 'audit';
 export type ViewFilters = Record<string, string>;
 const contexts = new Map<string, { type: RecordType; filters: ViewFilters }>();
 export function saveViewContext(type: RecordType, filters: ViewFilters): string {
-  const id = crypto.randomUUID();
+  // getRandomValues is available on the appliance's HTTP origin; randomUUID is secure-context-only.
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
   if (contexts.size >= 250) contexts.delete(contexts.keys().next().value!);
   contexts.set(id, { type, filters: { ...filters } });
   return id;

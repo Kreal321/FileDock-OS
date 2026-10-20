@@ -280,3 +280,14 @@ test('cursor Previous uses matching query history and is disabled for a copied p
   await page.goto('/#/settings/logs?pageToken=copied');
   await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
 });
+test('HTTP deployment can apply private filters without randomUUID', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window.crypto, 'randomUUID', { value: undefined });
+  });
+  await addonAppliance(page);
+  await page.goto('/#/settings/logs');
+  await page.getByLabel('Source', { exact: true }).fill('synthetic-private-unit');
+  await page.getByLabel('Source', { exact: true }).press('Enter');
+  await expect(page).toHaveURL(/context=[0-9a-f]{32}/);
+  expect(page.url()).not.toContain('synthetic-private-unit');
+});
