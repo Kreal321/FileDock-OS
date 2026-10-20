@@ -4,7 +4,7 @@ import { api } from '../../api/client.ts';
 import { dataView } from '../../api/view-models.ts';
 import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
 import { Panel } from '../../components/Panel.tsx';
-import { PageHeader } from '../../components/PageHeader.tsx';
+import { SectionHeader } from '../../components/SectionHeader.tsx';
 import { DataTable } from '../../components/DataTable.tsx';
 import { TableToolbar } from '../../components/TableToolbar.tsx';
 import { RowActions } from '../../components/RowActions.tsx';
@@ -22,8 +22,8 @@ type Token = {
   revokedAt: string | null;
   lastUsedAt: string | null;
 };
-export function TokensPage({
-  canMutate = true,
+export function TokensSection({
+  canMutate: permission = true,
   connected = true,
 }: {
   canMutate?: boolean;
@@ -31,6 +31,7 @@ export function TokensPage({
 }) {
   const cache = useQueryClient();
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api.get<Token[]>('/tokens') });
+  const canMutate = permission && connected && !tokens.error;
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -103,7 +104,7 @@ export function TokensPage({
   }
   return (
     <section className="stack">
-      <PageHeader
+      <SectionHeader
         title="API tokens"
         description="Connect applications with scoped access."
         action={

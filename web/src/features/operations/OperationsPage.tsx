@@ -30,7 +30,7 @@ export function OperationsPage({ connected = true }: { connected?: boolean }) {
   );
   return (
     <div className="stack">
-      <PageHeader title="Operations" description="Core operation history and progress." />
+      <PageHeader title="Jobs" description="Core operation history and progress." />
       <Panel className="stack">
         <Switch
           label="Active operations only"
@@ -47,7 +47,7 @@ export function OperationsPage({ connected = true }: { connected?: boolean }) {
         />
         {query.data?.operations.length ? (
           <DataTable
-            label="Operations"
+            label="Jobs"
             headers={['Operation', 'State', 'Started by', 'Started', 'Finished']}
           >
             {query.data.operations.map((op) => (

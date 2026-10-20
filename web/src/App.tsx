@@ -1,11 +1,16 @@
+import { ExtensionPackagePage } from './features/extensions/ExtensionPackagePage.tsx';
+import { StateProtectionEditorPage } from './features/recovery/StateProtectionEditorPage.tsx';
+import { clearDestinationDraft } from './features/recovery/destinationDraft.ts';
+import { FolderEditorPage } from './features/folders/FolderEditorPage.tsx';
+import { AccessSecurityPage } from './features/settings/AccessSecurityPage.tsx';
+import { AlertsDeliveryPage } from './features/alerts/AlertsDeliveryPage.tsx';
+import { EventsPage } from './features/events/EventsPage.tsx';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, createApiClient } from './api/client.ts';
 import { SignInPage } from './features/auth/SignInPage.tsx';
 import { SetupWizard } from './features/setup/SetupWizard.tsx';
 import { DashboardPage } from './features/dashboard/DashboardPage.tsx';
-import { AdminsPage } from './features/admins/AdminsPage.tsx';
-import { TokensPage } from './features/tokens/TokensPage.tsx';
 import { NetworkPage } from './features/settings/NetworkPage.tsx';
 import { SettingsPage } from './features/settings/SettingsPage.tsx';
 import { OperationsPage } from './features/operations/OperationsPage.tsx';
@@ -16,11 +21,6 @@ import { SharesPage } from './features/shares/SharesPage.tsx';
 import { ConnectorsPage } from './features/connectors/ConnectorsPage.tsx';
 import { ConnectionsPage } from './features/connections/ConnectionsPage.tsx';
 import { FoldersPage } from './features/folders/FoldersPage.tsx';
-import { LogsPage } from './features/logs/LogsPage.tsx';
-import { ActivityPage } from './features/activity/ActivityPage.tsx';
-import { AlertsPage } from './features/alerts/AlertsPage.tsx';
-import { NotificationChannelsPage } from './features/alerts/NotificationChannelsPage.tsx';
-import { AuditPage } from './features/audit/AuditPage.tsx';
 import { AuthLayout } from './layout/AuthLayout.tsx';
 import { AppShell } from './layout/AppShell.tsx';
 import { StateProtectionPage } from './features/recovery/StateProtectionPage.tsx';
@@ -46,6 +46,7 @@ function Shell() {
   const [signedOut, setSignedOut] = useState(false);
   const signOut = useCallback(() => {
     setSignedOut(true);
+    clearDestinationDraft();
     resetNavigation();
     void cache.cancelQueries({ predicate: (q) => q.queryKey[0] !== 'session-gate' });
     cache.removeQueries({ predicate: (q) => q.queryKey[0] !== 'session-gate' });
@@ -117,10 +118,30 @@ function Shell() {
             return (
               <ConnectionsPage canMutate={canMutate} connected={connected && browserConnected} />
             );
+          case 'folder-new':
+          case 'folder-edit':
+            return (
+              <FolderEditorPage
+                key={route.resourceId ?? 'new'}
+                id={route.resourceId}
+                canMutate={canMutate}
+                connected={browserConnected}
+              />
+            );
           case 'folders':
             return <FoldersPage canMutate={canMutate} connected={browserConnected} />;
+          case 'extension-package':
+            return (
+              <ExtensionPackagePage
+                key={route.resourceId ?? 'install'}
+                id={route.resourceId}
+                canMutate={canMutate && browserConnected}
+              />
+            );
           case 'extensions':
             return <ExtensionsPage canMutate={canMutate && browserConnected} />;
+          case 'recovery-connection':
+            return <StateProtectionEditorPage canMutate={canMutate && browserConnected} />;
           case 'state-protection':
             return <StateProtectionPage canMutate={canMutate && browserConnected} />;
           case 'locations':
@@ -128,15 +149,15 @@ function Shell() {
           case 'settings':
             return <SettingsPage />;
           case 'administrators':
+          case 'tokens':
             return (
-              <AdminsPage
+              <AccessSecurityPage
+                section={route.section}
                 connected={browserConnected}
                 canMutate={canMutate}
                 onSignedOut={signOut}
               />
             );
-          case 'tokens':
-            return <TokensPage connected={browserConnected} canMutate={canMutate} />;
           case 'network':
             return <NetworkPage connected={browserConnected} canMutate={canMutate} />;
           case 'operations':
@@ -144,15 +165,18 @@ function Shell() {
           case 'operation-detail':
             return <OperationDetailPage id={route.operationId!} connected={connected} />;
           case 'logs':
-            return <LogsPage connected={browserConnected} canMutate={canMutate} />;
           case 'activity':
-            return <ActivityPage connected={browserConnected} />;
-          case 'alerts':
-            return <AlertsPage connected={browserConnected} canMutate={canMutate} />;
-          case 'notification-channels':
-            return <NotificationChannelsPage canMutate={canMutate && browserConnected} />;
           case 'audit':
-            return <AuditPage connected={browserConnected} />;
+            return <EventsPage route={route} connected={browserConnected} canMutate={canMutate} />;
+          case 'alerts':
+          case 'notification-channels':
+            return (
+              <AlertsDeliveryPage
+                section={route.section}
+                connected={browserConnected}
+                canMutate={canMutate}
+              />
+            );
           default:
             return <DashboardPage connected={connected} />;
         }

@@ -16,8 +16,8 @@ export function OperationDetailPage({ id, connected = true }: { id: string; conn
   const view = dataView(q.data, q.isPending, q.error, q.dataUpdatedAt, !connected);
   return (
     <div className="stack">
-      <PageHeader title="Operation detail" description={id} />
-      <a href="#/settings/operations">Back to operations</a>
+      <PageHeader title="Job detail" description={id} />
+      <a href="#/settings/operations">Back to Jobs</a>
       <StateView {...view} onRetry={() => void q.refetch()} />
       {q.data ? (
         <Panel className="stack">

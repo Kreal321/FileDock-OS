@@ -38,5 +38,48 @@ test('built-ins cannot be removed and offline mutation controls are disabled', a
   );
   expect(await screen.findByRole('heading', { name: /Docker/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Remove$/ })).not.toBeInTheDocument();
-  expect(screen.getByLabelText('Extension package (.fdext)')).toBeDisabled();
+  expect(screen.queryByLabelText('Extension package (.fdext)')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Install extension' })).toHaveAttribute(
+    'href',
+    '#/extensions/package',
+  );
+});
+test('package review retains unsigned and permission consent before installation', async () => {
+  const { ExtensionPackagePage } = await import('./ExtensionPackagePage.tsx');
+  const { fireEvent } = await import('@testing-library/react');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) =>
+      Response.json(
+        input.includes('/inspect')
+          ? {
+              stagedPackageId: 'stage',
+              valid: true,
+              signed: false,
+              signerKeyId: '',
+              manifest: { id: 'test', name: 'Synthetic package', version: '1' },
+              requestedPermissions: ['network.outbound'],
+              issues: [],
+              dataPaths: [],
+            }
+          : input.includes('/folders')
+            ? { folders: [] }
+            : { subsystems: [], defaultProviders: {} },
+      ),
+    ),
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ExtensionPackagePage />
+    </QueryClientProvider>,
+  );
+  fireEvent.change(screen.getByLabelText('Extension package (.fdext)'), {
+    target: { files: [new File(['synthetic'], 'test.fdext')] },
+  });
+  const approve = await screen.findByRole('button', { name: 'Approve and install' });
+  expect(approve).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('network.outbound'));
+  expect(approve).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('I accept installing an unsigned package.'));
+  expect(approve).toBeEnabled();
 });

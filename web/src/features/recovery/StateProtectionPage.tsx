@@ -1,6 +1,14 @@
+import { Dialog } from '../../components/Dialog.tsx';
+import { SettingsRow } from '../../components/SettingsRow.tsx';
+import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
+import {
+  saveDestinationDraft,
+  takeDestinationDraft,
+  clearDestinationDraft,
+} from './destinationDraft.ts';
 import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { api } from '../../api/client.ts';
 import { PageHeader } from '../../components/PageHeader.tsx';
 import { Panel } from '../../components/Panel.tsx';
@@ -23,26 +31,51 @@ export type Protection = {
     lastError?: string;
   }[];
 };
-export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean }) {
+export function StateProtectionPage({ canMutate: permission = true }: { canMutate?: boolean }) {
   const q = useQuery({
     queryKey: ['state-protection'],
     queryFn: () => api.get<Protection>('/state-protection'),
     refetchInterval: 10000,
   });
+  const canMutate = permission && !q.error;
   const [key, setKey] = useState<{ keyId: string; recoveryKey: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [operation, setOperation] = useState('');
-  const [connectionId, setConnectionId] = useState('');
+  const [returnDraft] = useState(takeDestinationDraft);
+  const [connectionId, setConnectionId] = useState(returnDraft?.connection ?? '');
+  const [dialog, setDialog] = useState<'destination' | 'key' | null>(
+    returnDraft ? 'destination' : null,
+  );
+  const [dirty, setDirty] = useState(false);
+  const formId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const active = useRef(true);
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    active.current = true;
+    const clear = () => {
+      active.current = false;
+      clearDestinationDraft();
+      setKey(null);
+      setDialog(null);
+      setDirty(false);
+    };
+    window.addEventListener('filedock:session-expired', clear);
+    return () => {
+      active.current = false;
+      window.removeEventListener('filedock:session-expired', clear);
+    };
+  }, []);
   async function run(action: () => Promise<void>) {
     if (busy || !canMutate) return;
     setBusy(true);
     setError('');
     try {
       await action();
-      await q.refetch();
+      if (active.current) await q.refetch();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Request failed.');
+      if (active.current) setError(e instanceof Error ? e.message : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -67,7 +100,11 @@ export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean 
         acknowledgedBasicClaimSafety: form.get('basic') === 'on',
         acknowledgedThirdPartyConnector: form.get('third') === 'on',
       });
-      setOperation(op.id);
+      if (active.current) {
+        setOperation(op.id);
+        setDialog(null);
+        setDirty(false);
+      }
     });
   }
   async function download() {
@@ -148,7 +185,11 @@ export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean 
             onClick={() =>
               void run(async () => {
                 const op = await api.post<{ id: string }>('/state-protection/snapshot');
-                setOperation(op.id);
+                if (active.current) {
+                  setOperation(op.id);
+                  setDialog(null);
+                  setDirty(false);
+                }
               })
             }
           >
@@ -161,70 +202,94 @@ export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean 
         <p>The .fdbackup needs your recovery key to restore. Store both off this appliance.</p>
         {operation && <a href={`#/settings/operations/${operation}`}>View operation progress</a>}
       </Panel>
-      <form
-        className="panel stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const element = e.currentTarget;
-          const form = new FormData(element);
-          void run(async () => {
-            const result = await api.post<{ connectionId: string }>(
-              '/state-protection/connections',
-              {
-                name: String(form.get('name') ?? ''),
-                endpoint: String(form.get('endpoint') ?? ''),
-                region: String(form.get('region') ?? ''),
-                bucket: String(form.get('bucket') ?? ''),
-                accessKey: String(form.get('access') ?? ''),
-                secretKey: String(form.get('secret') ?? ''),
-              },
-            );
-            setConnectionId(result.connectionId);
-            element.reset();
-          });
-        }}
-      >
-        <h2>Create a backup connection</h2>
-        <Field label="Connection name" name="name" required />
-        <Field label="S3-compatible HTTPS endpoint" name="endpoint" type="url" required />
-        <Field label="Region" name="region" defaultValue="us-east-1" required />
-        <Field label="Bucket" name="bucket" required />
-        <Field label="Access key" name="access" required autoComplete="off" />
-        <Field label="Secret key" name="secret" type="password" required autoComplete="off" />
-        <Button variant="primary" type="submit" busy={busy} disabled={!canMutate}>
-          Create and test connection
-        </Button>
-        {connectionId && (
-          <p>
-            Connection created: {connectionId}. Use it below to register the dedicated backup
-            prefix.
-          </p>
-        )}
-      </form>
-      <form className="panel stack" onSubmit={destination}>
-        <h2>Remote destination</h2>
-        <Field label="Mounted removable disk path" name="disk" placeholder="/mnt/recovery" />
-        <p>Or select an existing object-storage connection:</p>
-        <Field
-          label="Connection ID"
-          name="connection"
-          value={connectionId}
-          onChange={(e) => setConnectionId(e.target.value)}
+      <Panel>
+        <SettingsRow
+          title="Remote recovery destination"
+          description="Choose a separate copy for machine-loss protection."
+          action={
+            <Button
+              disabled={!canMutate || busy}
+              onClick={() => {
+                setError('');
+                setDialog('destination');
+              }}
+            >
+              Add destination
+            </Button>
+          }
         />
-        <Field label="Bucket" name="bucket" />
-        <Field label="Dedicated empty prefix" name="prefix" />
-        <label>
-          <input name="basic" type="checkbox" /> I accept basic write-then-verify claim safety
-          without conditional writes.
-        </label>
-        <label>
-          <input name="third" type="checkbox" /> I trust the third-party connector serving this
-          destination.
-        </label>
-        <Button variant="primary" type="submit" busy={busy} disabled={!canMutate}>
-          Register destination
-        </Button>
-      </form>
+      </Panel>
+      <Dialog
+        open={dialog === 'destination'}
+        title="Add recovery destination"
+        description="Encrypted appliance configuration and credentials; folder data is protected separately."
+        busy={busy}
+        dirty={dirty}
+        onClose={() => {
+          setDialog(null);
+          setDirty(false);
+        }}
+        footer={
+          <Button form={formId} type="submit" busy={busy} disabled={!canMutate}>
+            Check and add
+          </Button>
+        }
+      >
+        {error ? <p role="alert">{error}</p> : null}
+        <form
+          id={formId}
+          ref={formRef}
+          className="stack"
+          onSubmit={destination}
+          onChange={() => setDirty(true)}
+        >
+          <Field
+            label="Mounted removable disk path"
+            name="disk"
+            placeholder="/mnt/recovery"
+            defaultValue={returnDraft?.disk}
+          />
+          <p>Or select an existing object-storage connection:</p>
+          <Field
+            label="Connection ID"
+            name="connection"
+            value={connectionId}
+            onChange={(e) => setConnectionId(e.target.value)}
+          />
+          <Field label="Bucket" name="bucket" defaultValue={returnDraft?.bucket} />
+          <Field label="Dedicated empty prefix" name="prefix" defaultValue={returnDraft?.prefix} />
+          <label>
+            <input name="basic" type="checkbox" defaultChecked={returnDraft?.basic} /> I accept
+            basic write-then-verify claim safety without conditional writes.
+          </label>
+          <label>
+            <input name="third" type="checkbox" defaultChecked={returnDraft?.third} /> I trust the
+            third-party connector serving this destination.
+          </label>
+          <Button
+            variant="quiet"
+            disabled={busy || !canMutate}
+            onClick={() => {
+              const data = new FormData(formRef.current!);
+              saveDestinationDraft({
+                disk: String(data.get('disk') ?? ''),
+                connection: connectionId,
+                bucket: String(data.get('bucket') ?? ''),
+                prefix: String(data.get('prefix') ?? ''),
+                basic: data.get('basic') === 'on',
+                third: data.get('third') === 'on',
+              });
+              setDirty(false);
+              setDialog(null);
+              setTimeout(() => {
+                window.location.hash = '#/settings/state-protection/connection';
+              }, 0);
+            }}
+          >
+            Create connection
+          </Button>
+        </form>
+      </Dialog>
       <Panel className="stack">
         <h2>Recovery key</h2>
         <p>
@@ -236,33 +301,67 @@ export function StateProtectionPage({ canMutate = true }: { canMutate?: boolean 
           disabled={!canMutate || key !== null}
           busy={busy}
           onClick={() => {
-            if (
-              window.confirm(
-                'Replace the recovery key? Download the new key before leaving this page.',
-              )
-            )
-              void run(async () => setKey(await api.post('/recovery-key/regenerate')));
+            setError('');
+            setDialog('key');
           }}
         >
           Regenerate recovery key
         </Button>
       </Panel>
-      {key && (
-        <RecoveryKeyStep
-          busyLabel="Saving the new recovery key…"
-          recoveryKey={key.recoveryKey}
-          error={error}
-          onDownloaded={async () => {
-            try {
-              await api.post('/recovery-key/confirm', { keyId: key.keyId });
-              setKey(null);
-              await q.refetch();
-            } catch (e) {
-              setError(e instanceof Error ? e.message : 'Could not confirm the key.');
+      <Dialog
+        open={dialog === 'key'}
+        title="Regenerate recovery key"
+        onClose={() => setDialog(null)}
+        busy={busy}
+        footer={
+          <Button
+            variant="danger"
+            busy={busy}
+            disabled={!canMutate}
+            onClick={() =>
+              void run(async () => {
+                const result = await api.post<{ keyId: string; recoveryKey: string }>(
+                  '/recovery-key/regenerate',
+                );
+                if (active.current) {
+                  setKey(result);
+                  setDialog(null);
+                }
+              })
             }
-          }}
-        />
-      )}
+          >
+            Replace recovery key
+          </Button>
+        }
+      >
+        <p>Keep your old key for older snapshots. Download the new key before leaving.</p>
+        {error ? <p role="alert">{error}</p> : null}
+      </Dialog>
+      <Dialog
+        open={!!key}
+        title="Download new recovery key"
+        onClose={() => {}}
+        busy={true}
+        cancelLabel="Download the key to continue"
+      >
+        {key && (
+          <RecoveryKeyStep
+            busyLabel="Saving the new recovery key…"
+            recoveryKey={key.recoveryKey}
+            error={error}
+            onDownloaded={async () => {
+              try {
+                await api.post('/recovery-key/confirm', { keyId: key.keyId });
+                setKey(null);
+                if (active.current) await q.refetch();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Could not confirm the key.');
+              }
+            }}
+          />
+        )}
+      </Dialog>
+      <a href="#/settings/locations">Review owned locations in Cloud</a>
     </div>
   );
 }

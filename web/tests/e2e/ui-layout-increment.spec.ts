@@ -84,7 +84,7 @@ for (const width of [1440, 360])
     await expect(page.getByText(/Live connection unavailable/)).toHaveCount(0);
     if (width === 360) await page.getByRole('button', { name: 'Open navigation' }).click();
     await expect(page.locator('[aria-current="page"]')).toHaveCount(1);
-    await expect(page.locator('[aria-current="page"]')).toHaveText('Administrators');
+    await expect(page.locator('[aria-current="page"]')).toHaveText('Access & security');
     expect(await page.locator('.settings-nav').count()).toBe(0);
     if (width === 360)
       await page.getByRole('navigation', { name: 'Main navigation' }).press('Escape');

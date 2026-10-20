@@ -1,10 +1,10 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import { dataView } from '../../api/view-models.ts';
 import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
 import { Panel } from '../../components/Panel.tsx';
-import { PageHeader } from '../../components/PageHeader.tsx';
+import { SectionHeader } from '../../components/SectionHeader.tsx';
 import { DataTable } from '../../components/DataTable.tsx';
 import { TableToolbar } from '../../components/TableToolbar.tsx';
 import { SettingsRow } from '../../components/SettingsRow.tsx';
@@ -15,21 +15,23 @@ import { StateView } from '../../components/StateView.tsx';
 import { Field } from '../../components/Field.tsx';
 import { Button } from '../../components/Button.tsx';
 type Admin = { id: string; username: string; enabled: boolean; lockedUntil: string | null };
-export function AdminsPage({
+export function AdminsSection({
   onSignedOut,
-  canMutate = true,
+  canMutate: permission = true,
   connected = true,
 }: {
   onSignedOut: () => void;
   canMutate?: boolean;
   connected?: boolean;
 }) {
+  const active = useRef(true);
   const cache = useQueryClient();
   const admins = useQuery({ queryKey: ['admins'], queryFn: () => api.get<Admin[]>('/admins') });
   const me = useQuery({
     queryKey: ['me'],
     queryFn: () => api.get<{ id: string; username: string }>('/auth/me'),
   });
+  const canMutate = permission && connected && !admins.error && !me.error;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<'create' | 'password' | 'sessions' | null>(null);
@@ -44,14 +46,19 @@ export function AdminsPage({
     setError('');
   }
   useEffect(() => {
+    active.current = true;
     const clear = () => {
+      active.current = false;
       setEditing(null);
       setRemoving(null);
       setDirty(false);
       setError('');
     };
     window.addEventListener('filedock:session-expired', clear);
-    return () => window.removeEventListener('filedock:session-expired', clear);
+    return () => {
+      active.current = false;
+      window.removeEventListener('filedock:session-expired', clear);
+    };
   }, []);
   function open(kind: 'create' | 'password' | 'sessions') {
     setError('');
@@ -64,10 +71,12 @@ export function AdminsPage({
     setBusy(true);
     try {
       await action();
+      if (!active.current) return;
       close();
       await cache.invalidateQueries({ queryKey: ['admins'] });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save administrator.');
+      if (active.current)
+        setError(e instanceof Error ? e.message : 'Could not save administrator.');
     } finally {
       setBusy(false);
     }
@@ -87,7 +96,7 @@ export function AdminsPage({
           `/admins/${encodeURIComponent(me.data.id)}/password`,
           Object.fromEntries(data),
         );
-        onSignedOut();
+        if (active.current) onSignedOut();
       }
     });
   }
@@ -100,7 +109,7 @@ export function AdminsPage({
         : 'Sign out all sessions?';
   return (
     <section className="stack">
-      <PageHeader
+      <SectionHeader
         title="Administrators"
         description="Manage appliance accounts and your password."
         action={
@@ -256,7 +265,7 @@ export function AdminsPage({
                     if (removing.id === me.data?.id) onSignedOut();
                   } else {
                     await api.post('/auth/sign-out-all');
-                    onSignedOut();
+                    if (active.current) onSignedOut();
                   }
                 })
               }

@@ -60,9 +60,9 @@ test.each(['folders', 'extensions', 'administrators', 'operation-detail'])(
     const current = container.querySelector('[aria-current="page"]');
     expect(current).toHaveTextContent(
       id === 'operation-detail'
-        ? 'Operations'
+        ? 'Jobs'
         : id === 'administrators'
-          ? 'Administrators'
+          ? 'Access & security'
           : id === 'folders'
             ? 'Managed Folders'
             : 'Extensions',

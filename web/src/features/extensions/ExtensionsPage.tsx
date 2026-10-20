@@ -20,22 +20,6 @@ type Subsystem = {
   dataBindings: Record<string, string>;
   dataProtected: boolean;
 };
-type Folder = { id: string; name: string; storageMode: string; protected: boolean };
-type Inspection = {
-  stagedPackageId: string;
-  valid: boolean;
-  signed: boolean;
-  signerKeyId: string;
-  manifest: { id: string; name: string; version: string };
-  requestedPermissions: string[];
-  issues: { message: string; code: string }[];
-  dataPaths: {
-    name: string;
-    description: string;
-    mountPath: string;
-    suggestedImportance: string;
-  }[];
-};
 export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
   const q = useQuery({
     queryKey: ['subsystems'],
@@ -43,17 +27,6 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
       api.get<{ subsystems: Subsystem[]; defaultProviders: Record<string, string> }>('/subsystems'),
     refetchInterval: 5000,
   });
-  const folders = useQuery({
-    queryKey: ['extension-folders'],
-    queryFn: () => api.get<{ folders: Folder[] }>('/extensions/folders'),
-  });
-  const [inspection, setInspection] = useState<Inspection | null>(null);
-  const [action, setAction] = useState<'install' | 'upgrade' | 'supply'>('install');
-  const [selected, setSelected] = useState('');
-  const [approved, setApproved] = useState<string[]>([]);
-  const [unsigned, setUnsigned] = useState(false);
-  const [unprotected, setUnprotected] = useState(false);
-  const [bindings, setBindings] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [operation, setOperation] = useState('');
@@ -70,63 +43,6 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
     } finally {
       setBusy(false);
     }
-  }
-  async function upload(file: File) {
-    await run(async () => {
-      setInspection(null);
-      setApproved([]);
-      setUnsigned(false);
-      setUnprotected(false);
-      setBindings({});
-      const form = new FormData();
-      form.append('file', file);
-      const match = document.cookie.match(/(?:^|; )fd_http_csrf=([^;]*)/);
-      const response = await fetch('/api/v1/extensions/inspect', {
-        method: 'POST',
-        body: form,
-        credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': match ? decodeURIComponent(match[1]!) : '' },
-      });
-      const value = await response.json();
-      if (!response.ok) throw new Error(value.detail ?? 'Upload failed.');
-      setInspection(value);
-    });
-  }
-  const unprotectedBinding = Object.values(bindings).some(
-    (id) => !folders.data?.folders.find((f) => f.id === id)?.protected,
-  );
-  const ready =
-    Boolean(inspection?.valid) &&
-    (action === 'supply' ||
-      (inspection!.requestedPermissions.every((p) => approved.includes(p)) &&
-        (inspection!.signed || unsigned) &&
-        (action === 'upgrade' ||
-          (inspection!.dataPaths.every((p) => bindings[p.name]) &&
-            (!unprotectedBinding || unprotected)))));
-  async function install() {
-    await run(async () => {
-      if (!inspection || !ready) return;
-      let result: { id: string };
-      if (action === 'supply')
-        throw new Error('Use the recorded-package upload control on the extension card.');
-      if (action === 'upgrade') {
-        result = await api.post(`/extensions/${encodeURIComponent(selected)}/upgrade`, {
-          stagedPackageId: inspection.stagedPackageId,
-          approvedPermissions: approved,
-          acknowledgedUnsigned: unsigned,
-        });
-      } else {
-        result = await api.post('/extensions', {
-          stagedPackageId: inspection.stagedPackageId,
-          approvedPermissions: approved,
-          acknowledgedUnsigned: unsigned,
-          dataBindings: bindings,
-          acknowledgedUnprotectedData: unprotected,
-        });
-      }
-      setOperation(result.id);
-      setInspection(null);
-    });
   }
   async function supply(id: string, file: File) {
     await run(async () => {
@@ -152,6 +68,11 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
       <PageHeader
         title="Extensions"
         description="Install capabilities outside the Core. Persistent data stays in bound managed folders."
+        action={
+          <a className="button primary" href="#/extensions/package">
+            Install extension
+          </a>
+        }
       />
       {error && (
         <Notice tone="danger" role="alert">
@@ -172,153 +93,9 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
         </Notice>
       )}
       <Panel className="stack">
-        <h2>{action === 'upgrade' ? `Upgrade ${selected}` : 'Install an extension'}</h2>
-        <Field
-          type="file"
-          label="Extension package (.fdext)"
-          accept=".fdext"
-          disabled={!canMutate || busy}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-          }}
-        />
-        {action === 'upgrade' && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setAction('install');
-              setSelected('');
-              setInspection(null);
-            }}
-          >
-            Cancel upgrade
-          </Button>
-        )}
-        {inspection && (
-          <div className="stack">
-            <h3>
-              {inspection.manifest?.name} {inspection.manifest?.version}
-            </h3>
-            {!inspection.valid ? (
-              <Notice tone="danger">
-                {inspection.issues.map((i) => `${i.code}: ${i.message}`).join(' ')}
-              </Notice>
-            ) : (
-              <>
-                <Notice tone={inspection.signed ? 'success' : 'warning'}>
-                  {inspection.signed
-                    ? `Verified signature: ${inspection.signerKeyId}`
-                    : 'Unsigned package. Its author has not been verified.'}
-                </Notice>
-                <h3>Requested permissions</h3>
-                {inspection.requestedPermissions.length === 0 && (
-                  <p>No optional permissions requested.</p>
-                )}
-                {inspection.requestedPermissions.map((permission) => (
-                  <label key={permission}>
-                    <input
-                      type="checkbox"
-                      checked={approved.includes(permission)}
-                      onChange={(e) =>
-                        setApproved(
-                          e.target.checked
-                            ? [...approved, permission]
-                            : approved.filter((p) => p !== permission),
-                        )
-                      }
-                      disabled={!canMutate || busy}
-                    />{' '}
-                    {permission}
-                  </label>
-                ))}
-                {!inspection.signed && (
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={unsigned}
-                      onChange={(e) => setUnsigned(e.target.checked)}
-                      disabled={!canMutate || busy}
-                    />{' '}
-                    I accept installing an unsigned package.
-                  </label>
-                )}
-                {inspection.dataPaths.length > 0 && (
-                  <>
-                    <h3>Persistent data</h3>
-                    <Notice tone="info">
-                      Recommended: bind each path to a Hybrid Backup managed folder at the suggested
-                      importance. Folder protection must be configured and healthy before relying on
-                      backups.
-                    </Notice>
-                    {action === 'upgrade' ? (
-                      <p>
-                        Existing bindings are retained. A package that adds or removes data paths is
-                        refused.
-                      </p>
-                    ) : (
-                      inspection.dataPaths.map((path) => (
-                        <div className="field" key={path.name}>
-                          <label htmlFor={`binding-${path.name}`}>
-                            {path.name} · {path.mountPath}
-                          </label>
-                          <p>
-                            {path.description} Suggested Hybrid Backup importance:{' '}
-                            {path.suggestedImportance}.
-                          </p>
-                          <select
-                            id={`binding-${path.name}`}
-                            value={bindings[path.name] ?? ''}
-                            onChange={(e) =>
-                              setBindings({ ...bindings, [path.name]: e.target.value })
-                            }
-                            disabled={!canMutate || busy || Boolean(folders.error)}
-                          >
-                            <option value="">Choose a managed folder</option>
-                            {(folders.data?.folders ?? []).map((folder) => (
-                              <option value={folder.id} key={folder.id}>
-                                {folder.name} · {folder.storageMode}
-                                {folder.protected ? '' : ' · Unprotected'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ))
-                    )}
-                    {!folders.data?.folders.length && action === 'install' && (
-                      <Notice tone="warning">
-                        No managed folders are available. Create a Hybrid Backup folder before
-                        installing an extension that stores data.
-                      </Notice>
-                    )}
-                    {unprotectedBinding && action === 'install' && (
-                      <Notice tone="warning">
-                        This binding is unprotected. Data can be lost with the appliance.
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={unprotected}
-                            onChange={(e) => setUnprotected(e.target.checked)}
-                            disabled={!canMutate || busy}
-                          />{' '}
-                          I accept the loss exposure of the selected folders.
-                        </label>
-                      </Notice>
-                    )}
-                  </>
-                )}
-                <Button disabled={!canMutate || !ready} busy={busy} onClick={() => void install()}>
-                  {action === 'upgrade' ? 'Upgrade with health check' : 'Approve and install'}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </Panel>
-      <Panel className="stack">
         <h2>Subsystems</h2>
         {q.data?.subsystems.map((s) => (
-          <article className="panel stack" key={s.subsystemId}>
+          <article className="resource-row extension-row" key={s.subsystemId}>
             <h3>
               {s.name}{' '}
               <span className="caption">
@@ -364,17 +141,17 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
                 )}
                 <Button
                   variant="secondary"
+                  size="compact"
                   disabled={!canMutate || busy}
                   onClick={() => {
-                    setSelected(s.subsystemId);
-                    setAction('upgrade');
-                    setInspection(null);
+                    window.location.hash = `#/extensions/${encodeURIComponent(s.subsystemId)}/upgrade`;
                   }}
                 >
                   Choose upgrade package
                 </Button>
                 <Button
                   variant="danger"
+                  size="compact"
                   disabled={!canMutate || busy || s.dependentFolders.length > 0}
                   onClick={() => setRemove(s)}
                 >

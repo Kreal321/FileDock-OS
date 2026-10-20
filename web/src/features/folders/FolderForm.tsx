@@ -1,5 +1,6 @@
 import { RecoveryPoint } from '../../components/RecoveryPoint.tsx';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUnsavedChanges } from '../../navigation/useUnsavedChanges.ts';
 import { api } from '../../api/client.ts';
 import { Button } from '../../components/Button.tsx';
 import { Field } from '../../components/Field.tsx';
@@ -61,6 +62,16 @@ export function FolderForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const [dirty, setDirty] = useState(false);
+  const active = useRef(true);
+  const form = useRef<HTMLFormElement>(null);
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [name, setName] = useState(folder?.identity.name ?? '');
   const path =
     '/storage/' +
@@ -96,7 +107,13 @@ export function FolderForm({
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [issues, setIssues] = useState<{ severity: string; code: string; message: string }[]>([]);
+  const [issues, setIssues] = useState<
+    { severity: string; code: string; message: string; field?: string }[]
+  >([]);
+  useEffect(() => {
+    if (error || issues.some((i) => i.severity !== 'Warning'))
+      form.current?.querySelector<HTMLElement>('[role="alert"]')?.focus();
+  }, [error, issues]);
   const local = mode !== 'CloudMount';
   const cloud = mode === 'CloudMount' || mode === 'TieredStorage';
   const warning = mode === 'LocalOnly' || mode === 'TieredStorage';
@@ -112,6 +129,7 @@ export function FolderForm({
           rank(overrides.find((r) => r.path === path)?.importance ?? importance) < rank(old),
       ));
   async function save() {
+    if (!canMutate || busy) return;
     setError('');
     setIssues([]);
     setBusy(true);
@@ -149,13 +167,22 @@ export function FolderForm({
       };
       const report = await api.post<{
         valid: boolean;
-        issues: { severity: string; code: string; message: string }[];
+        issues: { severity: string; code: string; message: string; field?: string }[];
       }>(`/folders/validate${folder ? `?id=${encodeURIComponent(folder.id)}` : ''}`, body);
+      if (!active.current) return;
       setIssues(report.issues);
       if (!report.valid) return;
-      if (folder) await api.patch(`/folders/${folder.id}`, body, String(folder.generation));
+      if (folder)
+        await api.patch(
+          `/folders/${encodeURIComponent(folder.id)}`,
+          body,
+          String(folder.generation),
+        );
       else await api.post('/folders', body);
-      onSaved();
+      if (active.current) {
+        setDirty(false);
+        setTimeout(onSaved, 0);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -165,157 +192,164 @@ export function FolderForm({
   return (
     <form
       className="stack"
+      ref={form}
+      onChange={() => setDirty(true)}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
+      aria-busy={busy || undefined}
     >
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {issues.map((i, n) => (
-        <Notice key={n} tone={i.severity === 'Warning' ? 'warning' : 'danger'}>
-          {i.message} <span className="caption">({i.code})</span>
-        </Notice>
-      ))}
-      <Panel className="stack">
-        <h2>1. Identity</h2>
-        <Field
-          label="Name"
-          required
-          maxLength={64}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        {name ? (
-          <Field
-            label="FileDock Path"
-            value={path}
-            readOnly
-            hint="Generated from the name. Managed folders cannot be nested."
-          />
+      <fieldset className="stack folder-fields" disabled={busy}>
+        {error ? (
+          <div role="alert" tabIndex={-1}>
+            <Notice tone="danger">{error}</Notice>
+          </div>
         ) : null}
-      </Panel>
-      <Panel className="stack">
-        <h2>2. Storage Mode</h2>
-        <Select
-          label="Storage mode"
-          value={mode}
-          onChange={(e) => {
-            const m = e.target.value as Mode;
-            setMode(m);
-            setImportance('');
-            setAdvanced({});
-            setConfirm(false);
-          }}
-        >
-          {options.modes.map((m) => (
-            <option
-              key={m.id}
-              value={m.id}
-              disabled={
-                !m.enabled ||
-                (!!folder && (folder.storageMode === 'CloudMount') !== (m.id === 'CloudMount'))
-              }
-            >
-              {labels[m.id]}
-              {m.enabled ? '' : ` — missing ${m.missingCapabilities.join(', ')}`}
-            </option>
-          ))}
-        </Select>
-        <p className="muted">The selected mode applies to this folder and every subfolder.</p>
-        {warning ? (
-          <Notice tone="warning">
-            Data kept only on this appliance has no off-appliance copy and may be lost if its pool
-            fails. Choose Hybrid Backup for data that needs backup.
-          </Notice>
-        ) : null}
-      </Panel>
-      <Panel className="stack">
-        <h2>3. Source / Backend</h2>
-        {local ? (
-          <>
-            <Select
-              label="Pool"
-              required
-              value={pool}
-              disabled={!!folder?.reference.poolId}
-              onChange={(e) => setPool(e.target.value)}
-            >
-              <option value="">Choose an available pool</option>
-              {options.pools.map((p) => (
-                <option
-                  key={p.id}
-                  value={p.id}
-                  disabled={
-                    p.kind === 'System' &&
-                    !['Available', 'Healthy', 'Ready'].includes(p.status?.state ?? '')
-                  }
+        {issues.map((i, n) => (
+          <div key={n} role={i.severity === 'Warning' ? 'status' : 'alert'} tabIndex={-1}>
+            <Notice tone={i.severity === 'Warning' ? 'warning' : 'danger'}>
+              {i.field ? (
+                <a
+                  href={`#folder-field-${i.field}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    Array.from(
+                      form.current?.querySelectorAll<HTMLElement>('[data-api-field]') ?? [],
+                    )
+                      .find((el) => el.dataset.apiField === i.field)
+                      ?.focus();
+                  }}
                 >
-                  {p.name}
-                  {p.kind === 'System' ? ' (System Pool)' : ''}
-                </option>
-              ))}
-            </Select>
+                  {i.message}
+                </a>
+              ) : (
+                i.message
+              )}{' '}
+              <span className="caption">({i.code})</span>
+            </Notice>
+          </div>
+        ))}
+        <Panel className="stack">
+          <h2>1. Identity</h2>
+          <Field
+            label="Name"
+            id="folder-field-identity.name"
+            data-api-field="identity.name"
+            required
+            maxLength={64}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          {name ? (
             <Field
-              label="Path inside pool"
-              required
-              value={relative}
-              disabled={!!folder?.reference.poolId}
-              onChange={(e) => setRelative(e.target.value)}
-              placeholder="/movies"
-              hint="A directory below the pool root. The root and /.filedock are reserved."
+              label="FileDock Path"
+              id="folder-field-identity.fileDockPath"
+              data-api-field="identity.fileDockPath"
+              value={path}
+              readOnly
+              hint="Generated from the name. Managed folders cannot be nested."
             />
-            {selectedPool?.kind === 'System' ? (
-              <Notice tone="warning">
-                This folder shares the operating-system disk. Disk failure or an erased reinstall
-                loses local data. Prefer a data pool for large or unprotected data.
-              </Notice>
-            ) : null}
-            {!options.pools.length ? (
-              <Notice tone="info">
-                No pools are available. Pool creation is delivered in the storage phase.
-              </Notice>
-            ) : null}
-          </>
-        ) : null}
-        {cloud ? (
-          <>
-            <Select
-              label="Cloud connection"
-              required
-              value={connection}
-              onChange={(e) => setConnection(e.target.value)}
-            >
-              <option value="">Choose a connection</option>
-              {options.connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            <Field
-              label="Cloud reference path"
-              required
-              value={remote}
-              onChange={(e) => setRemote(e.target.value)}
-            />
-          </>
-        ) : null}
-        {mode === 'HybridBackup' ? (
-          <div className="stack">
-            <Select
-              label="Backup destination"
-              value={backupType}
-              onChange={(e) => setBackupType(e.target.value)}
-            >
-              <option value="cloud">Cloud connection</option>
-              <option value="local">Another local pool path</option>
-            </Select>
-            {backupType === 'cloud' ? (
+          ) : null}
+        </Panel>
+        <Panel className="stack">
+          <h2>2. Storage Mode</h2>
+          <Select
+            label="Storage mode"
+            id="folder-field-storageMode"
+            data-api-field="storageMode"
+            value={mode}
+            onChange={(e) => {
+              const m = e.target.value as Mode;
+              setMode(m);
+              setImportance('');
+              setAdvanced({});
+              setConfirm(false);
+            }}
+          >
+            {options.modes.map((m) => (
+              <option
+                key={m.id}
+                value={m.id}
+                disabled={
+                  !m.enabled ||
+                  (!!folder && (folder.storageMode === 'CloudMount') !== (m.id === 'CloudMount'))
+                }
+              >
+                {labels[m.id]}
+                {m.enabled ? '' : ` — missing ${m.missingCapabilities.join(', ')}`}
+              </option>
+            ))}
+          </Select>
+          <p className="muted">The selected mode applies to this folder and every subfolder.</p>
+          {warning ? (
+            <Notice tone="warning">
+              Data kept only on this appliance has no off-appliance copy and may be lost if its pool
+              fails. Choose Hybrid Backup for data that needs backup.
+            </Notice>
+          ) : null}
+        </Panel>
+        <Panel className="stack">
+          <h2>3. Source / Backend</h2>
+          {local ? (
+            <>
               <Select
-                label="Backup connection"
+                label="Pool"
+                id="folder-field-reference.poolId"
+                data-api-field="reference.poolId"
                 required
-                value={backupConnection}
-                onChange={(e) => setBackupConnection(e.target.value)}
+                value={pool}
+                disabled={!!folder?.reference.poolId}
+                onChange={(e) => setPool(e.target.value)}
+              >
+                <option value="">Choose an available pool</option>
+                {options.pools.map((p) => (
+                  <option
+                    key={p.id}
+                    value={p.id}
+                    disabled={
+                      p.kind === 'System' &&
+                      !['Available', 'Healthy', 'Ready'].includes(p.status?.state ?? '')
+                    }
+                  >
+                    {p.name}
+                    {p.kind === 'System' ? ' (System Pool)' : ''}
+                  </option>
+                ))}
+              </Select>
+              <Field
+                label="Path inside pool"
+                id="folder-field-reference.relativePath"
+                data-api-field="reference.relativePath"
+                required
+                value={relative}
+                disabled={!!folder?.reference.poolId}
+                onChange={(e) => setRelative(e.target.value)}
+                placeholder="/movies"
+                hint="A directory below the pool root. The root and /.filedock are reserved."
+              />
+              {selectedPool?.kind === 'System' ? (
+                <Notice tone="warning">
+                  This folder shares the operating-system disk. Disk failure or an erased reinstall
+                  loses local data. Prefer a data pool for large or unprotected data.
+                </Notice>
+              ) : null}
+              {!options.pools.length ? (
+                <Notice tone="info">
+                  No pools are available. Pool creation is delivered in the storage phase.
+                </Notice>
+              ) : null}
+            </>
+          ) : null}
+          {cloud ? (
+            <>
+              <Select
+                label="Cloud connection"
+                id="folder-field-reference.connectionId"
+                data-api-field="reference.connectionId"
+                required
+                value={connection}
+                onChange={(e) => setConnection(e.target.value)}
               >
                 <option value="">Choose a connection</option>
                 {options.connections.map((c) => (
@@ -324,93 +358,143 @@ export function FolderForm({
                   </option>
                 ))}
               </Select>
-            ) : (
-              <Select
-                label="Backup pool"
+              <Field
+                label="Cloud reference path"
+                id="folder-field-reference.remotePath"
+                data-api-field="reference.remotePath"
                 required
-                value={backupPool}
-                onChange={(e) => setBackupPool(e.target.value)}
+                value={remote}
+                onChange={(e) => setRemote(e.target.value)}
+              />
+            </>
+          ) : null}
+          {mode === 'HybridBackup' ? (
+            <div className="stack">
+              <Select
+                label="Backup destination"
+                value={backupType}
+                onChange={(e) => setBackupType(e.target.value)}
               >
-                <option value="">Choose a pool</option>
-                {options.pools.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                <option value="cloud">Cloud connection</option>
+                <option value="local">Another local pool path</option>
               </Select>
-            )}
-            <Field
-              label="Backup destination path"
-              required
-              value={backupPath}
-              onChange={(e) => setBackupPath(e.target.value)}
-              hint="Must not overlap any managed folder reference."
-            />
-            {backupType === 'local' ? (
-              <Notice tone="warning">
-                A backup on this appliance does not protect against loss of the whole appliance. Use
-                an off-appliance destination for machine-loss protection.
-              </Notice>
-            ) : null}
-          </div>
-        ) : null}
-      </Panel>
-      {mode === 'HybridBackup' ? (
+              {backupType === 'cloud' ? (
+                <Select
+                  label="Backup connection"
+                  id="folder-field-reference.backupDestination.connectionId"
+                  data-api-field="reference.backupDestination.connectionId"
+                  required
+                  value={backupConnection}
+                  onChange={(e) => setBackupConnection(e.target.value)}
+                >
+                  <option value="">Choose a connection</option>
+                  {options.connections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Select
+                  label="Backup pool"
+                  id="folder-field-reference.backupDestination.poolId"
+                  data-api-field="reference.backupDestination.poolId"
+                  required
+                  value={backupPool}
+                  onChange={(e) => setBackupPool(e.target.value)}
+                >
+                  <option value="">Choose a pool</option>
+                  {options.pools.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <Field
+                label="Backup destination path"
+                id="folder-field-reference.backupDestination.remotePath"
+                data-api-field="reference.backupDestination.remotePath"
+                required
+                value={backupPath}
+                onChange={(e) => setBackupPath(e.target.value)}
+                hint="Must not overlap any managed folder reference."
+              />
+              {backupType === 'local' ? (
+                <Notice tone="warning">
+                  A backup on this appliance does not protect against loss of the whole appliance.
+                  Use an off-appliance destination for machine-loss protection.
+                </Notice>
+              ) : null}
+            </div>
+          ) : null}
+        </Panel>
         <Panel className="stack">
           <h2>4. Data Importance</h2>
-          <RecoveryPoint
-            label="Latest durable folder-data recovery point"
-            at={folder?.status?.modeObservation?.lastDurableRecoveryPoint}
-          />
-          <Select
-            label="Data importance"
-            required
-            value={importance}
-            onChange={(e) => {
-              setImportance(e.target.value);
-              setAdvanced(defaults(e.target.value));
-              setConfirm(false);
-            }}
-          >
-            <option value="">Choose explicitly</option>
-            <option value="Critical">Critical — back up every 5 minutes; restore first</option>
-            <option value="Important">Important — back up every 15 minutes</option>
-            <option value="Rebuildable">
-              Rebuildable — no backup by default; reconnect or rebuild after loss
-            </option>
-          </Select>
-          <p>
-            Changes after the last durable recovery point may be lost. Only Temporary subfolder data
-            may be deleted automatically under pressure.
+          {mode === 'HybridBackup' ? (
+            <>
+              <RecoveryPoint
+                label="Latest durable folder-data recovery point"
+                at={folder?.status?.modeObservation?.lastDurableRecoveryPoint}
+              />
+              <Select
+                label="Data importance"
+                id="folder-field-dataImportance"
+                data-api-field="dataImportance"
+                required
+                value={importance}
+                onChange={(e) => {
+                  setImportance(e.target.value);
+                  setAdvanced(defaults(e.target.value));
+                  setConfirm(false);
+                }}
+              >
+                <option value="">Choose explicitly</option>
+                <option value="Critical">Critical — back up every 5 minutes; restore first</option>
+                <option value="Important">Important — back up every 15 minutes</option>
+                <option value="Rebuildable">
+                  Rebuildable — no backup by default; reconnect or rebuild after loss
+                </option>
+              </Select>
+              <p>
+                Changes after the last durable recovery point may be lost. Only Temporary subfolder
+                data may be deleted automatically under pressure.
+              </p>
+            </>
+          ) : (
+            <p className="muted">
+              Data importance only applies to Hybrid Backup. This mode uses its own protection
+              policy.
+            </p>
+          )}
+        </Panel>
+        <Panel className="stack">
+          <h2>5. Access</h2>
+          <div className="form-grid">
+            {options.access.map((a) => (
+              <label key={a.id}>
+                <input
+                  type="checkbox"
+                  disabled={!a.enabled}
+                  checked={access.includes(a.id)}
+                  onChange={(e) =>
+                    setAccess(
+                      e.target.checked ? [...access, a.id] : access.filter((v) => v !== a.id),
+                    )
+                  }
+                />{' '}
+                {a.id}
+                {a.enabled ? '' : ` — missing ${a.missingCapability}`}
+              </label>
+            ))}
+          </div>
+          <p className="muted">
+            Selecting a protocol creates its export. Share users and export rules are managed
+            separately. Docker permits application bindings.
           </p>
         </Panel>
-      ) : null}
-      <Panel className="stack">
-        <h2>5. Access</h2>
-        <div className="form-grid">
-          {options.access.map((a) => (
-            <label key={a.id}>
-              <input
-                type="checkbox"
-                disabled={!a.enabled}
-                checked={access.includes(a.id)}
-                onChange={(e) =>
-                  setAccess(e.target.checked ? [...access, a.id] : access.filter((v) => v !== a.id))
-                }
-              />{' '}
-              {a.id}
-              {a.enabled ? '' : ` — missing ${a.missingCapability}`}
-            </label>
-          ))}
-        </div>
-        <p className="muted">
-          Selecting a protocol creates its export. Share users and export rules are managed
-          separately. Docker permits application bindings.
-        </p>
-      </Panel>
-      <Panel>
-        <details>
-          <summary>6. Advanced</summary>
+        <Panel>
+          <h2>6. Advanced</h2>
           <div className="stack">
             {mode === 'LocalOnly' ? (
               <p>Local Only has no Advanced settings.</p>
@@ -429,6 +513,8 @@ export function FolderForm({
                 </label>
                 <Field
                   label="Backup interval (seconds)"
+                  id="folder-field-advanced.backupIntervalSeconds"
+                  data-api-field="advanced.backupIntervalSeconds"
                   type="number"
                   min={1}
                   max={importance === 'Critical' ? 900 : 86400}
@@ -442,6 +528,8 @@ export function FolderForm({
                 />
                 <Field
                   label="Recovery points to retain"
+                  id="folder-field-advanced.retention.keepLast"
+                  data-api-field="advanced.retention.keepLast"
                   type="number"
                   min={1}
                   value={Number((advanced.retention as { keepLast?: number })?.keepLast ?? 30)}
@@ -507,6 +595,8 @@ export function FolderForm({
                   <>
                     <Select
                       label="Cache profile"
+                      id="folder-field-advanced.cache.type"
+                      data-api-field="advanced.cache.type"
                       value={String((advanced.cache as { profile?: string })?.profile ?? 'Generic')}
                       onChange={(e) =>
                         setAdvanced({
@@ -521,6 +611,8 @@ export function FolderForm({
                     </Select>
                     <Field
                       label="Cache capacity (GB)"
+                      id="folder-field-advanced.cache.capacityGb"
+                      data-api-field="advanced.cache.capacityGb"
                       type="number"
                       min={1}
                       value={Number((advanced.cache as { capacityGb?: number })?.capacityGb ?? 100)}
@@ -536,6 +628,8 @@ export function FolderForm({
                     />
                     <Select
                       label="Consistency"
+                      id="folder-field-advanced.consistency"
+                      data-api-field="advanced.consistency"
                       value={String(advanced.consistency ?? 'Balanced')}
                       onChange={(e) => setAdvanced({ ...advanced, consistency: e.target.value })}
                     >
@@ -548,6 +642,8 @@ export function FolderForm({
                   <>
                     <Field
                       label="Cold threshold (days without access)"
+                      id="folder-field-advanced.coldAfterDays"
+                      data-api-field="advanced.coldAfterDays"
                       type="number"
                       min={1}
                       value={Number((advanced.tiering as { coldDays?: number })?.coldDays ?? 30)}
@@ -563,6 +659,8 @@ export function FolderForm({
                     />
                     <Field
                       label="Hot-tier capacity (GB)"
+                      id="folder-field-advanced.hotTierCapacityGb"
+                      data-api-field="advanced.hotTierCapacityGb"
                       type="number"
                       min={1}
                       value={Number(
@@ -587,32 +685,45 @@ export function FolderForm({
               </div>
             )}
           </div>
-        </details>
-      </Panel>
-      {reducing ? (
-        <label>
-          <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />{' '}
-          I understand that lowering or removing importance permits loss of data that previously
-          required backup.
-        </label>
-      ) : null}
-      <div className="actions">
-        <Button
-          type="submit"
-          disabled={
-            !canMutate ||
-            busy ||
-            (!!reducing && !confirm) ||
-            (mode === 'HybridBackup' && !importance)
-          }
-          busy={busy}
-        >
-          Save folder
-        </Button>
-        <Button variant="secondary" disabled={busy} onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
+        </Panel>
+        {reducing ? (
+          <label>
+            <input
+              type="checkbox"
+              checked={confirm}
+              onChange={(e) => setConfirm(e.target.checked)}
+            />{' '}
+            I understand that lowering or removing importance permits loss of data that previously
+            required backup.
+          </label>
+        ) : null}
+        <div className="actions">
+          <Button
+            type="submit"
+            disabled={
+              !canMutate ||
+              busy ||
+              (!!reducing && !confirm) ||
+              (mode === 'HybridBackup' && !importance)
+            }
+            busy={busy}
+          >
+            Save folder
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() => {
+              if (!dirty || window.confirm('Discard unsaved changes?')) {
+                setDirty(false);
+                onCancel();
+              }
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      </fieldset>
     </form>
   );
 }

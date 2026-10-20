@@ -1,3 +1,5 @@
+import { DataTable } from '../../components/DataTable.tsx';
+import { StatusBadge } from '../../components/StatusBadge.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../api/client.ts';
@@ -70,37 +72,60 @@ export function LocationsPage({ canMutate = true }: { canMutate?: boolean }) {
       )}
       {q.isPending && <Panel>Loading locations…</Panel>}
       {q.data && !q.data.locations?.length && <Panel>No owned locations registered.</Panel>}
-      {q.data?.locations?.map((l) => (
-        <Panel className="stack" key={`${l.connectionId}:${l.bucket}:${l.prefix}`}>
-          <h2>
-            {l.bucket}/{l.prefix}
-          </h2>
-          <p>
-            {l.purpose} · {l.role} · Generation {l.generation}
-          </p>
-          <p>
-            Owner {l.ownerApplianceId} · Last write {l.lastWriteAt ?? 'unknown'}
-          </p>
-          <p>
-            Connector {l.servedByConnector}
-            {l.servedByThirdParty ? ' (third party)' : ''} · Claim safety {l.claimSafety}
-          </p>
-          {l.claimSafety === 'Basic' && (
-            <Notice>
-              Basic claim safety uses write-then-verify. Avoid simultaneous installations.
-            </Notice>
-          )}
-          {l.role !== 'Writer' && (
-            <Button
-              disabled={!canMutate}
-              busy={busy === l.connectionId}
-              onClick={() => void takeover(l)}
-            >
-              Take over location
-            </Button>
-          )}
+      <a href="#/settings/state-protection">Review configuration recovery</a>
+      {q.data?.locations?.length ? (
+        <Panel>
+          <DataTable
+            label="Owned locations"
+            headers={[
+              'Location',
+              'Ownership',
+              'Connector / Claim safety',
+              { id: 'actions', label: 'Actions', align: 'actions' },
+            ]}
+          >
+            {q.data.locations.map((l) => (
+              <tr key={`${l.connectionId}:${l.bucket}:${l.prefix}`}>
+                <td>
+                  <strong>
+                    {l.bucket}/{l.prefix}
+                  </strong>
+                  <p className="caption muted">{l.purpose}</p>
+                </td>
+                <td>
+                  <StatusBadge state={l.role} freshness={q.error ? 'cached' : 'current'} />
+                  <p>
+                    Generation {l.generation} · Owner {l.ownerApplianceId}
+                  </p>
+                  <p className="caption muted">Last write {l.lastWriteAt ?? 'unknown'}</p>
+                </td>
+                <td>
+                  {l.servedByConnector}
+                  {l.servedByThirdParty ? ' (third party)' : ''} · {l.claimSafety}
+                  {l.claimSafety === 'Basic' ? (
+                    <p className="caption">
+                      Basic claim safety uses write-then-verify. Avoid simultaneous installations.
+                    </p>
+                  ) : null}
+                </td>
+                <td>
+                  {l.role !== 'Writer' ? (
+                    <Button
+                      size="compact"
+                      variant="secondary"
+                      disabled={!canMutate || !!q.error || !!busy}
+                      busy={busy === l.connectionId}
+                      onClick={() => void takeover(l)}
+                    >
+                      Take over location
+                    </Button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </DataTable>
         </Panel>
-      ))}
+      ) : null}
     </div>
   );
 }

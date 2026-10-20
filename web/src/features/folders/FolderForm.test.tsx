@@ -65,3 +65,18 @@ it('shows the actual provider mode observation as the durable folder-data point'
     screen.getByText(/Latest durable folder-data recovery point/).querySelector('time'),
   ).toHaveAttribute('datetime', '2026-10-19T12:00:00Z');
 });
+it('shows all six sections expanded even when importance is not applicable', () => {
+  const { container } = render(
+    <FolderForm options={options} canMutate onSaved={vi.fn()} onCancel={vi.fn()} />,
+  );
+  expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+    '1. Identity',
+    '2. Storage Mode',
+    '3. Source / Backend',
+    '4. Data Importance',
+    '5. Access',
+    '6. Advanced',
+  ]);
+  expect(container.querySelector('details')).toBeNull();
+  expect(screen.getByText(/only applies to Hybrid Backup/)).toBeVisible();
+});

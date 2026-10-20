@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SetupWizard } from '../src/features/setup/SetupWizard.tsx';
 import { NetworkPage } from '../src/features/settings/NetworkPage.tsx';
-import { TokensPage } from '../src/features/tokens/TokensPage.tsx';
+import { TokensSection } from '../src/features/tokens/TokensPage.tsx';
 import { network } from './fixtures/ui-states.ts';
 test('setup keeps editable root and password matching with advisory length', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
@@ -49,7 +49,7 @@ test('tokens can be read during outages and secrets clear on expiry', async () =
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <TokensPage canMutate />
+      <TokensSection canMutate />
     </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
@@ -84,7 +84,7 @@ test('recovery downloads a TXT before confirmation and supports expired setup re
 });
 
 test('last enabled administrator is guarded and changing password needs current password', async () => {
-  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  const { AdminsSection } = await import('../src/features/admins/AdminsPage.tsx');
   vi.stubGlobal(
     'fetch',
     vi.fn(
@@ -100,7 +100,7 @@ test('last enabled administrator is guarded and changing password needs current 
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AdminsPage onSignedOut={() => {}} />
+      <AdminsSection onSignedOut={() => {}} />
     </QueryClientProvider>,
   );
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for root' }));
@@ -142,7 +142,7 @@ test('network disconnect acknowledgement is explicit in submitted payload', asyn
 });
 
 test('administrator creation is deliberate and mismatched passwords preserve the dialog', async () => {
-  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  const { AdminsSection } = await import('../src/features/admins/AdminsPage.tsx');
   vi.stubGlobal(
     'fetch',
     vi.fn(
@@ -158,7 +158,7 @@ test('administrator creation is deliberate and mismatched passwords preserve the
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AdminsPage onSignedOut={() => {}} />
+      <AdminsSection onSignedOut={() => {}} />
     </QueryClientProvider>,
   );
   expect(screen.queryByLabelText('Username')).toBeNull();
@@ -172,7 +172,7 @@ test('administrator creation is deliberate and mismatched passwords preserve the
 });
 
 test('password dialog submits current password and signs out only after success', async () => {
-  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  const { AdminsSection } = await import('../src/features/admins/AdminsPage.tsx');
   const signedOut = vi.fn();
   const fetcher = vi.fn(
     async (url, init) =>
@@ -189,7 +189,7 @@ test('password dialog submits current password and signs out only after success'
   vi.stubGlobal('fetch', fetcher);
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AdminsPage onSignedOut={signedOut} />
+      <AdminsSection onSignedOut={signedOut} />
     </QueryClientProvider>,
   );
   await waitFor(() =>
@@ -216,7 +216,7 @@ test('password dialog submits current password and signs out only after success'
   );
 });
 test('failed administrator save retains draft and exposes focused error', async () => {
-  const { AdminsPage } = await import('../src/features/admins/AdminsPage.tsx');
+  const { AdminsSection } = await import('../src/features/admins/AdminsPage.tsx');
   vi.stubGlobal(
     'fetch',
     vi.fn(
@@ -235,7 +235,7 @@ test('failed administrator save retains draft and exposes focused error', async 
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AdminsPage onSignedOut={() => {}} />
+      <AdminsSection onSignedOut={() => {}} />
     </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Add administrator' }));

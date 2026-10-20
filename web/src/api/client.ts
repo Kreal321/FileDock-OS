@@ -59,7 +59,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
   }
 
   return {
-    get: <T>(path: string) => request<T>(path),
+    get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
     post: <T>(path: string, body?: unknown) =>
       request<T>(path, {
         method: 'POST',

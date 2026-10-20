@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { clearViewContexts } from './viewContext.ts';
 import { resolveRoute } from './destinations.ts';
 import { confirmNavigation, discardNavigationGuards } from './useUnsavedChanges.ts';
 const listeners = new Set<() => void>();
@@ -61,6 +62,7 @@ export function useHashRoute() {
   );
 }
 export function resetNavigation() {
+  clearViewContexts();
   discardNavigationGuards();
   restoring = false;
   bypass = true;

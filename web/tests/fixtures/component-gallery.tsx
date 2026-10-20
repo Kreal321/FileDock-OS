@@ -13,6 +13,7 @@ import { Notice } from '../../src/components/Notice.tsx';
 import { StateView } from '../../src/components/StateView.tsx';
 import { DataTable } from '../../src/components/DataTable.tsx';
 function Gallery() {
+  const [tab, setTab] = useState('one');
   const [open, setOpen] = useState(false);
   return (
     <main className="main-content stack">
@@ -54,6 +55,8 @@ function Gallery() {
       <section className="panel stack">
         <h2>Navigation and data</h2>
         <Tabs
+          selected={tab}
+          onSelect={setTab}
           tabs={[
             { id: 'one', label: 'Overview', content: 'Overview content' },
             { id: 'two', label: 'Details', content: 'Details content' },

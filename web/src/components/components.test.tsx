@@ -28,9 +28,13 @@ test('statuses are words plus an icon and switches expose state', () => {
   expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
   expect(screen.getByRole('switch')).toBeDisabled();
 });
-test('tabs use arrow keys and roving focus', () => {
-  render(
+test('controlled tabs move focus manually and never mount inactive panels', () => {
+  const change = vi.fn();
+  const { rerender } = render(
     <Tabs
+      label="Event record type"
+      selected="one"
+      onSelect={change}
       tabs={[
         { id: 'one', label: 'One', content: 'First' },
         { id: 'two', label: 'Two', content: 'Second' },
@@ -38,8 +42,23 @@ test('tabs use arrow keys and roving focus', () => {
     />,
   );
   fireEvent.keyDown(screen.getByRole('tab', { name: 'One' }), { key: 'ArrowRight' });
-  expect(screen.getByRole('tab', { name: 'Two' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: 'Two' })).toHaveFocus();
+  expect(screen.getByRole('tab', { name: 'One' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByText('Second')).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('tab', { name: 'Two' }), { key: 'Enter' });
+  expect(change).toHaveBeenCalledWith('two');
+  rerender(
+    <Tabs
+      selected="two"
+      onSelect={change}
+      tabs={[
+        { id: 'one', label: 'One', content: 'First' },
+        { id: 'two', label: 'Two', content: 'Second' },
+      ]}
+    />,
+  );
   expect(screen.getByRole('tabpanel')).toHaveTextContent('Second');
+  expect(screen.queryByText('First')).not.toBeInTheDocument();
 });
 test('dialog Escape restores focus and table has a named region', () => {
   const close = vi.fn();
@@ -126,4 +145,47 @@ test('dialog provides one form footer, focuses first field and confirms dirty ca
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(close).toHaveBeenCalledOnce();
   confirm.mockRestore();
+});
+test('busy dialog cannot dismiss and missing trigger returns to the owning heading', () => {
+  const close = vi.fn();
+  const { rerender, unmount } = render(
+    <>
+      <main id="main-content">
+        <h1 tabIndex={-1}>Owner</h1>
+      </main>
+      <Dialog open busy title="Saving" onClose={close}>
+        <p>Saving</p>
+      </Dialog>
+    </>,
+  );
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  rerender(
+    <>
+      <main id="main-content">
+        <h1 tabIndex={-1}>Owner</h1>
+      </main>
+      <Dialog open={false} title="Saving" onClose={close}>
+        <p>Saving</p>
+      </Dialog>
+    </>,
+  );
+  expect(screen.getByRole('heading', { name: 'Owner' })).toHaveFocus();
+  unmount();
+});
+test('new dialog error receives focus while the field draft remains', () => {
+  const { rerender } = render(
+    <Dialog open title="Edit" onClose={() => {}}>
+      <Field label="Draft" defaultValue="keep" />
+    </Dialog>,
+  );
+  rerender(
+    <Dialog open title="Edit" onClose={() => {}}>
+      <p role="alert">Save failed</p>
+      <Field label="Draft" defaultValue="keep" />
+    </Dialog>,
+  );
+  expect(screen.getByRole('alert')).toHaveFocus();
+  expect(screen.getByLabelText('Draft')).toHaveValue('keep');
 });

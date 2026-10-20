@@ -17,15 +17,10 @@ const descriptions: Record<string, string> = {
   locations: 'Review owned recovery locations.',
 };
 const groups = [
-  {
-    title: 'Access and connectivity',
-    ids: ['administrators', 'tokens', 'network', 'connectors', 'notification-channels'],
-  },
-  { title: 'Recovery', ids: ['state-protection', 'locations'] },
-  {
-    title: 'Operations and diagnostics',
-    ids: ['operations', 'activity', 'alerts', 'logs', 'audit'],
-  },
+  { title: 'Access and connectivity', ids: ['administrators', 'network'] },
+  { title: 'Cloud', ids: ['connections', 'connectors', 'locations'] },
+  { title: 'Recovery', ids: ['state-protection'] },
+  { title: 'Operations', ids: ['operations', 'alerts', 'activity'] },
 ];
 export function SettingsPage() {
   return (
@@ -43,7 +38,17 @@ export function SettingsPage() {
               <a key={id} className="settings-row settings-link" href={d.hashRoute}>
                 <Icon name={d.icon} />
                 <div className="settings-row-content">
-                  <h3>{d.label}</h3>
+                  <h3>
+                    {id === 'administrators'
+                      ? 'Access & security'
+                      : id === 'operations'
+                        ? 'Jobs'
+                        : id === 'alerts'
+                          ? 'Alerts & delivery'
+                          : id === 'activity'
+                            ? 'Events'
+                            : d.label}
+                  </h3>
                   <p className="muted">{descriptions[id]}</p>
                 </div>
                 <span aria-hidden="true">›</span>

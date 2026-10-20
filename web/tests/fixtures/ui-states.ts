@@ -234,3 +234,45 @@ export const folderOptionsFixture = {
     { id: 'Smb', enabled: false, missingCapability: 'protocol.smb' },
   ],
 };
+
+// Phase 14 synthetic streams: Logs deliberately have no fabricated persistent ID.
+export const addonStates = {
+  administrators: [{ ...identity, enabled: true, lockedUntil: null }],
+  tokens: [
+    {
+      id: 'test-token',
+      name: 'Automation',
+      scope: 'ReadOnly',
+      expiresAt: null,
+      revokedAt: null,
+      lastUsedAt: null,
+    },
+  ],
+  activity: {
+    items: [
+      {
+        seq: 1,
+        at: '2026-10-19T12:00:00Z',
+        type: 'operation.completed',
+        subject: { kind: 'Operation', id: 'op-one' },
+        payload: { detail: 'Synthetic job complete' },
+      },
+    ],
+    nextPageToken: 'activity-next',
+  },
+  logs: {
+    items: [
+      {
+        at: '2026-10-19T12:00:00Z',
+        source: 'filedock-core.service',
+        severity: 'Warning',
+        message: 'Synthetic diagnostic\n' + 'Complete diagnostic detail. '.repeat(80),
+      },
+    ],
+    nextPageToken: 'logs-next',
+  },
+  audit: { items: [activity], nextPageToken: 'audit-next' },
+  channels: layoutStates.channels,
+  failure: { status: 503, body: { detail: 'Synthetic service unavailable' } },
+  delayedResponseMs: 200,
+};

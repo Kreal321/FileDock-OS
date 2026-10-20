@@ -1,3 +1,4 @@
+import { DataTable } from '../../components/DataTable.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client.ts';
 import { Panel } from '../../components/Panel.tsx';
@@ -31,20 +32,32 @@ export function RestoreReport() {
             {f.name}: {f.outcome}. {f.detail}
           </Notice>
         ))}
-      {q.data.folders?.map((f) => (
-        <p key={f.folderId}>
-          <strong>
-            {f.name}: {f.outcome}
-          </strong>{' '}
-          — {f.detail}
-        </p>
-      ))}
-      {q.data.items?.map((i) => (
-        <p key={`${i.kind}:${i.id}`}>
-          {i.kind} {i.name || i.id}: {i.status}. {i.detail}
-        </p>
-      ))}
-      <a href={`#/settings/operations/${q.data.restoreOperationId}`}>View restore operation</a>
+      {q.data.folders?.length ? (
+        <DataTable label="Recovered folders" headers={['Folder', 'Outcome', 'Detail']}>
+          {q.data.folders.map((f) => (
+            <tr key={f.folderId}>
+              <td>{f.name}</td>
+              <td>{f.outcome}</td>
+              <td>{f.detail}</td>
+            </tr>
+          ))}
+        </DataTable>
+      ) : null}
+      {q.data.items?.length ? (
+        <DataTable label="Recovered components" headers={['Kind', 'Name', 'Status', 'Detail']}>
+          {q.data.items.map((i) => (
+            <tr key={`${i.kind}:${i.id}`}>
+              <td>{i.kind}</td>
+              <td>{i.name || i.id}</td>
+              <td>{i.status}</td>
+              <td>{i.detail}</td>
+            </tr>
+          ))}
+        </DataTable>
+      ) : null}
+      <a href={`#/settings/operations/${encodeURIComponent(q.data.restoreOperationId)}`}>
+        View restore operation
+      </a>
       <Button onClick={() => void api.post('/restore/report/dismiss').then(() => q.refetch())}>
         Dismiss this report
       </Button>

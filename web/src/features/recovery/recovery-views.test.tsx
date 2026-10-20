@@ -65,3 +65,19 @@ test('recovery-reader location keeps its ownership warning and disables takeover
   expect(screen.getByText(/Basic claim safety/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Take over location' })).toBeDisabled();
 });
+
+test('recovery summary keeps destination inputs behind one deliberate dialog', async () => {
+  const { fireEvent } = await import('@testing-library/react');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ copies: [], warning: true })),
+  );
+  mount(<StateProtectionPage />);
+  expect(await screen.findByText('No copies reported yet.')).toBeVisible();
+  expect(screen.queryByLabelText('Dedicated empty prefix')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Add destination' }));
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect(screen.getByLabelText('Dedicated empty prefix')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Create connection' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Check and add' })).toBeVisible();
+});

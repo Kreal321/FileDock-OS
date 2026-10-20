@@ -23,14 +23,22 @@ export function AppShell({
   const toggle = useRef<HTMLButtonElement>(null);
   const main = useRef<HTMLElement>(null);
   const health = useLiveCoreStatus();
-  const previousRoute = useRef(route.id + (route.operationId ?? ''));
+  const previousRoute = useRef(route.id + (route.operationId ?? '') + (route.resourceId ?? ''));
   useEffect(() => {
-    const next = route.id + (route.operationId ?? '');
+    const next = route.id + (route.operationId ?? '') + (route.resourceId ?? '');
     if (previousRoute.current !== next) {
       previousRoute.current = next;
-      main.current?.querySelector<HTMLElement>('h1')?.focus();
+      const selector =
+        route.owner === 'access'
+          ? `#access-${route.section} h2`
+          : route.owner === 'alerts-delivery'
+            ? `#alerts-${route.section} h2`
+            : route.recordType
+              ? '[role=tab][aria-selected=true]'
+              : 'h1';
+      main.current?.querySelector<HTMLElement>(selector)?.focus();
     }
-  }, [route.id, route.operationId]);
+  }, [route.id, route.operationId, route.resourceId, route.owner, route.section, route.recordType]);
   useEffect(() => {
     if (open)
       document.getElementById('main-navigation')?.querySelector<HTMLAnchorElement>('a')?.focus();

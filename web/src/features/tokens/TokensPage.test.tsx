@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { TokensPage } from './TokensPage.tsx';
+import { TokensSection } from './TokensPage.tsx';
 
 test('shows a token once and removes the secret when dismissed', async () => {
   vi.stubGlobal(
@@ -15,7 +15,7 @@ test('shows a token once and removes the secret when dismissed', async () => {
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <TokensPage />
+      <TokensSection />
     </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Create token' }));

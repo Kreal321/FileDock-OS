@@ -8,6 +8,7 @@ import {
   activity,
   network,
   states,
+  layoutStates,
 } from '../fixtures/ui-states.ts';
 
 test.use({
@@ -32,7 +33,12 @@ async function appliance(
     if (path === '/system/status') {
       data = state;
       code = gate;
-    } else if (path === '/system/core-health') data = health;
+    } else if (path === '/restore/report') {
+      await route.fulfill({ status: 204 });
+      return;
+    } else if (path === '/alerts') data = { items: [] };
+    else if (path === '/state-protection') data = layoutStates.recovery;
+    else if (path === '/system/core-health') data = health;
     else if (path === '/auth/me') data = identity;
     else if (path === '/operations') data = { operations: [operation], nextPageToken: null };
     else if (path.startsWith('/operations/')) data = operation;
@@ -89,11 +95,19 @@ async function capture(page: import('@playwright/test').Page, name: string, live
   await page.evaluate(() => document.fonts.ready);
   if (liveExpected && !(await page.locator('.auth-layout').count()))
     await expect(page.getByText(/Live connection unavailable/)).toHaveCount(0);
-  await expect(page).toHaveScreenshot(`${name}.png`, {
-    fullPage: true,
-    animations: 'disabled',
-    mask: [page.getByTestId('recovery-key'), page.locator('[data-secret]')],
-  });
+  if (process.env.FD_UI_CAPTURE_ONLY === '1') {
+    await page.screenshot({
+      path: test.info().outputPath(`${name}.png`),
+      fullPage: true,
+      animations: 'disabled',
+      mask: [page.getByTestId('recovery-key'), page.locator('[data-secret]')],
+    });
+  } else
+    await expect(page).toHaveScreenshot(`${name}.png`, {
+      fullPage: true,
+      animations: 'disabled',
+      mask: [page.getByTestId('recovery-key'), page.locator('[data-secret]')],
+    });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -111,9 +125,9 @@ for (const width of [1440, 360]) {
       ['settings/administrators', 'Administrators'],
       ['settings/tokens', 'API tokens'],
       ['settings/network', 'Network settings'],
-      ['settings/operations', 'Operations'],
-      ['settings/operations/op-one', 'Operation detail'],
-      ['settings/audit', 'Audit'],
+      ['settings/operations', 'Jobs'],
+      ['settings/operations/op-one', 'Job detail'],
+      ['settings/audit', 'Events'],
     ] as const) {
       await page.evaluate((hash) => {
         location.hash = hash;
@@ -160,7 +174,8 @@ for (const [name, state] of Object.entries(states))
     await appliance(page, state);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
-    await expect(page.getByText(/Protection information unavailable/)).toBeVisible();
+    await expect(page.getByText('Recovery coverage', { exact: true })).toBeVisible();
+    await expect(page.getByText('At risk', { exact: true })).toBeVisible();
     await capture(page, `dashboard-${name}`);
   });
 test('local assets, supported navigation, history, and keyboard', async ({ page }) => {
@@ -177,7 +192,8 @@ test('local assets, supported navigation, history, and keyboard', async ({ page 
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.locator('[data-group=settings-group] > summary').click();
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
@@ -216,6 +232,7 @@ test('live Core outage preserves dirty values, filters, inspection and sign-out'
 }) => {
   const live = await appliance(page);
   await page.goto('/#/settings/network');
+  await page.getByRole('button', { name: 'Configure network', exact: true }).click();
   const save = page.getByRole('button', { name: 'Save network settings' });
   await expect(save).toBeEnabled();
   const input = page.getByLabel('Listen addresses (one per line)');
@@ -225,10 +242,21 @@ test('live Core outage preserves dirty values, filters, inspection and sign-out'
   await expect(input).toHaveValue('192.0.2.22');
   await expect(input).toBeFocused();
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeEnabled();
-  await page.getByRole('link', { name: 'Audit', exact: true }).click();
+  if (await page.getByRole('dialog').count()) {
+    page.once('dialog', (d) => d.accept());
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  }
+  await page.evaluate(() => {
+    location.hash = '#/settings/audit';
+  });
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Apply filters' })).toBeEnabled();
-  await page.getByRole('link', { name: 'Network settings', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.evaluate(() => {
+    location.hash = '#/settings/network';
+  });
   live.emit(health);
+  await page.getByRole('button', { name: 'Configure network', exact: true }).click();
   await expect(save).toBeEnabled();
 });
 
@@ -237,12 +265,21 @@ test('browser transport loss marks cached data and retains read-only controls', 
 }) => {
   const live = await appliance(page);
   await page.goto('/#/settings/network');
+  await page.getByRole('button', { name: 'Configure network', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save network settings' })).toBeEnabled();
   live.close();
   await expect(page.getByRole('button', { name: 'Save network settings' })).toBeDisabled();
   await expect(page.getByText(/Showing cached data/)).toBeVisible();
-  await page.getByRole('link', { name: 'Audit', exact: true }).click();
+  if (await page.getByRole('dialog').count()) {
+    page.once('dialog', (d) => d.accept());
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  }
+  await page.evaluate(() => {
+    location.hash = '#/settings/audit';
+  });
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Apply filters' })).toBeEnabled();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await capture(page, 'browser-outage', false);
 });
 
@@ -279,12 +316,18 @@ for (const mode of ['empty', 'error'])
       }),
     );
     await page.goto('/#/settings/operations');
-    await expect(page.getByRole('heading', { name: 'Operations', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
     await expect(
       page.getByText(mode === 'error' ? /Data unavailable/ : /No operations match/),
     ).toBeVisible();
     await capture(page, `operations-${mode}`);
-    await page.getByRole('link', { name: 'Audit', exact: true }).click();
+    if (await page.getByRole('dialog').count()) {
+      page.once('dialog', (d) => d.accept());
+      await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+    }
+    await page.evaluate(() => {
+      location.hash = '#/settings/audit';
+    });
     await expect(
       page.getByText(mode === 'error' ? /Data unavailable/ : /No administrative activity matches/),
     ).toBeVisible();

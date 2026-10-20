@@ -77,7 +77,7 @@ for (const width of [1440, 360])
       }),
     );
     await page.goto('/#/settings/logs');
-    await expect(page.getByRole('heading', { name: 'Logs', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible();
     const trigger = page.getByRole('button', { name: /View log details from/ });
     await expect(trigger).toBeVisible();
     await page.evaluate(() => document.fonts.ready);

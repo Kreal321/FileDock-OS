@@ -53,7 +53,8 @@ export function Dialog({
       lastError.current = '';
       if (el.close) el.close();
       else el.removeAttribute('open');
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected && previous !== document.body) previous.focus();
+      else document.querySelector<HTMLElement>('#main-content h1, main h1')?.focus();
     };
   }, [open]);
   useEffect(() => {
