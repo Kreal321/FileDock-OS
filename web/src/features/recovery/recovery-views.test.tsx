@@ -81,3 +81,30 @@ test('recovery summary keeps destination inputs behind one deliberate dialog', a
   expect(screen.getByRole('button', { name: 'Create connection' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Check and add' })).toBeVisible();
 });
+test('key regeneration replaces its dialog and keeps the download action in one footer', async () => {
+  const { fireEvent, within } = await import('@testing-library/react');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) =>
+      Response.json(
+        input.includes('/regenerate')
+          ? { keyId: 'synthetic', recoveryKey: 'SYNTHETIC-KEY' }
+          : { copies: [] },
+      ),
+    ),
+  );
+  const { container } = mount(<StateProtectionPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Regenerate recovery key' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Replace recovery key' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Download new recovery key' });
+  expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Download recovery key and continue' })
+      .closest('footer'),
+  ).not.toBeNull();
+  expect(container.querySelector('.dialog-body .panel')).toBeNull();
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(dialog).toBeVisible();
+});

@@ -15,7 +15,7 @@ import { Panel } from '../../components/Panel.tsx';
 import { Notice } from '../../components/Notice.tsx';
 import { Button } from '../../components/Button.tsx';
 import { Field } from '../../components/Field.tsx';
-import { RecoveryKeyStep } from '../setup/RecoveryKeyStep.tsx';
+import { RecoveryKeyDownloadButton } from '../setup/RecoveryKeyStep.tsx';
 export type Protection = {
   remoteDestinationRegistered?: boolean;
   reinstallCovered?: boolean;
@@ -341,25 +341,37 @@ export function StateProtectionPage({ canMutate: permission = true }: { canMutat
         open={!!key}
         title="Download new recovery key"
         onClose={() => {}}
-        busy={true}
-        cancelLabel="Download the key to continue"
+        dismissible={false}
+        footer={
+          key ? (
+            <RecoveryKeyDownloadButton
+              recoveryKey={key.recoveryKey}
+              canContinue={canMutate}
+              busyLabel="Saving the new recovery key…"
+              onDownloaded={async () => {
+                try {
+                  await api.post('/recovery-key/confirm', { keyId: key.keyId });
+                  if (active.current) {
+                    setKey(null);
+                    await q.refetch();
+                  }
+                } catch (e) {
+                  if (active.current)
+                    setError(e instanceof Error ? e.message : 'Could not confirm the key.');
+                }
+              }}
+            />
+          ) : null
+        }
       >
-        {key && (
-          <RecoveryKeyStep
-            busyLabel="Saving the new recovery key…"
-            recoveryKey={key.recoveryKey}
-            error={error}
-            onDownloaded={async () => {
-              try {
-                await api.post('/recovery-key/confirm', { keyId: key.keyId });
-                setKey(null);
-                if (active.current) await q.refetch();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'Could not confirm the key.');
-              }
-            }}
-          />
-        )}
+        <p>Keep the downloaded text file somewhere safe. Keep your old key for older copies.</p>
+        {error ? <p role="alert">{error}</p> : null}
+        {!canMutate ? (
+          <p role="status">Download is available. Reconnect to confirm the new key and continue.</p>
+        ) : null}
+        <code className="recovery-key" data-secret>
+          {key?.recoveryKey}
+        </code>
       </Dialog>
       <a href="#/settings/locations">Review owned locations in Cloud</a>
     </div>

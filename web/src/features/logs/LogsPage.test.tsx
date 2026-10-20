@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { LogsPage } from './LogsPage.tsx';
-import { ActivityPage } from '../activity/ActivityPage.tsx';
+import { EventsPage } from '../events/EventsPage.tsx';
+import { resolveRoute } from '../../navigation/destinations.ts';
 const renderPage = (page: React.ReactNode) =>
   render(
     <QueryClientProvider
@@ -30,7 +30,7 @@ test('long log preview opens complete returned message in a named dialog', async
         ),
     ),
   );
-  renderPage(<LogsPage />);
+  renderPage(<EventsPage route={resolveRoute('#/settings/logs')} />);
   const trigger = await screen.findByRole('button', {
     name: /View log details from filedock-management/,
   });
@@ -75,7 +75,7 @@ test('legacy identical activity coalesces but distinct protection changes remain
         ),
     ),
   );
-  renderPage(<ActivityPage />);
+  renderPage(<EventsPage route={resolveRoute('#/settings/activity')} />);
   expect(await screen.findAllByText('Recovery protection updated')).toHaveLength(2);
   expect(screen.getByText(/2 identical updates/)).toBeVisible();
 });

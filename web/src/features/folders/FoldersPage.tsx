@@ -176,6 +176,21 @@ export function FoldersPage({
         title="Delete managed folder"
         onClose={() => setRemoving(undefined)}
         busy={busy}
+        footer={
+          <Button
+            variant="danger"
+            disabled={
+              !canMutate ||
+              !connected ||
+              busy ||
+              (removing?.dataImportance === 'Critical' && typed !== removing.identity.name)
+            }
+            busy={busy}
+            onClick={() => void remove()}
+          >
+            Delete folder
+          </Button>
+        }
       >
         <p>
           Remove {removing?.identity.name} from FileDock? The underlying pool data is kept. Exports,
@@ -188,19 +203,6 @@ export function FoldersPage({
             onChange={(e) => setTyped(e.target.value)}
           />
         ) : null}
-        <Button
-          variant="danger"
-          disabled={
-            !canMutate ||
-            !connected ||
-            busy ||
-            (removing?.dataImportance === 'Critical' && typed !== removing.identity.name)
-          }
-          busy={busy}
-          onClick={() => void remove()}
-        >
-          Delete folder
-        </Button>
       </Dialog>
     </div>
   );

@@ -213,29 +213,31 @@ export function ExtensionsPage({ canMutate = true }: { canMutate?: boolean }) {
         title="Remove extension"
         onClose={() => setRemove(null)}
         busy={busy}
+        footer={
+          <Button
+            variant="danger"
+            busy={busy}
+            disabled={!canMutate}
+            onClick={() =>
+              void run(async () => {
+                if (remove) {
+                  const result = await api.delete<{ id: string }>(
+                    `/extensions/${encodeURIComponent(remove.subsystemId)}`,
+                  );
+                  setOperation(result.id);
+                  setRemove(null);
+                }
+              })
+            }
+          >
+            Confirm removal
+          </Button>
+        }
       >
         <p>
           Remove {remove?.name}? Its bound folders and their data will be kept. Removal is refused
           while folders, apps, or connector routes depend on it.
         </p>
-        <Button
-          variant="danger"
-          busy={busy}
-          disabled={!canMutate}
-          onClick={() =>
-            void run(async () => {
-              if (remove) {
-                const result = await api.delete<{ id: string }>(
-                  `/extensions/${encodeURIComponent(remove.subsystemId)}`,
-                );
-                setOperation(result.id);
-                setRemove(null);
-              }
-            })
-          }
-        >
-          Confirm removal
-        </Button>
       </Dialog>
     </div>
   );
