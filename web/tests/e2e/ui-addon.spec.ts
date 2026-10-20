@@ -267,3 +267,16 @@ test('large event tables scroll within the record region with paging still reach
     await expect(page.getByRole('columnheader', { name: 'Time', exact: true })).toBeInViewport();
   }
 });
+test('cursor Previous uses matching query history and is disabled for a copied page', async ({
+  page,
+}) => {
+  await addonAppliance(page);
+  await page.goto('/#/settings/logs');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page).toHaveURL(/pageToken=/);
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page).not.toHaveURL(/pageToken=/);
+  await page.goto('/#/settings/logs?pageToken=copied');
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
+});

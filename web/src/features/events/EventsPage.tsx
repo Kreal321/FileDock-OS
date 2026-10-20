@@ -5,7 +5,13 @@ import { Tabs } from '../../components/Tabs.tsx';
 import { Notice } from '../../components/Notice.tsx';
 import { Button } from '../../components/Button.tsx';
 import type { Route } from '../../navigation/destinations.ts';
-import { eventHash, type RecordType, type ViewFilters } from '../../navigation/viewContext.ts';
+import {
+  eventHash,
+  rememberNextPage,
+  resetPageHistory,
+  type RecordType,
+  type ViewFilters,
+} from '../../navigation/viewContext.ts';
 import { EventsToolbar } from './EventsToolbar.tsx';
 import { RecordView } from './recordViews.tsx';
 export function EventsPage({
@@ -28,6 +34,7 @@ export function EventsPage({
       window.history.replaceState(window.history.state, '', eventHash(type, route.filters ?? {}));
   }, [route.privateReset, type, route.filters]); // Keep the reset notice for this entry until the next navigation.
   const apply = (next: ViewFilters) => {
+    resetPageHistory(type, next);
     const clean = { ...next };
     delete clean.pageToken;
     window.location.hash = eventHash(type, clean);
@@ -80,7 +87,8 @@ export function EventsPage({
               filters={filters}
               connected={connected}
               canMutate={canMutate}
-              page={(cursor) => {
+              page={(cursor, direction) => {
+                if (direction === 'next') rememberNextPage(type, filters, cursor);
                 window.location.hash = eventHash(type, { ...filters, pageToken: cursor });
               }}
             />

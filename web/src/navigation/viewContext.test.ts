@@ -32,3 +32,20 @@ test('queries preserve intended type and public filters', () => {
   expect(route.owner).toBe('events');
   expect(route.filters).toEqual({ minSeverity: 'Warning', pageSize: '50' });
 });
+test('paging history is scoped to type and applied filters and clears with the session', async () => {
+  const { rememberNextPage, previousPageCursor, resetPageHistory } =
+    await import('./viewContext.ts');
+  const filters = { minSeverity: 'Info', source: 'private-source' };
+  expect(previousPageCursor('logs', { ...filters, pageToken: 'direct-entry' })).toBeUndefined();
+  rememberNextPage('logs', filters, 'second');
+  expect(previousPageCursor('logs', { ...filters, pageToken: 'second' })).toBe('');
+  expect(
+    previousPageCursor('logs', { ...filters, minSeverity: 'Warning', pageToken: 'second' }),
+  ).toBeUndefined();
+  expect(previousPageCursor('audit', { ...filters, pageToken: 'second' })).toBeUndefined();
+  resetPageHistory('logs', filters);
+  expect(previousPageCursor('logs', { ...filters, pageToken: 'second' })).toBeUndefined();
+  rememberNextPage('logs', filters, 'second');
+  clearViewContexts();
+  expect(previousPageCursor('logs', { ...filters, pageToken: 'second' })).toBeUndefined();
+});

@@ -7,7 +7,11 @@ import { StateView } from '../../components/StateView.tsx';
 import { StatusBadge } from '../../components/StatusBadge.tsx';
 import { DataTable } from '../../components/DataTable.tsx';
 import { Dialog } from '../../components/Dialog.tsx';
-import type { RecordType, ViewFilters } from '../../navigation/viewContext.ts';
+import {
+  previousPageCursor,
+  type RecordType,
+  type ViewFilters,
+} from '../../navigation/viewContext.ts';
 type Event = {
   seq: number;
   at: string;
@@ -74,8 +78,9 @@ export function RecordView({
   filters: ViewFilters;
   connected?: boolean;
   canMutate?: boolean;
-  page: (cursor: string) => void;
+  page: (cursor: string, direction: 'next' | 'previous') => void;
 }) {
+  const previous = previousPageCursor(type, filters);
   const [selected, setSelected] = useState<Log | null>(null);
   const size = filters.pageSize ?? { logs: '100', activity: '50', audit: '25' }[type];
   const params = new URLSearchParams({ ...filters, pageSize: size });
@@ -178,15 +183,15 @@ export function RecordView({
       <div className="actions">
         <Button
           variant="secondary"
-          disabled={!filters.pageToken || q.isFetching}
-          onClick={() => window.history.back()}
+          disabled={previous === undefined || q.isFetching}
+          onClick={() => page(previous!, 'previous')}
         >
           Previous
         </Button>
         <Button
           variant="secondary"
           disabled={!q.data?.nextPageToken || q.isFetching}
-          onClick={() => page(q.data!.nextPageToken!)}
+          onClick={() => page(q.data!.nextPageToken!, 'next')}
         >
           Next
         </Button>

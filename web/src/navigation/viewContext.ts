@@ -14,6 +14,7 @@ export function readViewContext(id: string, type: RecordType): ViewFilters | und
 }
 export function clearViewContexts() {
   contexts.clear();
+  paging.clear();
 }
 export function validateDates(filters: ViewFilters): string | undefined {
   for (const key of ['since', 'until']) {
@@ -47,4 +48,32 @@ export function eventHash(type: RecordType, filters: ViewFilters): string {
   }
   if (Object.keys(privateValues).length) query.set('context', saveViewContext(type, privateValues));
   return `#/settings/${type}${query.size ? '?' + query : ''}`;
+}
+
+const paging = new Map<string, Map<string, string>>();
+function pagingKey(type: RecordType, filters: ViewFilters) {
+  return JSON.stringify([
+    type,
+    Object.entries(filters)
+      .filter(([key, value]) => key !== 'pageToken' && value)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  ]);
+}
+export function rememberNextPage(type: RecordType, filters: ViewFilters, next: string) {
+  const key = pagingKey(type, filters);
+  if (!paging.has(key)) {
+    if (paging.size >= 250) paging.delete(paging.keys().next().value!);
+    paging.set(key, new Map());
+  }
+  const history = paging.get(key)!;
+  if (history.size >= 500) history.delete(history.keys().next().value!);
+  history.set(next, filters.pageToken ?? '');
+}
+export function previousPageCursor(type: RecordType, filters: ViewFilters): string | undefined {
+  return filters.pageToken
+    ? paging.get(pagingKey(type, filters))?.get(filters.pageToken)
+    : undefined;
+}
+export function resetPageHistory(type: RecordType, filters: ViewFilters) {
+  paging.delete(pagingKey(type, filters));
 }
